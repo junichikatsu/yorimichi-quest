@@ -55,12 +55,56 @@ interface RequestOptions {
   maxRetries?: number
 }
 
+/**
+ * 前段（ゲートウェイ / Lambda）が返す一時的なエラー。
+ *
+ * この場合ボディはアプリの形式ではなく `{"message":"Service Unavailable"}` などになる。
+ * 関数まで届いていないので、副作用の無い GET なら安全に再送できる。
+ */
+const GATEWAY_ERROR_STATUSES = new Set([502, 503, 504])
+
+const GATEWAY_MAX_RETRIES = 2
+const GATEWAY_RETRY_BASE_MS = 700
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * エラーレスポンスから中身を取り出す。
+ *
+ * ★ `payload.error.code` を直に読んではいけない。
+ * 前段が落ちたときのボディには `error` が無いため、TypeError
+ * （`Cannot read properties of undefined (reading 'code')`）になり、
+ * **本来の 503 が意味不明なクラッシュに化けて原因が追えなくなる**。
+ * サーバーの形式を仮定せず、読めた項目だけを使う。
+ */
+function readErrorPayload(body: unknown): Partial<ErrorResponse['error']> {
+  if (typeof body !== 'object' || body === null) return {}
+
+  const error = (body as { error?: unknown }).error
+  if (typeof error !== 'object' || error === null) return {}
+
+  const raw = error as Record<string, unknown>
+  return {
+    ...(typeof raw['code'] === 'string' ? { code: raw['code'] as ErrorResponse['error']['code'] } : {}),
+    ...(typeof raw['message'] === 'string' ? { message: raw['message'] } : {}),
+    ...(typeof raw['details'] === 'object' && raw['details'] !== null
+      ? { details: raw['details'] as Record<string, string | number | boolean> }
+      : {}),
+  }
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const maxRetries = options.maxRetries ?? 0
+  const method = options.method ?? 'GET'
 
-  for (let attempt = 0; ; attempt += 1) {
+  let acceptedRetries = 0
+  let gatewayRetries = 0
+
+  for (;;) {
     const response = await fetch(`${API_BASE}${path}`, {
-      method: options.method ?? 'GET',
+      method,
       headers: {
         [USER_ID_HEADER]: getOrCreateUserId(),
         ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -69,9 +113,21 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     })
 
     // 202 はエラーではなく「待機」。retryAfterMs 相当を見て再送する。
-    if (response.status === 202 && attempt < maxRetries) {
-      const retryAfterMs = Number(response.headers.get('Retry-After') ?? '1') * 1000
-      await new Promise((resolve) => setTimeout(resolve, retryAfterMs))
+    if (response.status === 202 && acceptedRetries < maxRetries) {
+      acceptedRetries += 1
+      await delay(Number(response.headers.get('Retry-After') ?? '1') * 1000)
+      continue
+    }
+
+    // コールドスタート時に出る前段の 5xx。ここで諦めると初回表示が
+    // 「読み込みに失敗しました」で止まってしまうため、GET だけ短く再送する。
+    if (
+      GATEWAY_ERROR_STATUSES.has(response.status) &&
+      method === 'GET' &&
+      gatewayRetries < GATEWAY_MAX_RETRIES
+    ) {
+      gatewayRetries += 1
+      await delay(GATEWAY_RETRY_BASE_MS * gatewayRetries)
       continue
     }
 
@@ -79,14 +135,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     // 同一オリジンなので Retry-After をそのまま読める
     const retryAfter = response.headers.get('Retry-After')
-    const payload = (await response.json().catch(() => undefined)) as ErrorResponse | undefined
+    const payload: unknown = await response.json().catch(() => undefined)
+    const error = readErrorPayload(payload)
+
+    // アプリの形式で返っていないなら、状態コードから読める説明に落とす
+    const fallbackMessage = GATEWAY_ERROR_STATUSES.has(response.status)
+      ? 'サーバーが一時的に応答していません。少し待ってからもう一度お試しください。'
+      : `リクエストに失敗しました (${response.status})`
 
     throw new ApiError(
       response.status,
-      payload?.error.code ?? 'INTERNAL',
-      payload?.error.message ?? `リクエストに失敗しました (${response.status})`,
+      error.code ?? 'INTERNAL',
+      error.message ?? fallbackMessage,
       {
-        ...(payload?.error.details ?? {}),
+        ...(error.details ?? {}),
         ...(retryAfter ? { retryAfterSec: Number(retryAfter) } : {}),
       },
     )
