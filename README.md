@@ -14,7 +14,7 @@
 | [要件定義書](doc/requirements.md) | 第1部 概要編（目的・スコープ・KPI）／第2部 詳細編（機能要件・画面・データモデル・API・非機能要件） |
 | [ピッチ資料](doc/YORIMICHI_QUEST_Gamified_Safety.pdf) | リーンキャンバス／バリュープロポジション・キャンバスを含むスライド |
 | [オープンデータ ソース一覧](doc/opendata-sources.md) | FR-10 で取り込む候補データセット（東京都・区市町村）の棚卸し |
-| [サンプル実装](sample/README.md) | 平時モードのコア体験（地図・チェックイン・ポイント）を動かして確認するためのサンプル |
+| [サンプル実装](sample/README.md) | 技術検証用サンプルの一覧。現在は [map-checkin](sample/map-checkin/)（地図・チェックイン・ポイント）を収録 |
 
 ## サービス概要
 
@@ -33,8 +33,9 @@
 
 選定が未確定の項目は Issue で管理しています。
 
-なお [`sample/`](sample/) のサンプル実装は、上記とは別に **enebular（クラウド実行環境 + データストア）** と
-**React + Mapbox GL JS** の組み合わせで作っています（技術検証用）。
+なお [`sample/map-checkin`](sample/map-checkin/) は、上記とは別に **enebular（クラウド実行環境 + データストア）** と
+**React + Mapbox GL JS** の組み合わせで作っています（技術検証用）。サンプルは
+[`sample/`](sample/) 配下にサンプルごとの独立したワークスペースとして追加していきます。
 
 ## スケジュール
 
