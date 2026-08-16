@@ -1,0 +1,28 @@
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Node（実装開始後に使用）
+node_modules/
+dist/
+build/
+.wrangler/
+.dev.vars
+
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+
+# ログ・一時ファイル
+*.log
+npm-debug.log*
+tmp/
