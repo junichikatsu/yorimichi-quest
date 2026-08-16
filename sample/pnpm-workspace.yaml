@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# esbuild はポストインストールでバイナリを取得するためビルドを許可する
+allowBuilds:
+  esbuild: true

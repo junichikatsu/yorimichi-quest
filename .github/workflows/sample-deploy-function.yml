@@ -1,0 +1,123 @@
+name: sample deploy (enebular)
+
+# 意図しないタイミングでデモ環境が入れ替わらないよう、当面は手動実行のみ。
+# push デプロイを有効にする場合は下のコメントを外す。
+# on:
+#   push:
+#     branches: [develop]
+#     paths: ['sample/**']
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: デプロイ先の GitHub Environment
+        required: true
+        default: development
+        type: choice
+        options: [development, staging]
+
+concurrency:
+  group: sample-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: sample
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ENEBULAR_ACCESS_KEY: ${{ secrets.ENEBULAR_ACCESS_KEY }}
+      ENEBULAR_SECRET_KEY: ${{ secrets.ENEBULAR_SECRET_KEY }}
+      PROJECT_ID: ${{ vars.ENEBULAR_PROJECT_ID }}
+      CLOUD_ID: ${{ vars.ENEBULAR_CLOUD_ID }}
+      ASSET_ID: ${{ vars.ENEBULAR_FILE_ASSET_ID }}
+      HTTP_TRIGGER_URL: ${{ vars.HTTP_TRIGGER_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets and variables
+        run: |
+          set -euo pipefail
+          fail=0
+          # 値の前後の空白・改行は認証エラーの原因になる。空チェックと同時に検出する。
+          for name in ENEBULAR_ACCESS_KEY ENEBULAR_SECRET_KEY PROJECT_ID CLOUD_ID ASSET_ID HTTP_TRIGGER_URL; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::$name が未設定です"
+              fail=1
+            elif [ "$value" != "$(printf '%s' "$value" | tr -d '[:space:]')" ]; then
+              echo "::error::$name に空白または改行が含まれています"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: sample/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build:zip
+
+      - name: Verify ZIP layout
+        run: |
+          set -euo pipefail
+          ZIP=apps/function/yorimichi-sample-function.zip
+          ENTRIES=$(unzip -Z1 "$ZIP" | sort | tr '\n' ' ')
+          [ "$ENTRIES" = "index.js package.json " ] || { echo "::error::ZIP レイアウト不正: $ENTRIES"; exit 1; }
+          unzip -p "$ZIP" package.json | grep -q '"type"' && { echo "::error::type フィールドあり"; exit 1; }
+          rm -rf /tmp/zipcheck && mkdir -p /tmp/zipcheck && unzip -q "$ZIP" -d /tmp/zipcheck
+          node -e "if (typeof require('/tmp/zipcheck/index.js').handler !== 'function') process.exit(1)"
+          SIZE=$(stat -c%s "$ZIP"); [ "$SIZE" -le 262144000 ] || { echo "::error::250MB 超過"; exit 1; }
+          echo "zip ok ($SIZE bytes)"
+
+      - name: Install enebular CLI
+        run: npm install -g @uhuru/enebular-cli
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+          ZIP_PATH="$PWD/apps/function/yorimichi-sample-function.zip"
+
+          # --name は 1〜30 文字の英数字・アンダースコア・ハイフンのみ。
+          # ブランチ名やタグはそのままでは通らないため、弾かずに整形する。
+          RAW="${GITHUB_REF_NAME}-${GITHUB_SHA::7}"
+          NAME=$(printf '%s' "$RAW" | tr -c 'A-Za-z0-9_-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-30)
+          [ -n "$NAME" ] || NAME="deploy-${GITHUB_RUN_NUMBER}"
+          echo "version name: $NAME"
+
+          # --json を必ず付ける（無いと確認プロンプトで workflow が止まる）
+          enebular update file --project-id "$PROJECT_ID" --asset-id "$ASSET_ID" --file "$ZIP_PATH" --json
+          enebular deploy cloud --project-id "$PROJECT_ID" --cloud-id "$CLOUD_ID" --asset-id "$ASSET_ID" --asset-type file --json
+          enebular add file-version --project-id "$PROJECT_ID" --asset-id "$ASSET_ID" --name "$NAME" --comment "${GITHUB_SHA}" --json
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          sleep 15
+          BODY=$(curl -sS --fail "$HTTP_TRIGGER_URL/v1/health")
+          echo "$BODY"
+
+          COMMIT=$(printf '%s' "$BODY" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).commit))")
+          CONFIG_OK=$(printf '%s' "$BODY" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).configOk))")
+
+          # ZIP 差し替え漏れの検出。これが一番効く。
+          if [ "$COMMIT" != "$GITHUB_SHA" ]; then
+            echo "::error::稼働中のコミットが一致しません (health=$COMMIT / expected=$GITHUB_SHA)"
+            exit 1
+          fi
+          if [ "$CONFIG_OK" != "true" ]; then
+            echo "::error::configOk が false です。実行環境の envVars を確認してください"
+            exit 1
+          fi
+          echo "smoke test ok"
