@@ -1,10 +1,14 @@
 import type {
   CheckinResponse,
+  ClientConfigResponse,
   ErrorResponse,
+  ExplorationResponse,
+  ExplorationUpdateResponse,
   HealthResponse,
   MeResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
+import { tileOf } from '@map-checkin/core'
 import { FakeDataStoreClient, setDataStoreClient } from '@map-checkin/datastore'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app.js'
@@ -131,6 +135,125 @@ describe('認証（サンプル用の識別子）', () => {
   it('client-config は認証不要', async () => {
     const response = await app.request('/v1/client-config')
     expect(response.status).toBe(200)
+  })
+
+  it('探索エリアはヘッダが無ければ 401', async () => {
+    const response = await app.request('/v1/exploration')
+    expect(response.status).toBe(401)
+  })
+})
+
+describe('GET /v1/client-config', () => {
+  it('探索グリッドの寸法を返す（FE は環境変数を持たない）', async () => {
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+
+    expect(body.exploration).toEqual({
+      tileSizeM: 50,
+      revealRadiusM: 40,
+      areaRadiusM: 1500,
+      maxPointsPerRequest: 200,
+    })
+  })
+})
+
+describe('探索済みエリア（歩いたところ）', () => {
+  const HIBIYA = { lat: 35.6739, lng: 139.7568 }
+
+  async function record(points: { lat: number; lng: number }[], userId = USER_ID) {
+    return app.request('/v1/exploration', {
+      method: 'POST',
+      headers: headers(userId),
+      body: JSON.stringify({ points }),
+    })
+  }
+
+  it('初期状態は空', async () => {
+    const body = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers() }),
+    )
+
+    expect(body.tiles).toHaveLength(0)
+    expect(body.summary).toEqual({
+      tileCount: 0,
+      exploredAreaM2: 0,
+      coveragePercent: 0,
+      truncated: false,
+    })
+  })
+
+  it('座標を送るとタイルが塗られ、次の GET にも残る', async () => {
+    const response = await record([HIBIYA])
+    expect(response.status).toBe(200)
+
+    const posted = await json<ExplorationUpdateResponse>(response)
+    expect(posted.newTileCount).toBe(1)
+    expect(posted.tiles).toHaveLength(1)
+    // 50m 四方のタイルは北緯 35 度で約 2,031m²（横幅が cos(緯度) 分だけ縮む）
+    expect(posted.summary.exploredAreaM2).toBe(2031)
+
+    const fetched = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers() }),
+    )
+    expect(fetched.tiles.map((tile) => tile.tileKey)).toEqual(
+      posted.tiles.map((tile) => tile.tileKey),
+    )
+  })
+
+  it('同じタイル内の座標をまとめて送っても 1 マスしか増えない', async () => {
+    // 境界をまたがないよう、タイル中心から数 m ずらした 3 点を作る
+    const center = tileOf(HIBIYA, 50).center
+    const body = await json<ExplorationUpdateResponse>(
+      await record([
+        center,
+        { lat: center.lat + 0.00002, lng: center.lng },
+        { lat: center.lat, lng: center.lng + 0.00002 },
+      ]),
+    )
+
+    expect(body.newTileCount).toBe(1)
+    expect(body.summary.tileCount).toBe(1)
+  })
+
+  it('同じ場所を送り直しても新規タイルは増えない（書き込みが積み上がらない）', async () => {
+    await record([HIBIYA])
+    const again = await json<ExplorationUpdateResponse>(await record([HIBIYA]))
+
+    expect(again.newTileCount).toBe(0)
+    expect(again.summary.tileCount).toBe(1)
+  })
+
+  it('歩いた軌跡はタイル数ぶん塗られる', async () => {
+    // 緯度 +0.0009 度 ≒ 100m。50m タイルなので 2〜3 マス進む
+    const path = [0, 0.00045, 0.0009].map((offset) => ({ ...HIBIYA, lat: HIBIYA.lat + offset }))
+    const body = await json<ExplorationUpdateResponse>(await record(path))
+
+    expect(body.summary.tileCount).toBeGreaterThanOrEqual(2)
+    expect(body.summary.coveragePercent).toBeGreaterThan(0)
+  })
+
+  it('探索エリアは他ユーザーに混ざらない', async () => {
+    await record([HIBIYA])
+
+    const other = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers(OTHER_USER_ID) }),
+    )
+    expect(other.tiles).toHaveLength(0)
+  })
+
+  it('座標が空なら 400', async () => {
+    expect((await record([])).status).toBe(400)
+  })
+
+  it('上限を超える件数は 400（黙って切り捨てない）', async () => {
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({
+      lat: HIBIYA.lat + i * 0.0001,
+      lng: HIBIYA.lng,
+    }))
+    expect((await record(tooMany)).status).toBe(400)
+  })
+
+  it('緯度経度が範囲外なら 400', async () => {
+    expect((await record([{ lat: 999, lng: 139.7 }])).status).toBe(400)
   })
 })
 
@@ -308,6 +431,7 @@ describe('データストアの異常系', () => {
     'DS_TABLE_USERS',
     'DS_TABLE_CHECKINS',
     'DS_TABLE_USER_SPOT_STATE',
+    'DS_TABLE_EXPLORED_TILES',
   ]
 
   afterEach(() => {

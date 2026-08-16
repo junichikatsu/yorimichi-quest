@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
+import {
+  MAX_EXPLORATION_POINTS,
+  type ExplorationConfig,
+  type ExplorationSummary,
+  type ExploredTile,
+} from './exploration.js'
 import type { SpotId, UserId } from './ids.js'
 
 /* ------------------------------------------------------------------ *
@@ -23,6 +29,18 @@ export const spotsQuerySchema = z.object({
 
 export type SpotsQuery = z.infer<typeof spotsQuerySchema>
 
+/**
+ * 歩いた座標のまとめ送り。
+ *
+ * タイルへの量子化はサーバー側で行う（クライアントが送るのは生の座標だけ）。
+ * 上限を超える分は 400 で弾く。黙って切り捨てると軌跡が欠けた理由が追えなくなる。
+ */
+export const explorationRequestSchema = z.object({
+  points: z.array(coordinateSchema).min(1).max(MAX_EXPLORATION_POINTS),
+})
+
+export type ExplorationRequest = z.infer<typeof explorationRequestSchema>
+
 /* ------------------------------------------------------------------ *
  * レスポンス型（= API 契約）
  * ------------------------------------------------------------------ */
@@ -41,6 +59,7 @@ export interface HealthResponse {
     checkinCooldownHours: number
     maxSpotsPerRequest: number
     rateLimitPerMinute: number
+    exploreTileSizeM: number
   }
 }
 
@@ -50,6 +69,7 @@ export interface ClientConfigResponse {
   area: AreaSummary
   checkinRadiusM: number
   checkinCooldownHours: number
+  exploration: ExplorationConfig
   assetVersion: string
   mockMode: boolean
 }
@@ -95,6 +115,16 @@ export interface MeResponse {
     createdAt: string
   }
   recentCheckins: CheckinLog[]
+}
+
+export interface ExplorationResponse {
+  tiles: ExploredTile[]
+  summary: ExplorationSummary
+}
+
+export interface ExplorationUpdateResponse extends ExplorationResponse {
+  /** 今回はじめて塗られたタイル数。0 なら既に歩いた範囲だった */
+  newTileCount: number
 }
 
 export interface SeedResponse {

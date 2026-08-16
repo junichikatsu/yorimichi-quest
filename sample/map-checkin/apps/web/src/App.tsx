@@ -1,11 +1,14 @@
+import { interpolatePath } from '@map-checkin/core'
 import type { ClientConfigResponse, MeResponse, SpotWithDistance } from '@map-checkin/shared'
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchClientConfig, fetchMe, fetchSpots, postCheckin } from './api.js'
+import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
 import { MapView } from './components/MapView.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
+import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 
 interface Toast {
@@ -23,6 +26,7 @@ export function App(): React.JSX.Element {
   const [fatalError, setFatalError] = useState<string | undefined>(undefined)
 
   const geo = useGeolocation()
+  const exploration = useExploration(config?.exploration)
 
   useEffect(() => {
     fetchClientConfig()
@@ -31,6 +35,20 @@ export function App(): React.JSX.Element {
         setFatalError(err instanceof Error ? err.message : '設定を取得できませんでした')
       })
   }, [])
+
+  // 現在地が動くたびに探索済みタイルへ積む（同じタイルなら track 側で捨てられる）。
+  // 依存はフックが返す関数そのもの。exploration は毎レンダー別オブジェクトになるため使わない。
+  const { track: trackExploration, trackPath, error: explorationError } = exploration
+
+  useEffect(() => {
+    if (!geo.position) return
+    trackExploration(geo.position)
+  }, [geo.position, trackExploration])
+
+  useEffect(() => {
+    if (!explorationError) return
+    setToast({ kind: 'error', message: explorationError })
+  }, [explorationError])
 
   const reload = useCallback(async () => {
     try {
@@ -83,6 +101,30 @@ export function App(): React.JSX.Element {
     }
   }, [selectedSpot, geo.position, reload])
 
+  /**
+   * デモ用：現在地から選択スポットまで「歩いた」ことにして軌跡を塗る。
+   *
+   * 現地に行かずに霧が晴れる様子を確認するための導線（「現在地をこの場所に設定する」と同趣旨）。
+   * 送信上限を超える距離では点が飛び、軌跡が破線状になる。
+   */
+  const handleSimulateWalk = useCallback(async () => {
+    if (!selectedSpot || !geo.position || !config) return
+    setBusy(true)
+    try {
+      const path = interpolatePath(
+        geo.position,
+        { lat: selectedSpot.lat, lng: selectedSpot.lng },
+        config.exploration.tileSizeM,
+        config.exploration.maxPointsPerRequest,
+      )
+      const added = await trackPath(path)
+      geo.simulate({ lat: selectedSpot.lat, lng: selectedSpot.lng })
+      setToast({ kind: 'success', message: `${added}マス分の霧が晴れました` })
+    } finally {
+      setBusy(false)
+    }
+  }, [selectedSpot, geo, config, trackPath])
+
   if (fatalError !== undefined) {
     return (
       <main className="fatal">
@@ -100,7 +142,12 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <StatusBar me={me} geoStatus={geo.status} areaName={config.area.name} />
+      <StatusBar
+        me={me}
+        exploration={exploration.summary}
+        geoStatus={geo.status}
+        areaName={config.area.name}
+      />
 
       <main className="app__main">
         {canUseMap ? (
@@ -108,6 +155,8 @@ export function App(): React.JSX.Element {
             token={config.mapboxToken}
             area={config.area}
             spots={spots}
+            exploredTiles={exploration.tiles}
+            revealRadiusM={config.exploration.revealRadiusM}
             position={geo.position}
             selectedSpotId={selectedSpotId}
             onSelectSpot={setSelectedSpotId}
@@ -130,6 +179,7 @@ export function App(): React.JSX.Element {
               busy={busy}
               onCheckin={() => void handleCheckin()}
               onSimulateHere={() => geo.simulate({ lat: selectedSpot.lat, lng: selectedSpot.lng })}
+              onSimulateWalk={() => void handleSimulateWalk()}
               onClose={() => setSelectedSpotId(undefined)}
             />
           ) : (
@@ -145,6 +195,12 @@ export function App(): React.JSX.Element {
               </p>
             </section>
           )}
+
+          <ExplorationPanel
+            summary={exploration.summary}
+            areaRadiusM={config.exploration.areaRadiusM}
+            mapEnabled={canUseMap}
+          />
 
           <HistoryPanel me={me} />
         </aside>

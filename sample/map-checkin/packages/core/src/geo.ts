@@ -5,7 +5,7 @@ export interface LatLng {
 
 const EARTH_RADIUS_M = 6_371_008.8
 
-function toRadians(deg: number): number {
+export function toRadians(deg: number): number {
   return (deg * Math.PI) / 180
 }
 
@@ -26,4 +26,10 @@ export function distanceMeters(a: LatLng, b: LatLng): number {
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)}m`
   return `${(meters / 1000).toFixed(1)}km`
+}
+
+/** 表示用の面積文字列（0.01km² 以上は km² 表記） */
+export function formatArea(squareMeters: number): string {
+  if (squareMeters < 10_000) return `${Math.round(squareMeters)}m²`
+  return `${(squareMeters / 1_000_000).toFixed(2)}km²`
 }

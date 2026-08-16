@@ -41,7 +41,11 @@ export interface AppConfig {
   area: AreaSummary
   checkinRadiusM: number
   checkinCooldownHours: number
+  exploreTileSizeM: number
+  exploreRevealRadiusM: number
+  areaRadiusM: number
   maxSpotsPerRequest: number
+  maxExploredTilesPerRequest: number
   rateLimitPerMinute: number
   mapboxToken: string
   adminKey: string
@@ -75,7 +79,14 @@ export function loadConfig(): AppConfig {
     // 暫定値。確定は Issue #7「ゲームパラメータの確定」で行う
     checkinRadiusM: readNumber('CHECKIN_RADIUS_M', 100),
     checkinCooldownHours: readNumber('CHECKIN_COOLDOWN_HOURS', 24),
+    // 記録の粒度。小さくすると軌跡は滑らかになるが、書き込み回数が面積比で増える
+    exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
+    // タイルより大きくしないと、隣り合うタイルの間に霧が残って軌跡が途切れて見える
+    exploreRevealRadiusM: readNumber('EXPLORE_REVEAL_RADIUS_M', 40),
+    // 探索率の分母。エリア中心からこの半径の円を「探索の対象範囲」とみなす
+    areaRadiusM: readNumber('AREA_RADIUS_M', 1500),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
+    maxExploredTilesPerRequest: readNumber('MAX_EXPLORED_TILES_PER_REQUEST', 2000),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     mapboxToken: readString('MAPBOX_ACCESS_TOKEN'),
     adminKey: readString('ADMIN_KEY'),

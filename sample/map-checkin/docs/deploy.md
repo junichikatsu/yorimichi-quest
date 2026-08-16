@@ -8,7 +8,7 @@ CLI は既存のアセットと実行環境に対して動くため、**最初�
 | # | 作業 | 取得する値 |
 | :--- | :--- | :--- |
 | 1 | プロジェクトを作成 | `PROJECT_ID` |
-| 2 | データストアのテーブルを 4 つ作成（キー名と型は [datamodel.md](datamodel.md) のとおり） | テーブル ID × 4 |
+| 2 | データストアのテーブルを 5 つ作成（キー名と型は [datamodel.md](datamodel.md) のとおり） | テーブル ID × 5 |
 | 3 | ZIP をファイルアセットとして登録（`--deploy-type cloud --handler index.handler`） | `ASSET_ID` |
 | 4 | ZIP 向けクラウド実行環境を作成（ランタイム **Node.js 22.x**） | `CLOUD_ID` |
 | 5 | HTTP トリガーを有効化し、パスを設定（インスタンス内で一意） | トリガー URL |
@@ -34,12 +34,26 @@ CI が知るシークレットは enebular のアクセスキーだけにする�
 | :--- | :--- |
 | `MAPBOX_ACCESS_TOKEN` | Mapbox の公開トークン（`pk.`）。**URL 制限をかけたものを使う** |
 | `ADMIN_KEY` | シード実行用の鍵（推測できない値） |
-| `DS_TABLE_SPOTS` / `DS_TABLE_USERS` / `DS_TABLE_CHECKINS` / `DS_TABLE_USER_SPOT_STATE` | 手順 2 のテーブル ID |
-| `AREA_ID` / `AREA_NAME` / `AREA_CENTER_LAT` / `AREA_CENTER_LNG` / `AREA_ZOOM` | 対象エリア |
+| `DS_TABLE_SPOTS` / `DS_TABLE_USERS` / `DS_TABLE_CHECKINS` / `DS_TABLE_USER_SPOT_STATE` / `DS_TABLE_EXPLORED_TILES` | 手順 2 のテーブル ID |
+| `AREA_ID` / `AREA_NAME` / `AREA_CENTER_LAT` / `AREA_CENTER_LNG` / `AREA_ZOOM` / `AREA_RADIUS_M` | 対象エリア |
 | `CHECKIN_RADIUS_M` / `CHECKIN_COOLDOWN_HOURS` / `RATE_LIMIT_PER_MINUTE` | ゲームパラメータ（暫定値） |
+| `EXPLORE_TILE_SIZE_M` / `EXPLORE_REVEAL_RADIUS_M` | 探索エリアの粒度と霧を晴らす半径（未設定なら既定値 50 / 40） |
 | `LOG_LEVEL` | `INFO`（`DEBUG` 以上は入力内容がログに出うる） |
 
 `USE_FAKE_DATASTORE` は **設定しない**（enebular では常に本物のデータストアを使う）。
+
+### すでに動いている環境へ探索エリア機能を入れる場合
+
+**ZIP を差し替える前に、コンソールで作業が要る。** テーブルの作成は CLI にも GitHub Actions にも
+含まれていないため、先に ZIP だけ入れ替えると `/v1/exploration` が 500 `CONFIG_ERROR` を返す
+（`/v1/health` と既存 API は動き続けるので、気づかないまま放置されやすい）。
+
+1. `explored_tiles` テーブルを作る（メインキー `userKey` / サブキー `tileKey`、**どちらも文字列**）
+2. 実行環境の envVars に `DS_TABLE_EXPLORED_TILES` を追加する
+3. その後で ZIP を差し替える
+4. `/v1/health` の `configOk` が `true` のままか確認する（`false` なら 1〜2 の漏れ）
+
+既存ユーザーのデータ移行は不要。探索済みタイルは歩いた分から新規に貯まる。
 
 ## 2. 初期データの投入
 
@@ -99,4 +113,6 @@ curl -s "$HTTP_TRIGGER_URL/v1/health" | jq
 | CSS も JS も 404 | 末尾スラッシュ無しの URL で開いた | `/` へのリダイレクトが効いているか確認 |
 | `/v1/health` は返るが API が 503 | `connectDataStore` が無効／実行環境の外 | `details.reason === "client_init"` なら接続設定側 |
 | API が 500 `CONFIG_ERROR` | テーブル ID の環境変数が未設定 | 実行環境のログに不足キー名が出る |
+| **`/v1/exploration` だけ 500、他は正常** | `explored_tiles` テーブルまたは `DS_TABLE_EXPLORED_TILES` の作成漏れ | 上記「すでに動いている環境へ〜」の手順 1〜2 |
+| 地図に霧が出ない（塗られない） | Mapbox トークン未設定で一覧表示にフォールバックしている | `/v1/client-config` の `mapboxToken` を確認 |
 | 画面が白い | 静的ファイル未ビルド | `/app.js` が 500 `ASSET_NOT_BUILT` を返す。ZIP を作り直す |

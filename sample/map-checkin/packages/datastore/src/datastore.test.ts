@@ -4,6 +4,7 @@ import { createDataStoreContext, isPlaceholder } from './context.js'
 import { DataStoreConfigError, DataStoreError, classifyDataStoreError, isNotFoundError } from './errors.js'
 import { createFakeDataStore, FakeDataStoreClient } from './fake.js'
 import { appendCheckin, listRecentCheckins } from './repositories/checkins.js'
+import { listExploredTiles, putExploredTile } from './repositories/explored-tiles.js'
 import { getSpot, incrementSpotCheckinCount, listSpotsByArea, putSpot } from './repositories/spots.js'
 import { getUser, putUser } from './repositories/users.js'
 import { getUserSpotState, putUserSpotState } from './repositories/user-spot-state.js'
@@ -160,6 +161,34 @@ describe('リポジトリ（fake データストア）', () => {
 
     const recent = await listRecentCheckins(ctx, USER, 10)
     expect(recent.map((r) => r.checkinAt)).toEqual([3000, 2000, 1000])
+  })
+
+  it('同じタイルを何度書いても 1 件のまま（上書きになる）', async () => {
+    const { ctx } = createFakeDataStore()
+    for (const firstSeenAt of [1000, 2000, 3000]) {
+      await putExploredTile(ctx, USER, { tileKey: '79423:252775', lat: 35.6, lng: 139.7, firstSeenAt })
+    }
+
+    expect(await listExploredTiles(ctx, USER, 100)).toHaveLength(1)
+  })
+
+  it('探索済みタイルは他ユーザーに漏れない（メインキーが一致しない）', async () => {
+    const { ctx } = createFakeDataStore()
+    await putExploredTile(ctx, USER, { tileKey: '79423:252775', lat: 35.6, lng: 139.7, firstSeenAt: 1 })
+
+    const other = asUserId('99999999-8888-4777-8666-555555555555')
+    expect(await listExploredTiles(ctx, other, 100)).toHaveLength(0)
+  })
+
+  it('探索済みタイルの取得は 1 回の query で済む', async () => {
+    const { ctx, client } = createFakeDataStore()
+    for (const col of [1, 2, 3]) {
+      await putExploredTile(ctx, USER, { tileKey: `79423:${col}`, lat: 35.6, lng: 139.7, firstSeenAt: 1 })
+    }
+
+    const before = client.accessCount
+    expect(await listExploredTiles(ctx, USER, 100)).toHaveLength(3)
+    expect(client.accessCount - before).toBe(1)
   })
 
   it('user_spot_state は 1 回の getItem で判定できる', async () => {

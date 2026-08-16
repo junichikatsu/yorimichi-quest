@@ -13,6 +13,7 @@ import type { AreaId, SpotId, UserId } from '@map-checkin/shared'
  * | users           | user#<userId>     | 'profile'             | 文字列 |
  * | checkins        | user#<userId>     | <epochMs>             | 数値   |
  * | user_spot_state | user#<userId>     | spot#<spotId>         | 文字列 |
+ * | explored_tiles  | user#<userId>     | <row>:<col>           | 文字列 |
  */
 
 export const SPOTS_MAIN_KEY = 'areaKey'
@@ -24,6 +25,12 @@ export const CHECKINS_MAIN_KEY = 'userKey'
 export const CHECKINS_SUB_KEY = 'checkinAt'
 export const USER_SPOT_STATE_MAIN_KEY = 'userKey'
 export const USER_SPOT_STATE_SUB_KEY = 'spotKey'
+export const EXPLORED_TILES_MAIN_KEY = 'userKey'
+/**
+ * ★ 他テーブルのサブキーと違い接頭辞を付けない。
+ * このテーブルはタイルしか持たず、キー自体がグリッド座標（"row:col"）で衝突しようがないため。
+ */
+export const EXPLORED_TILES_SUB_KEY = 'tileKey'
 
 export const USER_PROFILE_RECORD_KEY = 'profile'
 

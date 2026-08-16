@@ -6,9 +6,13 @@ import {
 import {
   asSpotId,
   checkinRequestSchema,
+  explorationRequestSchema,
   isSpotId,
   spotsQuerySchema,
+  MAX_EXPLORATION_POINTS,
   type ClientConfigResponse,
+  type ExplorationResponse,
+  type ExplorationUpdateResponse,
   type HealthResponse,
   type MeResponse,
   type SeedResponse,
@@ -24,6 +28,7 @@ import { userGate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { performCheckin } from '../services/checkin-service.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
+import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { seedSpots } from '../services/seed-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { assetVersion, sendAsset } from '../static.js'
@@ -77,6 +82,7 @@ export function createRoutes(): Hono<AppEnv> {
         checkinCooldownHours: config.checkinCooldownHours,
         maxSpotsPerRequest: config.maxSpotsPerRequest,
         rateLimitPerMinute: config.rateLimitPerMinute,
+        exploreTileSizeM: config.exploreTileSizeM,
       },
     }
     return c.json(response)
@@ -89,6 +95,12 @@ export function createRoutes(): Hono<AppEnv> {
       area: config.area,
       checkinRadiusM: config.checkinRadiusM,
       checkinCooldownHours: config.checkinCooldownHours,
+      exploration: {
+        tileSizeM: config.exploreTileSizeM,
+        revealRadiusM: config.exploreRevealRadiusM,
+        areaRadiusM: config.areaRadiusM,
+        maxPointsPerRequest: MAX_EXPLORATION_POINTS,
+      },
       assetVersion: assetVersion(),
       mockMode: config.mockMode,
     }
@@ -166,6 +178,42 @@ export function createRoutes(): Hono<AppEnv> {
     })
 
     return c.json(result)
+  })
+
+  /* ---------------- 探索済みエリア（歩いたところ） ---------------- */
+
+  routes.get('/v1/exploration', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+
+    const response: ExplorationResponse = await getExploration(ctx, {
+      userId: c.get('userId'),
+      tileSizeM: config.exploreTileSizeM,
+      latitude: config.area.center.lat,
+      areaRadiusM: config.areaRadiusM,
+      maxTiles: config.maxExploredTilesPerRequest,
+    })
+    return c.json(response)
+  })
+
+  routes.post('/v1/exploration', async (c) => {
+    const config = loadConfig()
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = explorationRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const response: ExplorationUpdateResponse = await recordExploration(ctx, {
+      userId: c.get('userId'),
+      points: body.points,
+      now: Date.now(),
+      tileSizeM: config.exploreTileSizeM,
+      latitude: config.area.center.lat,
+      areaRadiusM: config.areaRadiusM,
+      maxTiles: config.maxExploredTilesPerRequest,
+    })
+    return c.json(response)
   })
 
   /* ---------------- マイページ ---------------- */

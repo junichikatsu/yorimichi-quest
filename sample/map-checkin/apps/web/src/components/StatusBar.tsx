@@ -1,8 +1,9 @@
-import type { MeResponse } from '@map-checkin/shared'
+import type { ExplorationSummary, MeResponse } from '@map-checkin/shared'
 import type { GeolocationStatus } from '../hooks/useGeolocation.js'
 
 interface StatusBarProps {
   me: MeResponse | undefined
+  exploration: ExplorationSummary | undefined
   geoStatus: GeolocationStatus
   areaName: string
 }
@@ -15,7 +16,12 @@ const GEO_LABELS: Record<GeolocationStatus, string> = {
   simulated: 'デモ位置を使用中',
 }
 
-export function StatusBar({ me, geoStatus, areaName }: StatusBarProps): React.JSX.Element {
+export function StatusBar({
+  me,
+  exploration,
+  geoStatus,
+  areaName,
+}: StatusBarProps): React.JSX.Element {
   return (
     <header className="statusbar">
       <div className="statusbar__brand">
@@ -36,6 +42,10 @@ export function StatusBar({ me, geoStatus, areaName }: StatusBarProps): React.JS
         <div>
           <dt>チェックイン</dt>
           <dd>{me?.user.checkinCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>探索率</dt>
+          <dd>{(exploration?.coveragePercent ?? 0).toFixed(2)}%</dd>
         </div>
       </dl>
 

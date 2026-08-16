@@ -9,6 +9,7 @@ interface SpotPanelProps {
   busy: boolean
   onCheckin: () => void
   onSimulateHere: () => void
+  onSimulateWalk: () => void
   onClose: () => void
 }
 
@@ -19,6 +20,7 @@ export function SpotPanel({
   busy,
   onCheckin,
   onSimulateHere,
+  onSimulateWalk,
   onClose,
 }: SpotPanelProps): React.JSX.Element {
   const distance = spot.distanceM
@@ -70,6 +72,17 @@ export function SpotPanel({
       {!inRange && (
         <button type="button" className="button button--subtle" onClick={onSimulateHere}>
           デモ用：現在地をこの場所に設定する
+        </button>
+      )}
+
+      {!inRange && position !== undefined && (
+        <button
+          type="button"
+          className="button button--subtle"
+          disabled={busy}
+          onClick={onSimulateWalk}
+        >
+          デモ用：ここまで歩いた軌跡を記録する
         </button>
       )}
 

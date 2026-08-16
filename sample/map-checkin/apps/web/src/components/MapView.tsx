@@ -1,12 +1,14 @@
-import type { AreaSummary, SpotWithDistance } from '@map-checkin/shared'
+import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface MapViewProps {
   token: string
   area: AreaSummary
   spots: SpotWithDistance[]
+  exploredTiles: ExploredTile[]
+  revealRadiusM: number
   position: Position | undefined
   selectedSpotId: string | undefined
   onSelectSpot: (spotId: string) => void
@@ -17,6 +19,28 @@ const CATEGORY_COLORS: Record<string, string> = {
   aed: '#c0392b',
   accessible_toilet: '#2d6ca2',
   water: '#1f8a8a',
+}
+
+/**
+ * 未踏エリアを覆う霧の色。
+ *
+ * 地図スタイルは streets-v12 固定（常に明るい）なので、OS のダークモードでは切り替えない。
+ * マーカーが霧越しでも判別できるよう不透明度は 0.55 に留めている。
+ */
+const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
+
+/** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
+const FOG_FEATHER_START = 0.55
+
+/**
+ * m からピクセルへの換算。
+ *
+ * Mapbox GL のズームは 512px タイル基準で、赤道の 1px は 78271.51696 / 2^zoom メートル。
+ * メルカトル図法の前提なので、地図側も projection: 'mercator' に固定している。
+ */
+function metersToPixels(meters: number, lat: number, zoom: number): number {
+  const metersPerPixel = (78271.51696 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
+  return meters / metersPerPixel
 }
 
 function createMarkerElement(spot: SpotWithDistance, selected: boolean): HTMLElement {
@@ -37,14 +61,19 @@ export function MapView({
   token,
   area,
   spots,
+  exploredTiles,
+  revealRadiusM,
   position,
   selectedSpotId,
   onSelectSpot,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const fogRef = useRef<HTMLCanvasElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map())
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  // 地図のイベントから毎フレーム読むので、再購読が要らない ref に持つ
+  const tilesRef = useRef<ExploredTile[]>(exploredTiles)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -55,6 +84,8 @@ export function MapView({
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [area.center.lng, area.center.lat],
       zoom: area.zoom,
+      // 霧の半径計算がメルカトル前提。既定の globe のままだと低ズームで半径がずれる
+      projection: 'mercator',
       attributionControl: true,
     })
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
@@ -66,6 +97,93 @@ export function MapView({
       markersRef.current.clear()
     }
   }, [token, area.center.lat, area.center.lng, area.zoom])
+
+  /**
+   * 霧を描く（フォグ・オブ・ウォー）。
+   *
+   * 画面全体を霧で塗ったあと、探索済みタイルの位置を destination-out で削る。
+   * 重なりの合成はブラウザの合成処理に任せられるので、円の和集合を自前で計算しなくてよい。
+   */
+  const drawFog = useCallback(() => {
+    const map = mapRef.current
+    const canvas = fogRef.current
+    if (!map || !canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const width = canvas.clientWidth
+    const height = canvas.clientHeight
+    if (width === 0 || height === 0) return
+
+    // CSS ピクセルと描画バッファを合わせる（Retina で霧がぼやけないように）
+    const dpr = window.devicePixelRatio || 1
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.clearRect(0, 0, width, height)
+    ctx.fillStyle = FOG_COLOR
+    ctx.fillRect(0, 0, width, height)
+
+    ctx.globalCompositeOperation = 'destination-out'
+    const zoom = map.getZoom()
+    for (const tile of tilesRef.current) {
+      const point = map.project([tile.lng, tile.lat])
+      const radius = metersToPixels(revealRadiusM, tile.lat, zoom)
+      // 画面外のタイルは描かない（歩くほど件数が増えるため）
+      if (
+        point.x < -radius ||
+        point.y < -radius ||
+        point.x > width + radius ||
+        point.y > height + radius
+      ) {
+        continue
+      }
+
+      const gradient = ctx.createRadialGradient(
+        point.x,
+        point.y,
+        radius * FOG_FEATHER_START,
+        point.x,
+        point.y,
+        radius,
+      )
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      ctx.fillStyle = gradient
+      ctx.beginPath()
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.globalCompositeOperation = 'source-over'
+  }, [revealRadiusM])
+
+  // 地図が動いている間ずっと追従させる（move はアニメーション中も毎フレーム発火する）
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    map.on('move', drawFog)
+    map.on('resize', drawFog)
+    map.on('load', drawFog)
+    drawFog()
+
+    return () => {
+      map.off('move', drawFog)
+      map.off('resize', drawFog)
+      map.off('load', drawFog)
+    }
+  }, [drawFog])
+
+  useEffect(() => {
+    tilesRef.current = exploredTiles
+    drawFog()
+  }, [exploredTiles, drawFog])
 
   // スポットのマーカーを差分更新する
   useEffect(() => {
@@ -127,5 +245,11 @@ export function MapView({
     map.easeTo({ center: [spot.lng, spot.lat], duration: 400 })
   }, [selectedSpotId, spots])
 
-  return <div className="map" ref={containerRef} role="application" aria-label="スポット地図" />
+  return (
+    <div className="map" role="application" aria-label="スポット地図">
+      <div className="map__gl" ref={containerRef} />
+      {/* 霧は装飾。読み上げ対象から外し、地図の操作も邪魔しない（pointer-events: none） */}
+      <canvas className="map__fog" ref={fogRef} aria-hidden="true" />
+    </div>
+  )
 }

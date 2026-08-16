@@ -2,6 +2,8 @@ import type {
   CheckinResponse,
   ClientConfigResponse,
   ErrorResponse,
+  ExplorationResponse,
+  ExplorationUpdateResponse,
   MeResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
@@ -112,4 +114,14 @@ export function postCheckin(
     method: 'POST',
     body: position,
   })
+}
+
+export function fetchExploration(): Promise<ExplorationResponse> {
+  return request<ExplorationResponse>('/v1/exploration')
+}
+
+export function postExploration(
+  points: { lat: number; lng: number }[],
+): Promise<ExplorationUpdateResponse> {
+  return request<ExplorationUpdateResponse>('/v1/exploration', { method: 'POST', body: { points } })
 }
