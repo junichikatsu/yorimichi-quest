@@ -1,0 +1,13 @@
+node_modules/
+.turbo/
+
+# 生成物
+apps/web/public/app.js
+apps/web/public/app.css
+apps/function/build/
+apps/function/*.zip
+
+# 環境変数（値の入ったファイルはコミットしない）
+.env
+.env.*
+!.env.example
