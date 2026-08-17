@@ -223,6 +223,18 @@ body {
   pointer-events: none;
 }
 
+/*
+ * 8bit 風表示（?retro=1）の spike。
+ *
+ * キャンバスのバッキングストアだけを粗くしてあるので、拡大は最近傍で行わせる。
+ * Mapbox のロゴ・帰属表示・ナビゲーションコントロールはキャンバスの兄弟要素なので
+ * ここの指定を受けず、鮮明なまま残る（ロゴの加工は Mapbox の利用条件で禁止されている）。
+ */
+.map--retro .mapboxgl-canvas,
+.map--retro .map__fog {
+  image-rendering: pixelated;
+}
+
 .map--fallback {
   overflow: auto;
   overscroll-behavior: contain;

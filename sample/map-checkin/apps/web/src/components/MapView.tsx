@@ -2,6 +2,7 @@ import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/s
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
+import { enableRetroPixelRatio, isRetroEnabled, nesColorThemeLut } from '../retro/index.js'
 
 interface MapViewProps {
   token: string
@@ -83,8 +84,14 @@ export function MapView({
   /** 一度でも現在地へ寄せたか。初回だけアニメーションなしで合わせる */
   const centeredRef = useRef(false)
 
+  // 8bit 風表示（?retro=1）。URL は動かないので、描画のたびに読み直しても値は変わらない
+  const retro = isRetroEnabled()
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
+
+    // 地図を作る前に差し替える。最初のキャンバス生成から粗い解像度で始めるため
+    const disableRetroPixelRatio = retro ? enableRetroPixelRatio(containerRef.current) : undefined
 
     mapboxgl.accessToken = token
     const map = new mapboxgl.Map({
@@ -107,13 +114,22 @@ export function MapView({
       if (event.originalEvent) setFollowing(false)
     })
 
+    // 色をファミコンのパレットへ寄せる。
+    // setColorTheme はスタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
+    if (retro) {
+      map.on('style.load', () => {
+        map.setColorTheme({ data: nesColorThemeLut() })
+      })
+    }
+
     return () => {
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
       centeredRef.current = false
+      disableRetroPixelRatio?.()
     }
-  }, [token, area.center.lat, area.center.lng, area.zoom])
+  }, [token, area.center.lat, area.center.lng, area.zoom, retro])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。
@@ -298,7 +314,7 @@ export function MapView({
   }, [position])
 
   return (
-    <div className="map" role="application" aria-label="スポット地図">
+    <div className={retro ? 'map map--retro' : 'map'} role="application" aria-label="スポット地図">
       <div className="map__gl" ref={containerRef} />
       {/* 霧は装飾。読み上げ対象から外し、地図の操作も邪魔しない（pointer-events: none） */}
       <canvas className="map__fog" ref={fogRef} aria-hidden="true" />

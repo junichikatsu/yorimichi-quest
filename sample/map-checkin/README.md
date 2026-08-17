@@ -62,11 +62,17 @@ sample/map-checkin/
 │   ├── core/         純関数（距離・ポイント・チェックイン可否・探索グリッド）
 │   └── datastore/    データストアのリポジトリ層 + インメモリ fake
 └── docs/
-    ├── architecture.md   構成と設計判断
-    ├── datamodel.md      テーブルとキー設計
-    ├── api.md            API 仕様
-    └── deploy.md         enebular へのデプロイ手順
+    ├── architecture.md      構成と設計判断
+    ├── datamodel.md         テーブルとキー設計
+    ├── api.md               API 仕様
+    ├── deploy.md            enebular へのデプロイ手順
+    └── retro-map-spike.md   地図のドット絵調表示（試作）
 ```
+
+## 試作中の機能
+
+`?retro=1` を付けると、地図を 8bit 風のドット絵調で表示します（[docs/retro-map-spike.md](docs/retro-map-spike.md)）。
+本採用するかは未定で、既定の表示には影響しません。
 
 ## 注意
 
