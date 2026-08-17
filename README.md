@@ -51,6 +51,9 @@
 
 - `doc/` … 企画・要件ドキュメント。変更は Pull Request で行い、要件定義書は改訂履歴（`requirements.md` 冒頭）を更新する
 - 未決事項・判断が必要な論点は Issue（ラベル `decision`）で管理する
+- `.claude/skills/` … Claude Code 用スキル。[`enebular-app`](.claude/skills/enebular-app/SKILL.md) は
+  enebular クラウド実行環境（ZIP）にフロントエンドとバックエンドを同一オリジンで載せるための手順書
+  （制約・落とし穴・ビルド/デプロイ・チェックリスト）。参照実装は [`sample/map-checkin`](sample/map-checkin/)
 
 ## ライセンス
 
