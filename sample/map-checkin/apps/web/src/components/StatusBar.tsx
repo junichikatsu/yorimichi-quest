@@ -28,7 +28,7 @@ export function StatusBar({
         <span className="statusbar__logo" aria-hidden="true">
           ⛩
         </span>
-        <div>
+        <div className="statusbar__names">
           <h1 className="statusbar__title">YORIMICHI QUEST</h1>
           <p className="statusbar__area">{areaName}</p>
         </div>

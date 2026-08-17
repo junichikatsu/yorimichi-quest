@@ -40,6 +40,10 @@ body {
   /* シニア利用（ペルソナ②）を考慮して本文は 16px を下回らない */
   font-size: 16px;
   line-height: 1.6;
+  /* iOS の横向きで文字が勝手に拡大されるのを止める */
+  -webkit-text-size-adjust: 100%;
+  /* 地図を指で払ったときに引っ張って更新／画面全体のバウンドが起きないように */
+  overscroll-behavior: none;
 }
 
 #root {
@@ -50,6 +54,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* スマートフォンはアドレスバーの伸縮で 100% が実際の表示領域とずれ、
+     フッターが画面外に隠れる。dvh は伸縮に追従する */
+  height: 100dvh;
 }
 
 /* ---------- ステータスバー ---------- */
@@ -60,6 +67,9 @@ body {
   gap: 16px;
   flex-wrap: wrap;
   padding: 10px 16px;
+  /* viewport-fit=cover を指定しているので、横向きのノッチ分は自分で避ける */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -69,6 +79,11 @@ body {
   align-items: center;
   gap: 10px;
   margin-right: auto;
+}
+
+/* 幅が足りないときに省略記号を出せるよう、縮小を許可する */
+.statusbar__names {
+  min-width: 0;
 }
 
 .statusbar__logo {
@@ -114,6 +129,7 @@ body {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
+  white-space: nowrap;
   background: rgba(111, 143, 47, 0.12);
   color: var(--accent-strong);
 }
@@ -124,6 +140,60 @@ body {
   color: var(--danger);
 }
 
+/*
+ * 幅の狭い端末では 2 段に組み替える。
+ * 1 段目にタイトルと位置情報の状態、2 段目に数値を横並びにする。
+ * flex の既定順だと数値が 1 段目に半端に残るので order で入れ替える。
+ */
+@media (max-width: 600px) {
+  .statusbar {
+    gap: 8px 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .statusbar__brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .statusbar__logo {
+    font-size: 22px;
+  }
+
+  .statusbar__title {
+    font-size: 15px;
+  }
+
+  .statusbar__area {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .statusbar__geo {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .statusbar__stats {
+    order: 2;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0 8px;
+    width: 100%;
+  }
+
+  .statusbar__stats div {
+    text-align: left;
+  }
+
+  .statusbar__stats dd {
+    font-size: 17px;
+  }
+}
+
 /* ---------- レイアウト ---------- */
 
 .app__main {
@@ -131,13 +201,6 @@ body {
   grid-template-columns: 1fr 360px;
   flex: 1;
   min-height: 0;
-}
-
-@media (max-width: 900px) {
-  .app__main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 55% 45%;
-  }
 }
 
 .map {
@@ -162,7 +225,10 @@ body {
 
 .map--fallback {
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   background: var(--surface);
 }
 
@@ -180,9 +246,35 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 12px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
   overflow: auto;
+  /* サイドバー内でスクロールが端に着いても、背後の地図やページを動かさない */
+  overscroll-behavior: contain;
   background: var(--bg);
   border-left: 1px solid var(--border);
+}
+
+/* 縦積みレイアウト。基底の .map / .sidebar を上書きするので、この位置に置く */
+@media (max-width: 900px) {
+  .app__main {
+    grid-template-columns: minmax(0, 1fr);
+    /*
+     * minmax(0, …) にしないと .map の min-height が行を押し広げ、
+     * 2 行の合計が画面の高さを超えてフッターや履歴が画面外へ出てしまう。
+     */
+    grid-template-rows: minmax(0, 52%) minmax(0, 48%);
+  }
+
+  .map {
+    min-height: 0;
+  }
+
+  /* 縦積みになるので、区切り線も左辺から上辺へ移す */
+  .sidebar {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }
 
 /* ---------- マーカー ---------- */
@@ -219,6 +311,54 @@ body {
   border-radius: 50%;
   background: #2f6fd0;
   box-shadow: 0 0 0 6px rgba(47, 111, 208, 0.25);
+}
+
+/* 指で操作する端末はマーカーを大きくしてタップしやすくする（NFR-08） */
+@media (pointer: coarse) {
+  .marker {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .marker--unexplored {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ---------- 現在地ボタン ---------- */
+
+/*
+ * 地図スタイルは streets-v12 固定（常に明るい）なので、
+ * 霧の色と同じ理由でダークモードでも配色を切り替えない。
+ */
+.map__locate {
+  position: absolute;
+  right: 10px;
+  /* Mapbox の attribution（右下）に重ならない高さ */
+  bottom: 40px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 50%;
+  background: #fff;
+  color: #4a5240;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* 追従中であることを色で示す。現在地マーカーと同じ青 */
+.map__locate.is-active {
+  color: #2f6fd0;
+}
+
+.map__locate svg {
+  width: 22px;
+  height: 22px;
 }
 
 /* ---------- パネル ---------- */
@@ -337,6 +477,13 @@ body {
   background: transparent;
   color: var(--muted);
   font-size: 20px;
+}
+
+@media (pointer: coarse) {
+  .button--ghost {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* ---------- 一覧・履歴 ---------- */
@@ -529,7 +676,7 @@ body {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 28px;
+  bottom: calc(28px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   max-width: min(92vw, 460px);
   padding: 12px 20px;
@@ -549,6 +696,10 @@ body {
 
 .app__footer {
   padding: 8px 16px;
+  /* ホームインジケータやノッチに文字がかからないようにする */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: 11px;

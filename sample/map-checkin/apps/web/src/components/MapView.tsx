@@ -1,6 +1,6 @@
 import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface MapViewProps {
@@ -31,6 +31,9 @@ const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
 
 /** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
 const FOG_FEATHER_START = 0.55
+
+/** 現在地へ寄せるときのアニメーション時間（ms）。歩行中に酔わない程度に短く */
+const FOLLOW_DURATION_MS = 600
 
 /**
  * m からピクセルへの換算。
@@ -75,6 +78,11 @@ export function MapView({
   // 地図のイベントから毎フレーム読むので、再購読が要らない ref に持つ
   const tilesRef = useRef<ExploredTile[]>(exploredTiles)
 
+  /** 地図の中心を現在地に合わせ続けるか。利用者が地図を動かすと解除する */
+  const [following, setFollowing] = useState(true)
+  /** 一度でも現在地へ寄せたか。初回だけアニメーションなしで合わせる */
+  const centeredRef = useRef(false)
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
@@ -82,6 +90,7 @@ export function MapView({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
+      // 測位できるまではエリア中心。位置が届いたら下の追従で現在地へ移す
       center: [area.center.lng, area.center.lat],
       zoom: area.zoom,
       // 霧の半径計算がメルカトル前提。既定の globe のままだと低ズームで半径がずれる
@@ -91,10 +100,18 @@ export function MapView({
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
 
+    // 利用者が自分で地図を動かしたら追従をやめる。
+    // ドラッグ・ピンチ・ダブルタップのいずれも movestart を伴い、
+    // easeTo など画面側からの移動には originalEvent が付かないので、それで見分けられる。
+    map.on('movestart', (event) => {
+      if (event.originalEvent) setFollowing(false)
+    })
+
     return () => {
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
+      centeredRef.current = false
     }
   }, [token, area.center.lat, area.center.lng, area.zoom])
 
@@ -236,6 +253,30 @@ export function MapView({
     meMarkerRef.current.setLngLat([position.lng, position.lat]).addTo(map)
   }, [position])
 
+  /**
+   * 現在地へ追従する。
+   *
+   * 位置が届くたびに中心を合わせ直す。初回だけアニメーションを挟まないのは、
+   * 起動直後にエリア中心から現在地まで地図が流れて見えるのを避けるため。
+   */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !position || !following) return
+
+    if (centeredRef.current) {
+      map.easeTo({ center: [position.lng, position.lat], duration: FOLLOW_DURATION_MS })
+    } else {
+      map.jumpTo({ center: [position.lng, position.lat] })
+      centeredRef.current = true
+    }
+  }, [position, following])
+
+  // スポットを選んだら追従をやめる。続けていると次の測位で現在地へ引き戻されてしまう
+  useEffect(() => {
+    if (!selectedSpotId) return
+    setFollowing(false)
+  }, [selectedSpotId])
+
   // 選択したスポットへ寄せる
   useEffect(() => {
     const map = mapRef.current
@@ -245,11 +286,44 @@ export function MapView({
     map.easeTo({ center: [spot.lng, spot.lat], duration: 400 })
   }, [selectedSpotId, spots])
 
+  // すでに追従中なら following は変わらず上の効果が走らないので、ここでも寄せておく
+  const handleRecenter = useCallback(() => {
+    if (!position) return
+    setFollowing(true)
+    centeredRef.current = true
+    mapRef.current?.easeTo({
+      center: [position.lng, position.lat],
+      duration: FOLLOW_DURATION_MS,
+    })
+  }, [position])
+
   return (
     <div className="map" role="application" aria-label="スポット地図">
       <div className="map__gl" ref={containerRef} />
       {/* 霧は装飾。読み上げ対象から外し、地図の操作も邪魔しない（pointer-events: none） */}
       <canvas className="map__fog" ref={fogRef} aria-hidden="true" />
+
+      {position && (
+        <button
+          type="button"
+          className={following ? 'map__locate is-active' : 'map__locate'}
+          onClick={handleRecenter}
+          aria-pressed={following}
+          aria-label="現在地を地図の中心に合わせる"
+          title="現在地を地図の中心に合わせる"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+            <circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path
+              d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

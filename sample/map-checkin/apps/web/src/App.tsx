@@ -1,4 +1,4 @@
-import { interpolatePath } from '@map-checkin/core'
+import { distanceMeters, interpolatePath } from '@map-checkin/core'
 import type { ClientConfigResponse, MeResponse, SpotWithDistance } from '@map-checkin/shared'
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchClientConfig, fetchMe, fetchSpots, postCheckin } from './api.js'
@@ -9,12 +9,21 @@ import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
 import { useExploration } from './hooks/useExploration.js'
-import { useGeolocation } from './hooks/useGeolocation.js'
+import { type Position, useGeolocation } from './hooks/useGeolocation.js'
 
 interface Toast {
   kind: 'success' | 'error'
   message: string
 }
+
+/**
+ * スポット一覧を取り直す最小移動距離（m）。
+ *
+ * watchPosition は歩いている間ほぼ毎秒届く。そのたびに /spots と /me を取り直すと
+ * レート制限（既定 60 req/分）にすぐ達してしまう。
+ * チェックイン半径（既定 100m）より十分小さいので、圏内判定が古くなることはない。
+ */
+const RELOAD_DISTANCE_M = 25
 
 export function App(): React.JSX.Element {
   const [config, setConfig] = useState<ClientConfigResponse | undefined>(undefined)
@@ -50,9 +59,21 @@ export function App(): React.JSX.Element {
     setToast({ kind: 'error', message: explorationError })
   }, [explorationError])
 
+  // 一覧取得に使う現在地。RELOAD_DISTANCE_M 以上動くまでは同じ値を返し続ける
+  const [fetchPosition, setFetchPosition] = useState<Position | undefined>(undefined)
+
+  useEffect(() => {
+    const next = geo.position
+    setFetchPosition((current) => {
+      if (!next) return undefined
+      if (current && distanceMeters(current, next) < RELOAD_DISTANCE_M) return current
+      return next
+    })
+  }, [geo.position])
+
   const reload = useCallback(async () => {
     try {
-      const [spotsResponse, meResponse] = await Promise.all([fetchSpots(geo.position), fetchMe()])
+      const [spotsResponse, meResponse] = await Promise.all([fetchSpots(fetchPosition), fetchMe()])
       setSpots(spotsResponse.spots)
       setMe(meResponse)
     } catch (err: unknown) {
@@ -61,7 +82,7 @@ export function App(): React.JSX.Element {
         message: err instanceof Error ? err.message : 'データを取得できませんでした',
       })
     }
-  }, [geo.position])
+  }, [fetchPosition])
 
   useEffect(() => {
     if (!config) return
