@@ -3,8 +3,8 @@ import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
 import {
+  createLabelOverlay,
   createRetroRenderer,
-  enableRetroPixelRatio,
   nesColorThemeLut,
   readRetroOptions,
   simplifyForRetro,
@@ -21,6 +21,9 @@ interface MapViewProps {
   selectedSpotId: string | undefined
   onSelectSpot: (spotId: string) => void
 }
+
+/** ラベル用の地図（8bit 風表示）でも同じものを読むので定数にしておく */
+const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
 
 const CATEGORY_COLORS: Record<string, string> = {
   shelter: '#2f6f3e',
@@ -102,24 +105,21 @@ export function MapView({
   // 8bit 風表示（?retro=1）。URL は動かないので、描画のたびに読み直しても値は変わらない
   const retroOptions = readRetroOptions()
   const retro = retroOptions.enabled
-  const { canvasWidth: retroWidth, keepLabels: retroKeepLabels } = retroOptions
+  const { dotWidth: retroDotWidth, showLabels: retroShowLabels } = retroOptions
 
   /** 8bit 風表示で、地図と霧を合成してパレットへ丸めた結果を映すキャンバス */
   const retroRef = useRef<HTMLCanvasElement | null>(null)
   const retroRendererRef = useRef<RetroRenderer | null>(null)
+  /** 素の解像度のまま文字を重ねる、ラベル専用の地図を置く要素 */
+  const labelsRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
-    // 地図を作る前に差し替える。最初のキャンバス生成から粗い解像度で始めるため
-    const disableRetroPixelRatio = retro
-      ? enableRetroPixelRatio(containerRef.current, retroWidth)
-      : undefined
-
     mapboxgl.accessToken = token
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: MAP_STYLE,
       // 測位できるまではエリア中心。位置が届いたら下の追従で現在地へ移す
       center: [area.center.lng, area.center.lat],
       zoom: area.zoom,
@@ -140,33 +140,43 @@ export function MapView({
       if (event.originalEvent) setFollowing(false)
     })
 
+    let disposeLabels: (() => void) | undefined
+
     if (retro) {
       // 色をファミコンのパレットへ寄せ、細かすぎる要素を間引く。
       // どちらもスタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
+      // 道路の下限はドット数で決めるため、1 ドットが地図上の何 px かを渡す。
+      const dotScale = (containerRef.current?.clientWidth ?? retroDotWidth) / retroDotWidth
       map.on('style.load', () => {
         map.setColorTheme({ data: nesColorThemeLut() })
-        simplifyForRetro(map, retroKeepLabels)
+        simplifyForRetro(map, dotScale)
       })
 
-      // 地図と霧を合成してパレットへ丸める。render は 1 フレーム描き終えるたびに発火する
+      // 地図と霧を縮小合成してパレットへ丸める。render は 1 フレーム描き終えるたびに発火する
       const display = retroRef.current
       const fog = fogRef.current
       if (display && fog) {
-        const renderer = createRetroRenderer(map.getCanvas(), fog, display)
+        const renderer = createRetroRenderer(map.getCanvas(), fog, display, retroDotWidth)
         retroRendererRef.current = renderer
         map.on('render', renderer.draw)
+      }
+
+      // 地名・施設名は後処理を通さず、素の解像度のまま上に重ねる
+      if (retroShowLabels && labelsRef.current) {
+        disposeLabels = createLabelOverlay(map, labelsRef.current, MAP_STYLE)
       }
     }
 
     return () => {
+      // ラベル用の地図が本体の move を購読しているので、本体より先に外す
+      disposeLabels?.()
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
       centeredRef.current = false
       retroRendererRef.current = null
-      disableRetroPixelRatio?.()
     }
-  }, [token, area.center.lat, area.center.lng, area.zoom, retro, retroWidth, retroKeepLabels])
+  }, [token, area.center.lat, area.center.lng, area.zoom, retro, retroDotWidth, retroShowLabels])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。
@@ -366,6 +376,9 @@ export function MapView({
 
       {/* 8bit 風表示の出力先。地図と霧を合成してパレットへ丸めた画をここに映す */}
       {retro && <canvas className="map__retro" ref={retroRef} aria-hidden="true" />}
+
+      {/* 文字だけを素の解像度で重ねるラベル専用の地図。操作は下の本体が受ける */}
+      {retro && retroShowLabels && <div className="map__labels" ref={labelsRef} aria-hidden="true" />}
 
       {position && (
         <button

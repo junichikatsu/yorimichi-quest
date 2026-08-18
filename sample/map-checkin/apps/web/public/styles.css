@@ -226,54 +226,64 @@ body {
 /*
  * 8bit 風表示（?retro=1）の spike。
  *
- * 地図と霧は .map__retro の上で合成してパレットへ丸めるので、元の 2 枚は隠す。
- * .map__fog は drawImage の元として読むだけになるが、大きさの計算に clientWidth を
- * 使っているため display: none にはできない（visibility なら占める場所は残る）。
+ * 重ね順がそのまま見え方を決める。DOM の並び順だと .map__retro が .map__gl の
+ * あとに来るため、スポットのピンやコントロールまで覆い隠してしまう。
+ * .map の子はすべて絶対配置なので、z-index で明示的に積む。
  *
- * 拡大は最近傍で行わせる。バッキングストアが粗いままなので、これでドットが立つ。
- * Mapbox のロゴ・帰属表示・ナビゲーションコントロールはキャンバスの兄弟要素なので
- * ここの指定を受けず、鮮明なまま残る（ロゴの加工は Mapbox の利用条件で禁止されている）。
+ *   2. .map__gl        ピンとコントロール（キャンバスは隠す）
+ *   1. .map__labels    地名・施設名（素の解像度）
+ *   0. .map__retro     ドット絵にした地図
+ *
+ * Mapbox のロゴ・帰属表示は .map__gl の中にあり、いちばん上で鮮明なまま残る
+ * （ロゴの加工は Mapbox の利用条件で禁止されている）。
  */
+.map--retro .map__gl {
+  z-index: 2;
+}
+
+/*
+ * 素の地図は見せない。ただし drawImage の元として毎フレーム読むので、
+ * 描画そのものは続けさせる必要がある（display: none にはできない）。
+ */
+.map--retro .mapboxgl-canvas {
+  opacity: 0;
+}
+
+/*
+ * 地名・施設名だけを素の解像度で重ねる、ラベル専用の地図。
+ *
+ * 当たり判定は持たせない。操作は下の本体が受け、ピンのタップも通す。
+ * ロゴと帰属表示は本体側に出ているので、こちらの分は隠す
+ * （加工ではなく重複の除去。表示義務は本体の 1 つで満たしている）。
+ */
+.map__labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.map__labels .mapboxgl-ctrl-logo,
+.map__labels .mapboxgl-ctrl-attrib {
+  display: none;
+}
+
+/* ドット絵にした地図の出力先。拡大は最近傍で行わせる */
 .map__retro {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
   image-rendering: pixelated;
 }
 
+/* 霧は .map__retro の中で合成する。元の 1 枚は読むだけで、表示はしない。
+   大きさの計算に clientWidth を使うので display: none にはできない */
 .map--retro .map__fog {
   visibility: hidden;
 }
-
-/* 合成に失敗しても地図がぼやけて見えないように、下地にも指定しておく */
-.map--retro .mapboxgl-canvas {
-  image-rendering: pixelated;
-}
-
-/*
- * マーカーは DOM なので粗くならない。地図だけがドットになると浮いて見えるため、
- * 角丸と影を落として輪郭を四角く硬くする。ドット絵そのものではないが、
- * 「モザイクの上に今どきの UI が乗っている」感じは薄れる。
- */
-.map--retro .marker {
-  border-radius: 0;
-  border-width: 3px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-  font-family: ui-monospace, monospace;
-}
-
-.map--retro .marker-me {
-  border-radius: 0;
-  box-shadow: 0 0 0 4px rgba(47, 111, 208, 0.35);
-}
-
-.map--retro .map__locate {
-  border-radius: 0;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
-}
-
 .map--fallback {
   overflow: auto;
   overscroll-behavior: contain;

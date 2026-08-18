@@ -22,22 +22,22 @@ describe('readRetroOptions', () => {
     expect(readRetroOptions('?other=1').enabled).toBe(false)
   })
 
-  it('既定はファミコンの横解像度、ラベルは非表示', () => {
+  it('既定はファミコンの横解像度、ラベルは表示', () => {
     const options = readRetroOptions('?retro=1')
-    expect(options.canvasWidth).toBe(256)
-    expect(options.keepLabels).toBe(false)
+    expect(options.dotWidth).toBe(256)
+    expect(options.showLabels).toBe(true)
   })
 
-  it('retroWidth と retroLabels で振れる', () => {
-    const options = readRetroOptions('?retro=1&retroWidth=160&retroLabels=1')
-    expect(options.canvasWidth).toBe(160)
-    expect(options.keepLabels).toBe(true)
+  it('retroWidth で粗さ、retroLabels=0 でラベルを消せる', () => {
+    const options = readRetroOptions('?retro=1&retroWidth=160&retroLabels=0')
+    expect(options.dotWidth).toBe(160)
+    expect(options.showLabels).toBe(false)
   })
 
   it('極端な幅は使える範囲へ丸める', () => {
-    expect(readRetroOptions('?retroWidth=1').canvasWidth).toBe(64)
-    expect(readRetroOptions('?retroWidth=99999').canvasWidth).toBe(1024)
-    expect(readRetroOptions('?retroWidth=abc').canvasWidth).toBe(256)
+    expect(readRetroOptions('?retroWidth=1').dotWidth).toBe(64)
+    expect(readRetroOptions('?retroWidth=99999').dotWidth).toBe(1024)
+    expect(readRetroOptions('?retroWidth=abc').dotWidth).toBe(256)
   })
 })
 
