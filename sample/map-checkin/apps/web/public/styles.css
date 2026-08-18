@@ -271,7 +271,13 @@ body {
   display: none;
 }
 
-/* ドット絵にした地図の出力先。拡大は最近傍で行わせる */
+/*
+ * 合成結果の出力先。素の地図の上に、未到達エリアだけドット絵の層が乗る。
+ *
+ * バッキングストアは素の解像度で、CSS の大きさと 1:1。
+ * ドットへの拡大は renderer 側が imageSmoothingEnabled = false で行うので、
+ * ここで image-rendering は指定しない。
+ */
 .map__retro {
   position: absolute;
   inset: 0;
@@ -279,7 +285,6 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  image-rendering: pixelated;
 }
 
 /* 霧は .map__retro の中で合成する。元の 1 枚は読むだけで、表示はしない。

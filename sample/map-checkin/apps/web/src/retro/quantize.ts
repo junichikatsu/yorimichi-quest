@@ -81,9 +81,9 @@ function buildTables(): void {
 export interface FogOverlay {
   /** 霧の濃さ。縮小済みで、画素の並びは pixels と同じ */
   mask: Uint8ClampedArray
-  /** マスクの不透明度がこれを超えたら霧とみなす */
+  /** マスクの不透明度がこれを超えたら未到達とみなす */
   threshold: number
-  /** 見せ方。shade は暗いパレット、dither は市松模様 */
+  /** 未到達エリアの見せ方。shade は暗いパレット、dither は市松模様 */
   style: FogStyle
   /** dither のときに塗る色 */
   ditherColor: Rgb
@@ -93,7 +93,11 @@ export interface FogOverlay {
 const DITHER_CELL = 2
 
 /**
- * 画素をパレットへ丸める（その場で書き換える）。霧があれば同時に重ねる。
+ * 画素をパレットへ丸める（その場で書き換える）。
+ *
+ * 霧を渡すと、**到達エリアの画素は透明になる**。
+ * この結果を素の地図の上へ重ねるので、到達エリアは下の地図がそのまま見え、
+ * 未到達エリアだけがドット絵で覆われる。境目はドット単位で切り替わる。
  *
  * @param width 1 行のドット数。市松の位相を出すのに要る
  */
@@ -107,8 +111,14 @@ export function quantizeToNes(
   const shadowTable = shadow!
 
   for (let i = 0; i < pixels.length; i += 4) {
+    if (fog !== undefined && (fog.mask[i + 3] ?? 0) <= fog.threshold) {
+      // 到達エリア。透明にして、下の素の地図を見せる
+      pixels[i + 3] = 0
+      continue
+    }
+
     const at = nesTableIndex(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)
-    const fogged = fog !== undefined && (fog.mask[i + 3] ?? 0) > fog.threshold
+    const fogged = fog !== undefined
 
     if (fogged && fog.style === 'dither') {
       const pixel = i >> 2
