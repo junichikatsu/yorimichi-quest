@@ -26,6 +26,10 @@ const HIDDEN_PATTERNS = [
   /shadow|-depth|underground|-outline/,
   /path|steps|pedestrian|construction|golf|ferry|aerialway|turning-feature/,
   /rail/,
+  // 路地・私道まで描くと道路だけで画面の 3 分の 1 が埋まる。
+  // ゲームの地図が読めるのは、通れる道を絞って描いているから。
+  /^road-minor|^bridge-minor|-street-low$/,
+  /crosswalk/,
   /^admin-/,
   /hillshade|aeroway|land-structure/,
 ]
@@ -48,11 +52,15 @@ const ROAD_DOTS: readonly (readonly [RegExp, number])[] = [
   [/primary/, 3],
   [/secondary|tertiary/, 2],
   [/-street/, 1.5],
-  [/minor|link/, 1.5],
+  [/link/, 1.5],
 ]
 
-/** この太さ以上を幹線とみなし、目立つ色で塗る */
-const MAJOR_ROAD_DOTS = 3
+/**
+ * この太さ以上を幹線とみなし、琥珀で塗る。
+ *
+ * 彩度が高い色なので、面積が増えると目が疲れる。高速道路と国道だけに絞る。
+ */
+const MAJOR_ROAD_DOTS = 4
 
 function isHidden(id: string, type: string): boolean {
   if (HIDDEN_TYPES.has(type)) return true

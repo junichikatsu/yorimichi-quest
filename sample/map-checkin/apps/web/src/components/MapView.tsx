@@ -98,7 +98,7 @@ export function MapView({
   // 8bit 風表示（?retro=1）。URL は動かないので、描画のたびに読み直しても値は変わらない
   const retroOptions = readRetroOptions()
   const retro = retroOptions.enabled
-  const { dotWidth: retroDotWidth, showLabels: retroShowLabels } = retroOptions
+  const { dotWidth: retroDotWidth, showLabels: retroShowLabels, fogStyle: retroFogStyle } = retroOptions
 
   /** 8bit 風表示で、地図と霧を合成してパレットへ丸めた結果を映すキャンバス */
   const retroRef = useRef<HTMLCanvasElement | null>(null)
@@ -146,7 +146,7 @@ export function MapView({
       const display = retroRef.current
       const fog = fogRef.current
       if (display && fog) {
-        const renderer = createRetroRenderer(map.getCanvas(), fog, display, retroDotWidth)
+        const renderer = createRetroRenderer(map.getCanvas(), fog, display, retroDotWidth, retroFogStyle)
         retroRendererRef.current = renderer
         map.on('render', renderer.draw)
       }
@@ -166,7 +166,16 @@ export function MapView({
       centeredRef.current = false
       retroRendererRef.current = null
     }
-  }, [token, area.center.lat, area.center.lng, area.zoom, retro, retroDotWidth, retroShowLabels])
+  }, [
+    token,
+    area.center.lat,
+    area.center.lng,
+    area.zoom,
+    retro,
+    retroDotWidth,
+    retroShowLabels,
+    retroFogStyle,
+  ])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。

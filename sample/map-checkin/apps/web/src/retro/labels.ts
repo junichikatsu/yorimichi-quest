@@ -26,6 +26,12 @@ const NOISY_LABEL_PATTERNS = [/shield/, /oneway-arrow/, /level-crossing/, /golf-
 /** 背の高い建物名などは密度が上がりすぎるので、この大きさを下回るものは出さない */
 const MIN_TEXT_SIZE = 11
 
+/**
+ * 出す POI の上限。Mapbox Streets の poi_label は filterrank（1 が最も目立つ）を持つ。
+ * 既定のままだとコンビニまで全部出て、ドット絵の地図の上では騒がしくなる。
+ */
+const MAX_POI_RANK = 2
+
 function stripToLabels(map: MapboxMap): void {
   // スタイルの fog（大気表現）は白一色で全画面を覆う。これを消さないと
   // 塗りを全部隠しても真っ白な面が残り、下のドット絵が見えなくなる。
@@ -51,6 +57,14 @@ function stripToLabels(map: MapboxMap): void {
       continue
     }
 
+    if (layer.id.startsWith('poi-label')) {
+      try {
+        map.setFilter(layer.id, ['<=', ['get', 'filterrank'], MAX_POI_RANK])
+      } catch {
+        // filterrank を持たないスタイルもある。そのときは全部出す
+      }
+    }
+
     // ドット絵の地図は色数が多く模様も細かい。既定の細い縁取りでは文字が沈むので、
     // 白で太く縁を取って、どの地物の上でも読めるようにする。
     try {
@@ -66,11 +80,12 @@ function stripToLabels(map: MapboxMap): void {
         ['get', 'name_ja'],
         ['get', 'name'],
       ])
-      map.setLayoutProperty(layer.id, 'text-size', [
-        'max',
-        ['coalesce', map.getLayoutProperty(layer.id, 'text-size') as number, MIN_TEXT_SIZE],
-        MIN_TEXT_SIZE,
-      ])
+      // text-size は数値・式・未設定のいずれもありうる。
+      // 未設定のまま式へ差し込むと 'undefined' value invalid で弾かれるので、数値のときだけ触る。
+      const size: unknown = map.getLayoutProperty(layer.id, 'text-size')
+      if (typeof size === 'number' && size < MIN_TEXT_SIZE) {
+        map.setLayoutProperty(layer.id, 'text-size', MIN_TEXT_SIZE)
+      }
     } catch {
       // アイコンだけのレイヤーなど、当てられないものは飛ばす
     }

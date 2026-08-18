@@ -72,7 +72,7 @@ sample/map-checkin/
 ## 試作中の機能
 
 `?retro=1` を付けると、地図を 8bit 風のドット絵調で表示します（[docs/retro-map-spike.md](docs/retro-map-spike.md)）。
-粗さは `?retro=1&retroWidth=160`、地名を消したいときは `&retroLabels=0` を付けます。
+粗さは `&retroWidth=160`、地名を消すなら `&retroLabels=0`、未踏エリアを市松模様にするなら `&retroFog=dither` です。
 本採用するかは未定で、既定の表示には影響しません。
 
 ## 注意

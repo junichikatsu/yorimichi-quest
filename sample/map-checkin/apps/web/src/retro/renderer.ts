@@ -1,4 +1,4 @@
-import { RETRO_FOG_COLOR } from './palette.js'
+import type { FogStyle } from './palette.js'
 import { quantizeToNes } from './quantize.js'
 
 /**
@@ -11,11 +11,14 @@ import { quantizeToNes } from './quantize.js'
  * 低解像度で直接描かせるより消えにくい。
  *
  * 霧は**縮小してから、丸めと同時に**重ねる。
- * 半透明で先に重ねてしまうと全部の色が濁るので、市松模様で塗る（quantize.ts）。
+ * 半透明で先に重ねてしまうと全部の色が濁るので、暗いパレットへ落とす（quantize.ts）。
  */
 
 /** 霧とみなす不透明度のしきい値。縮小の平均で端がぼけるので、真ん中あたりで切る */
 const FOG_THRESHOLD = 110
+
+/** dither のときに塗る色（$0C の濃紺） */
+const DITHER_COLOR = { r: 0, g: 64, b: 88 }
 
 export interface RetroRenderer {
   /** 1 フレーム描く。地図の render イベントから呼ぶ */
@@ -27,6 +30,7 @@ export function createRetroRenderer(
   fogCanvas: HTMLCanvasElement,
   display: HTMLCanvasElement,
   dotWidth: number,
+  fogStyle: FogStyle,
 ): RetroRenderer {
   // 毎フレーム getImageData を呼ぶので、読み出し向けだと宣言しておく。
   // 指定しないと GPU から読み戻すたびに大きな待ちが入る。
@@ -64,8 +68,9 @@ export function createRetroRenderer(
       fogCtx.drawImage(fogCanvas, 0, 0, width, height)
       fog = {
         mask: fogCtx.getImageData(0, 0, width, height).data,
-        color: RETRO_FOG_COLOR,
         threshold: FOG_THRESHOLD,
+        style: fogStyle,
+        ditherColor: DITHER_COLOR,
       }
     }
 

@@ -1,3 +1,4 @@
+import type { FogStyle } from './palette.js'
 /**
  * 8bit 風ドット絵調表示の spike。
  *
@@ -24,6 +25,7 @@
  */
 
 export { createLabelOverlay } from './labels.js'
+export type { FogStyle } from './palette.js'
 export { createRetroRenderer, type RetroRenderer } from './renderer.js'
 export { simplifyForRetro } from './simplify.js'
 
@@ -45,6 +47,8 @@ export interface RetroOptions {
   dotWidth: number
   /** 地名・施設名を素の解像度で重ねるか。`?retroLabels=0` で消せる */
   showLabels: boolean
+  /** 未踏エリアの見せ方。`?retroFog=dither` で市松模様に戻せる */
+  fogStyle: FogStyle
 }
 
 function readDotWidth(raw: string | null): number {
@@ -73,5 +77,6 @@ export function readRetroOptions(search: string = window.location.search): Retro
     dotWidth: readDotWidth(params.get('retroWidth')),
     // 既定は表示。消したいときだけ明示的に 0 を渡す
     showLabels: labels === null ? true : isOn(labels),
+    fogStyle: params.get('retroFog') === 'dither' ? 'dither' : 'shade',
   }
 }

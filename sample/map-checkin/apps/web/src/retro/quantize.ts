@@ -1,5 +1,5 @@
-import type { Rgb } from './nes-palette.js'
-import { nearestNesColor } from './nes-palette.js'
+import { nearestNesColor, type Rgb } from './nes-palette.js'
+import { SHADOW_FACTOR, shadowOverrideFor, type FogStyle } from './palette.js'
 
 /**
  * 出来上がった画をファミコンのパレットへ丸める。
@@ -12,53 +12,88 @@ import { nearestNesColor } from './nes-palette.js'
 /** 1 チャンネルあたりの段階数。8bit のうち上位 5bit を対応表の添字に使う */
 export const NES_TABLE_LEVELS = 32
 
-let table: Uint8Array | undefined
-
-/**
- * 「上位 5bit の RGB → もっとも近いファミコンの色」の対応表。
- * 32768 通りを総当たりで作るので 30ms ほどかかる。一度だけ作って使い回す。
- */
-export function nesLookupTable(): Uint8Array {
-  if (table) return table
-
-  const next = new Uint8Array(NES_TABLE_LEVELS ** 3 * 3)
-  const step = 255 / (NES_TABLE_LEVELS - 1)
-
-  for (let r = 0; r < NES_TABLE_LEVELS; r += 1) {
-    for (let g = 0; g < NES_TABLE_LEVELS; g += 1) {
-      for (let b = 0; b < NES_TABLE_LEVELS; b += 1) {
-        const color = nearestNesColor({ r: r * step, g: g * step, b: b * step })
-        const at = ((r << 10) | (g << 5) | b) * 3
-        next[at] = color.r
-        next[at + 1] = color.g
-        next[at + 2] = color.b
-      }
-    }
-  }
-
-  table = next
-  return next
-}
-
 /** 対応表の添字。RGB それぞれの上位 5bit を並べる */
 export function nesTableIndex(r: number, g: number, b: number): number {
   return (((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)) * 3
 }
 
+function toHex({ r, g, b }: Rgb): string {
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`
+}
+
+function fromHex(hex: string): Rgb {
+  const value = Number.parseInt(hex.slice(1), 16)
+  return { r: (value >> 16) & 0xff, g: (value >> 8) & 0xff, b: value & 0xff }
+}
+
+let normal: Uint8Array | undefined
+let shadow: Uint8Array | undefined
+
+/**
+ * 対応表を作る。32768 通りを総当たりするので 30ms ほどかかる。一度だけ作って使い回す。
+ *
+ * - normal: もっとも近いファミコンの色
+ * - shadow: そのさらに暗い版（未踏エリア用）
+ */
+function buildTables(): void {
+  if (normal && shadow) return
+
+  const nextNormal = new Uint8Array(NES_TABLE_LEVELS ** 3 * 3)
+  const nextShadow = new Uint8Array(NES_TABLE_LEVELS ** 3 * 3)
+  const step = 255 / (NES_TABLE_LEVELS - 1)
+  // 同じパレット色に落ちる添字は多いので、暗い版は色ごとに一度だけ求める
+  const shadowByColor = new Map<string, Rgb>()
+
+  for (let r = 0; r < NES_TABLE_LEVELS; r += 1) {
+    for (let g = 0; g < NES_TABLE_LEVELS; g += 1) {
+      for (let b = 0; b < NES_TABLE_LEVELS; b += 1) {
+        const color = nearestNesColor({ r: r * step, g: g * step, b: b * step })
+        const hex = toHex(color)
+
+        let dark = shadowByColor.get(hex)
+        if (!dark) {
+          const override = shadowOverrideFor(hex)
+          dark = override
+            ? fromHex(override)
+            : nearestNesColor({
+                r: color.r * SHADOW_FACTOR,
+                g: color.g * SHADOW_FACTOR,
+                b: color.b * SHADOW_FACTOR,
+              })
+          shadowByColor.set(hex, dark)
+        }
+
+        const at = ((r << 10) | (g << 5) | b) * 3
+        nextNormal[at] = color.r
+        nextNormal[at + 1] = color.g
+        nextNormal[at + 2] = color.b
+        nextShadow[at] = dark.r
+        nextShadow[at + 1] = dark.g
+        nextShadow[at + 2] = dark.b
+      }
+    }
+  }
+
+  normal = nextNormal
+  shadow = nextShadow
+}
+
 export interface FogOverlay {
   /** 霧の濃さ。縮小済みで、画素の並びは pixels と同じ */
   mask: Uint8ClampedArray
-  /** 霧として塗る色 */
-  color: Rgb
   /** マスクの不透明度がこれを超えたら霧とみなす */
   threshold: number
+  /** 見せ方。shade は暗いパレット、dither は市松模様 */
+  style: FogStyle
+  /** dither のときに塗る色 */
+  ditherColor: Rgb
 }
+
+/** 市松模様の 1 マスの大きさ（ドット）。1 だと細かすぎて画面がちらつく */
+const DITHER_CELL = 2
 
 /**
  * 画素をパレットへ丸める（その場で書き換える）。霧があれば同時に重ねる。
- *
- * 霧は市松模様（1 ドットおき）で塗る。半透明で混ぜないのは、混ぜた時点で
- * 中間色が生まれ、地物ごとに決めた色が失われるため。実機も同じ理由で市松模様を使っていた。
  *
  * @param width 1 行のドット数。市松の位相を出すのに要る
  */
@@ -67,26 +102,29 @@ export function quantizeToNes(
   width: number,
   fog?: FogOverlay,
 ): void {
-  const lookup = nesLookupTable()
+  buildTables()
+  const normalTable = normal!
+  const shadowTable = shadow!
 
   for (let i = 0; i < pixels.length; i += 4) {
-    const pixel = i >> 2
-    if (fog && (fog.mask[i + 3] ?? 0) > fog.threshold) {
-      // 4 ドットに 1 つを霧の色で塗る。
-      // 1 つおき（50%）だと画面全体が網戸のようになり、地図が読めなくなる。
+    const at = nesTableIndex(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)
+    const fogged = fog !== undefined && (fog.mask[i + 3] ?? 0) > fog.threshold
+
+    if (fogged && fog.style === 'dither') {
+      const pixel = i >> 2
       const x = pixel % width
       const y = (pixel - x) / width
-      if (x % 2 === 0 && y % 2 === 0) {
-        pixels[i] = fog.color.r
-        pixels[i + 1] = fog.color.g
-        pixels[i + 2] = fog.color.b
+      if ((Math.floor(x / DITHER_CELL) + Math.floor(y / DITHER_CELL)) % 2 === 0) {
+        pixels[i] = fog.ditherColor.r
+        pixels[i + 1] = fog.ditherColor.g
+        pixels[i + 2] = fog.ditherColor.b
         continue
       }
     }
 
-    const at = nesTableIndex(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)
-    pixels[i] = lookup[at]!
-    pixels[i + 1] = lookup[at + 1]!
-    pixels[i + 2] = lookup[at + 2]!
+    const table = fogged ? shadowTable : normalTable
+    pixels[i] = table[at]!
+    pixels[i + 1] = table[at + 1]!
+    pixels[i + 2] = table[at + 2]!
   }
 }
