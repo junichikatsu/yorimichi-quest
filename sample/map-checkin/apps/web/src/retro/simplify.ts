@@ -1,57 +1,128 @@
-import type { Map as MapboxMap } from 'mapbox-gl'
+import type { DataDrivenPropertyValueSpecification, Map as MapboxMap } from 'mapbox-gl'
+import { GAME_COLORS } from './palette.js'
 
 /**
- * 地図の情報量を落とす。
+ * 地図をゲーム画面らしく塗り替え、情報量を落とす。
  *
- * ドット絵に見えない原因の半分は解像度ではなく**描かれている量**にある。
- * streets-v12 は細い道・縁取り・POI アイコンを大量に持っていて、
- * 横 256 ドットまで落とすとそれらが 1 ドット未満の粒になり、ただのノイズになる。
- * ファミコンの地図画面が読めるのは、最初から大きく単純な形だけで描かれているから。
+ * ドット絵に見えない原因の半分は解像度ではなく**何がどう描かれているか**にある。
+ * streets-v12 は細い道・縁取り・地下の通路まで持っていて、横 256 ドットでは
+ * それらが 1 ドット未満の粒＝ノイズになる。色も現実の地図向けで、近い色ばかり並ぶ。
  *
- * 本来はカスタムスタイルを書き起こすべきところだが、spike なので
- * 読み込み済みのスタイルから機械的に間引く。判定はレイヤーの種類と id の規則だけで、
- * 個別のレイヤー名には依存しない（スタイル更新で名前が変わっても壊れないように）。
+ * ここでやること
  *
- * 文字は別レイヤー（labels.ts）で素の解像度のまま重ねるので、ここでは消す。
+ * 1. 地物ごとに色を決め打ちする（palette.ts）
+ * 2. 道路の太さを**ズームに依らないドット数**で固定する
+ * 3. 地下・歩道・鉄道・境界など、粗い画では読めないものを消す
+ *
+ * 本来はカスタムスタイルを書き起こすところだが、spike なので読み込み済みのスタイルを書き換える。
+ * 判定は id の規則だけで、個別のレイヤー名の一覧には依存しない。
  */
 
-/** まるごと消す種類 */
+/** 消すもの。粗い画では読めないか、ノイズにしかならないもの */
+const HIDDEN_PATTERNS = [
+  /^tunnel-/, // 地下は見えなくてよい
+  /-case$/, // 道路の縁取り。ベタ塗りにしたいので邪魔
+  /-bg$/,
+  /shadow|-depth|underground|-outline/,
+  /path|steps|pedestrian|construction|golf|ferry|aerialway|turning-feature/,
+  /rail/,
+  /^admin-/,
+  /hillshade|aeroway|land-structure/,
+]
+
+/** 消すレイヤー種別。文字は別レイヤー（labels.ts）で素の解像度のまま重ねる */
 const HIDDEN_TYPES = new Set(['symbol', 'fill-extrusion', 'hillshade', 'heatmap', 'sky'])
 
-/** 道路の縁取り。太い線の上に細い線を重ねる表現で、粗い画では汚れにしか見えない */
-const CASE_SUFFIX = '-case'
-
-/** 道路の太さの倍率 */
-const ROAD_WIDTH_SCALE = 2.5
-
 /**
- * 道路の最低の太さ（ドット数）。
+ * 道路の太さ（ドット数）。**ズームに依らない固定値**にする。
  *
- * ズームアウトすると道路は 1 ドットより細くなり、縮小の平均に溶けて消えてしまう。
- * 倍率だけでは足りないので、ドット数での下限も持たせる。
+ * 元のスタイルは line-width をズームの式で持っている。ズームアウトすると 1 ドットより細くなり、
+ * 縮小の平均に溶けて消えてしまう。「ズームアウトすると分かりづらい」の主因がこれ。
+ *
+ * なお元の式に倍率を掛ける形（`['*', 元の式, 2.5]`）は**使えない**。
+ * Mapbox は zoom 式が step / interpolate の最上位にあることを要求するため、
+ * 掛け算で包むと式ごと拒否される（以前の実装はこれで全滅していた）。
  */
-const MIN_ROAD_DOTS = 1.5
+const ROAD_DOTS: readonly (readonly [RegExp, number])[] = [
+  [/motorway|trunk/, 4],
+  [/primary/, 3],
+  [/secondary|tertiary/, 2],
+  [/-street/, 1.5],
+  [/minor|link/, 1.5],
+]
 
-function hide(map: MapboxMap, layerId: string): void {
-  try {
-    map.setLayoutProperty(layerId, 'visibility', 'none')
-  } catch {
-    // スタイル側の都合で消えていることがある。1 レイヤーの失敗で全体を止めない
-  }
+/** この太さ以上を幹線とみなし、目立つ色で塗る */
+const MAJOR_ROAD_DOTS = 3
+
+function isHidden(id: string, type: string): boolean {
+  if (HIDDEN_TYPES.has(type)) return true
+  return HIDDEN_PATTERNS.some((pattern) => pattern.test(id))
 }
 
-function widen(map: MapboxMap, layerId: string, minWidthPx: number): void {
+/** 道路系のレイヤーか。橋も地上の道路として扱う */
+function roadDots(id: string): number | undefined {
+  if (!id.startsWith('road-') && !id.startsWith('bridge-')) return undefined
+  for (const [pattern, dots] of ROAD_DOTS) {
+    if (pattern.test(id)) return dots
+  }
+  return undefined
+}
+
+/**
+ * 緑で塗る土地の種別。
+ *
+ * landuse レイヤーは公園だけでなく住宅地・商業地・病院なども抱えている。
+ * ここを一律に緑へ塗ると都心が森になってしまうので、種別で振り分ける。
+ */
+const GREEN_CLASSES = [
+  'park',
+  'grass',
+  'pitch',
+  'garden',
+  'playground',
+  'cemetery',
+  'wood',
+  'scrub',
+  'agriculture',
+  'national_park',
+  'golf_course',
+]
+
+function colorOf(id: string, type: string): ColorValue | undefined {
+  if (type === 'background' || id === 'land') return GAME_COLORS.land
+  if (/water/.test(id)) return GAME_COLORS.water
+  if (/landcover|national-park/.test(id)) return GAME_COLORS.green
+  // 種別で緑か地面かを決める。該当しない土地は地面に溶かして、図と地を単純に保つ
+  if (/landuse/.test(id)) {
+    return ['match', ['get', 'class'], GREEN_CLASSES, GAME_COLORS.green, GAME_COLORS.land]
+  }
+  if (/building/.test(id)) return GAME_COLORS.building
+  return undefined
+}
+
+/**
+ * 色として渡せるもの。単色か、地物の属性で振り分ける式。
+ *
+ * 式の型は Mapbox 側が細かく分けているが、ここで組み立てるのは match 1 種類だけなので、
+ * setPaintProperty へ渡すところで受け側の型に合わせる。
+ */
+type ColorValue = string | DataDrivenPropertyValueSpecification<string>
+
+type ColorProperty = 'background-color' | 'fill-color' | 'line-color'
+
+function paintPropertyFor(type: string): ColorProperty | undefined {
+  if (type === 'background') return 'background-color'
+  if (type === 'fill') return 'fill-color'
+  if (type === 'line') return 'line-color'
+  return undefined
+}
+
+/** 失敗しても 1 レイヤーで止める。スタイル更新で構成が変わっても全体は動かしたい */
+function tryApply(label: string, apply: () => void): void {
   try {
-    const width: unknown = map.getPaintProperty(layerId, 'line-width')
-    // 数値か式のときだけ包める。旧形式の stops オブジェクトは触らない
-    if (typeof width !== 'number' && !Array.isArray(width)) return
-    map.setPaintProperty(layerId, 'line-width', [
-      'max',
-      ['*', width, ROAD_WIDTH_SCALE],
-      minWidthPx,
-    ])
-  } catch {
-    // 同上
+    apply()
+  } catch (error) {
+    console.warn(`[retro] ${label} をスキップしました`, error)
   }
 }
 
@@ -59,20 +130,44 @@ function widen(map: MapboxMap, layerId: string, minWidthPx: number): void {
  * @param dotScale 1 ドットが地図上の何 px にあたるか（地図の表示幅 ÷ 横のドット数）
  */
 export function simplifyForRetro(map: MapboxMap, dotScale: number): void {
+  // スタイルの fog（大気表現）は白一色。地物の色の上に薄く乗って彩度を落とすので消す
+  tryApply('fog', () => map.setFog(null))
+
   const layers = map.getStyle()?.layers
   if (!layers) return
 
-  // line-width は地図の座標系（CSS px）で指定するので、ドット数から換算する
-  const minWidthPx = MIN_ROAD_DOTS * dotScale
-
   for (const layer of layers) {
-    if (HIDDEN_TYPES.has(layer.type) || layer.id.endsWith(CASE_SUFFIX)) {
-      hide(map, layer.id)
+    const { id, type } = layer
+
+    if (isHidden(id, type)) {
+      tryApply(`hide ${id}`, () => map.setLayoutProperty(id, 'visibility', 'none'))
       continue
     }
 
-    if (layer.type === 'line' && layer.id.startsWith('road')) {
-      widen(map, layer.id, minWidthPx)
+    const dots = roadDots(id)
+    if (dots !== undefined) {
+      tryApply(`width ${id}`, () => map.setPaintProperty(id, 'line-width', dots * dotScale))
+      tryApply(`color ${id}`, () =>
+        map.setPaintProperty(
+          id,
+          'line-color',
+          dots >= MAJOR_ROAD_DOTS ? GAME_COLORS.roadMajor : GAME_COLORS.roadMinor,
+        ),
+      )
+      // 破線や透明度のズーム式が残っていると、粗い画では点線が粒になる
+      tryApply(`opacity ${id}`, () => map.setPaintProperty(id, 'line-opacity', 1))
+      continue
+    }
+
+    const color = colorOf(id, type)
+    const property = paintPropertyFor(type)
+    if (color && property) {
+      tryApply(`color ${id}`, () => map.setPaintProperty(id, property, color))
+      // 塗りの縁取りは中と同じ色にしておく。既定のままだと 1 ドットの筋が残る
+      if (type === 'fill') {
+        tryApply(`outline ${id}`, () => map.setPaintProperty(id, 'fill-outline-color', color))
+        tryApply(`opacity ${id}`, () => map.setPaintProperty(id, 'fill-opacity', 1))
+      }
     }
   }
 }

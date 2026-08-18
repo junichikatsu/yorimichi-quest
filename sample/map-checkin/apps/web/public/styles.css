@@ -244,8 +244,11 @@ body {
 /*
  * 素の地図は見せない。ただし drawImage の元として毎フレーム読むので、
  * 描画そのものは続けさせる必要がある（display: none にはできない）。
+ *
+ * セレクタは .map__gl の中に限定すること。.map--retro だけで受けると
+ * ラベル専用地図のキャンバスまで透明になり、文字が 1 つも出なくなる。
  */
-.map--retro .mapboxgl-canvas {
+.map--retro .map__gl .mapboxgl-canvas {
   opacity: 0;
 }
 

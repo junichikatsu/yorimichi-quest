@@ -5,7 +5,6 @@ import type { Position } from '../hooks/useGeolocation.js'
 import {
   createLabelOverlay,
   createRetroRenderer,
-  nesColorThemeLut,
   readRetroOptions,
   simplifyForRetro,
   type RetroRenderer,
@@ -43,13 +42,7 @@ const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
 /** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
 const FOG_FEATHER_START = 0.55
 
-/**
- * 8bit 風表示のときの霧。
- *
- * 色はファミコンのパレットにある濃紺（$0C）。ぼかしを入れず、境界をドット単位で立たせる。
- * ぼかしたままだと、丸めたあとに縞が出て「にじんだ丸」に見えてしまう。
- */
-const RETRO_FOG_COLOR = 'rgba(0, 64, 88, 0.72)'
+/* 8bit 風表示の霧の色は retro/palette.ts に置いてある（濃さの調整はそこで） */
 
 /** 現在地へ寄せるときのアニメーション時間（ms）。歩行中に酔わない程度に短く */
 const FOLLOW_DURATION_MS = 600
@@ -143,14 +136,11 @@ export function MapView({
     let disposeLabels: (() => void) | undefined
 
     if (retro) {
-      // 色をファミコンのパレットへ寄せ、細かすぎる要素を間引く。
-      // どちらもスタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
-      // 道路の下限はドット数で決めるため、1 ドットが地図上の何 px かを渡す。
+      // 地物ごとに色を決め打ちし、細かすぎる要素を間引く。
+      // スタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
+      // 道路の太さはドット数で決めるため、1 ドットが地図上の何 px かを渡す。
       const dotScale = (containerRef.current?.clientWidth ?? retroDotWidth) / retroDotWidth
-      map.on('style.load', () => {
-        map.setColorTheme({ data: nesColorThemeLut() })
-        simplifyForRetro(map, dotScale)
-      })
+      map.on('style.load', () => simplifyForRetro(map, dotScale))
 
       // 地図と霧を縮小合成してパレットへ丸める。render は 1 フレーム描き終えるたびに発火する
       const display = retroRef.current
@@ -206,7 +196,9 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'source-over'
     ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = retro ? RETRO_FOG_COLOR : FOG_COLOR
+    // 8bit 風表示では色を付けない。renderer 側が縮小後に市松模様で塗るので、
+    // ここでは「どこが未踏か」を示す不透明なマスクだけを描く。
+    ctx.fillStyle = retro ? 'rgba(0, 0, 0, 1)' : FOG_COLOR
     ctx.fillRect(0, 0, width, height)
 
     ctx.globalCompositeOperation = 'destination-out'

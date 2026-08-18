@@ -1,3 +1,4 @@
+import { RETRO_FOG_COLOR } from './palette.js'
 import { quantizeToNes } from './quantize.js'
 
 /**
@@ -6,12 +7,15 @@ import { quantizeToNes } from './quantize.js'
  * 表示側のキャンバスは**バッキングストアがドット数そのまま**で、CSS で引き伸ばす。
  * 拡大は `image-rendering: pixelated` に任せるので、ここで拡大処理は書かない。
  *
- * 順番に意味がある。
+ * 縮小はブラウザの平滑化に任せる。1 ドット未満の細い道も色として残るので、
+ * 低解像度で直接描かせるより消えにくい。
  *
- * 1. 縮小してから重ねる — 元の解像度で重ねてから縮小すると計算量が数十倍になる
- * 2. 霧は**丸める前に**重ねる — あとから半透明で重ねると、丸めた色の上に中間色が乗る
- * 3. 縮小はブラウザの平滑化に任せる — 1 ドット未満の細い道も色として残り、消えにくい
+ * 霧は**縮小してから、丸めと同時に**重ねる。
+ * 半透明で先に重ねてしまうと全部の色が濁るので、市松模様で塗る（quantize.ts）。
  */
+
+/** 霧とみなす不透明度のしきい値。縮小の平均で端がぼけるので、真ん中あたりで切る */
+const FOG_THRESHOLD = 110
 
 export interface RetroRenderer {
   /** 1 フレーム描く。地図の render イベントから呼ぶ */
@@ -27,6 +31,10 @@ export function createRetroRenderer(
   // 毎フレーム getImageData を呼ぶので、読み出し向けだと宣言しておく。
   // 指定しないと GPU から読み戻すたびに大きな待ちが入る。
   const ctx = display.getContext('2d', { willReadFrequently: true })
+
+  // 霧を縮小して受けるだけの作業用キャンバス
+  const fogScratch = document.createElement('canvas')
+  const fogCtx = fogScratch.getContext('2d', { willReadFrequently: true })
 
   function draw(): void {
     if (!ctx) return
@@ -46,12 +54,23 @@ export function createRetroRenderer(
     ctx.clearRect(0, 0, width, height)
     ctx.drawImage(mapCanvas, 0, 0, width, height)
 
-    if (fogCanvas.width > 0 && fogCanvas.height > 0) {
-      ctx.drawImage(fogCanvas, 0, 0, width, height)
+    let fog
+    if (fogCanvas.width > 0 && fogCanvas.height > 0 && fogCtx) {
+      if (fogScratch.width !== width || fogScratch.height !== height) {
+        fogScratch.width = width
+        fogScratch.height = height
+      }
+      fogCtx.clearRect(0, 0, width, height)
+      fogCtx.drawImage(fogCanvas, 0, 0, width, height)
+      fog = {
+        mask: fogCtx.getImageData(0, 0, width, height).data,
+        color: RETRO_FOG_COLOR,
+        threshold: FOG_THRESHOLD,
+      }
     }
 
     const image = ctx.getImageData(0, 0, width, height)
-    quantizeToNes(image.data)
+    quantizeToNes(image.data, width, fog)
     ctx.putImageData(image, 0, 0)
   }
 

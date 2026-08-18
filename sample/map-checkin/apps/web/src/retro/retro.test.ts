@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readRetroOptions } from './index.js'
-import { cubeStripInput } from './lut.js'
 import { NES_PALETTE, nearestNesColor } from './nes-palette.js'
 
 /**
  * 8bit 風表示（spike）の、DOM を使わない部分。
  *
- * LUT の生成そのものは canvas が要るので、ここでは軸の対応だけを固めている。
- * この対応を取り違えると地図全体の色が入れ替わるので、リファクタで壊れないようにしておく。
+ * 画面に出す部分は canvas と Mapbox が要るので、ここでは URL の解釈とパレットだけを固めている。
  */
 
 describe('readRetroOptions', () => {
@@ -38,25 +36,6 @@ describe('readRetroOptions', () => {
     expect(readRetroOptions('?retroWidth=1').dotWidth).toBe(64)
     expect(readRetroOptions('?retroWidth=99999').dotWidth).toBe(1024)
     expect(readRetroOptions('?retroWidth=abc').dotWidth).toBe(256)
-  })
-})
-
-describe('cubeStripInput', () => {
-  const size = 32
-  const width = size * size
-
-  it('左上は黒、右下は白', () => {
-    expect(cubeStripInput(size, 0, 0)).toEqual({ r: 0, g: 0, b: 0 })
-    expect(cubeStripInput(size, width - 1, size - 1)).toEqual({ r: 255, g: 255, b: 255 })
-  })
-
-  it('列の中の位置が赤、何枚目の正方形かが青、行が緑', () => {
-    // 1 枚目の正方形の右端 → 赤だけが最大
-    expect(cubeStripInput(size, size - 1, 0)).toEqual({ r: 255, g: 0, b: 0 })
-    // 最後の正方形の左端 → 青だけが最大
-    expect(cubeStripInput(size, size * (size - 1), 0)).toEqual({ r: 0, g: 0, b: 255 })
-    // 最終行の左端 → 緑だけが最大
-    expect(cubeStripInput(size, 0, size - 1)).toEqual({ r: 0, g: 255, b: 0 })
   })
 })
 

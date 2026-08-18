@@ -24,7 +24,6 @@
  */
 
 export { createLabelOverlay } from './labels.js'
-export { nesColorThemeLut } from './lut.js'
 export { createRetroRenderer, type RetroRenderer } from './renderer.js'
 export { simplifyForRetro } from './simplify.js'
 
