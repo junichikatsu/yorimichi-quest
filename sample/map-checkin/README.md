@@ -62,11 +62,19 @@ sample/map-checkin/
 │   ├── core/         純関数（距離・ポイント・チェックイン可否・探索グリッド）
 │   └── datastore/    データストアのリポジトリ層 + インメモリ fake
 └── docs/
-    ├── architecture.md   構成と設計判断
-    ├── datamodel.md      テーブルとキー設計
-    ├── api.md            API 仕様
-    └── deploy.md         enebular へのデプロイ手順
+    ├── architecture.md      構成と設計判断
+    ├── datamodel.md         テーブルとキー設計
+    ├── api.md               API 仕様
+    ├── deploy.md            enebular へのデプロイ手順
+    └── retro-map-spike.md   地図のドット絵調表示（試作）
 ```
+
+## 試作中の機能
+
+`?retro=1` を付けると、**まだ歩いていないエリアだけ**を 8bit 風のドット絵で表示します（[docs/retro-map-spike.md](docs/retro-map-spike.md)）。
+歩いた場所は素の解像度に変わるので、探索が進むほど世界の解像度が上がっていきます。
+粗さは `&retroWidth=160`、地名を消すなら `&retroLabels=0`、未踏エリアを市松模様にするなら `&retroFog=dither` です。
+本採用するかは未定で、既定の表示には影響しません。
 
 ## 注意
 

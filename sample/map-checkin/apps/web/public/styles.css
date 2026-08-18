@@ -223,6 +223,80 @@ body {
   pointer-events: none;
 }
 
+/*
+ * 8bit 風表示（?retro=1）の spike。
+ *
+ * 重ね順がそのまま見え方を決める。DOM の並び順だと .map__retro が .map__gl の
+ * あとに来るため、スポットのピンやコントロールまで覆い隠してしまう。
+ * .map の子はすべて絶対配置なので、z-index で明示的に積む。
+ *
+ *   3. .map__locate    現在地ボタン
+ *   2. .map__gl        ピンとコントロール（キャンバスは隠す）
+ *   1. .map__labels    地名・施設名（素の解像度）
+ *   0. .map__retro     合成結果（素の地図＋未到達エリアのドット絵）
+ *
+ * 現在地ボタンは .map__gl の兄弟なので、明示しないと z-index: auto のまま
+ * 地図キャンバスの下に潜る。見た目は透明なキャンバス越しに出るが、
+ * クリックはキャンバスに吸われて反応しなくなる。
+ *
+ * Mapbox のロゴ・帰属表示は .map__gl の中にあり、いちばん上で鮮明なまま残る
+ * （ロゴの加工は Mapbox の利用条件で禁止されている）。
+ */
+.map--retro .map__gl {
+  z-index: 2;
+}
+
+/*
+ * 素の地図は見せない。ただし drawImage の元として毎フレーム読むので、
+ * 描画そのものは続けさせる必要がある（display: none にはできない）。
+ *
+ * セレクタは .map__gl の中に限定すること。.map--retro だけで受けると
+ * ラベル専用地図のキャンバスまで透明になり、文字が 1 つも出なくなる。
+ */
+.map--retro .map__gl .mapboxgl-canvas {
+  opacity: 0;
+}
+
+/*
+ * 地名・施設名だけを素の解像度で重ねる、ラベル専用の地図。
+ *
+ * 当たり判定は持たせない。操作は下の本体が受け、ピンのタップも通す。
+ * ロゴと帰属表示は本体側に出ているので、こちらの分は隠す
+ * （加工ではなく重複の除去。表示義務は本体の 1 つで満たしている）。
+ */
+.map__labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.map__labels .mapboxgl-ctrl-logo,
+.map__labels .mapboxgl-ctrl-attrib {
+  display: none;
+}
+
+/*
+ * 合成結果の出力先。素の地図の上に、未到達エリアだけドット絵の層が乗る。
+ *
+ * バッキングストアは素の解像度で、CSS の大きさと 1:1。
+ * ドットへの拡大は renderer 側が imageSmoothingEnabled = false で行うので、
+ * ここで image-rendering は指定しない。
+ */
+.map__retro {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 霧は .map__retro の中で合成する。元の 1 枚は読むだけで、表示はしない。
+   大きさの計算に clientWidth を使うので display: none にはできない */
+.map--retro .map__fog {
+  visibility: hidden;
+}
 .map--fallback {
   overflow: auto;
   overscroll-behavior: contain;
@@ -335,6 +409,8 @@ body {
  */
 .map__locate {
   position: absolute;
+  /* 地図キャンバスより上。retro 表示では .map__gl が z-index: 2 を持つ */
+  z-index: 3;
   right: 10px;
   /* Mapbox の attribution（右下）に重ならない高さ */
   bottom: 40px;

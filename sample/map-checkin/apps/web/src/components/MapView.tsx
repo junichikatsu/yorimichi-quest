@@ -2,6 +2,13 @@ import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/s
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
+import {
+  createLabelOverlay,
+  createRetroRenderer,
+  readRetroOptions,
+  simplifyForRetro,
+  type RetroRenderer,
+} from '../retro/index.js'
 
 interface MapViewProps {
   token: string
@@ -13,6 +20,9 @@ interface MapViewProps {
   selectedSpotId: string | undefined
   onSelectSpot: (spotId: string) => void
 }
+
+/** ラベル用の地図（8bit 風表示）でも同じものを読むので定数にしておく */
+const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
 
 const CATEGORY_COLORS: Record<string, string> = {
   shelter: '#2f6f3e',
@@ -31,6 +41,8 @@ const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
 
 /** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
 const FOG_FEATHER_START = 0.55
+
+/* 8bit 風表示の霧の色は retro/palette.ts に置いてある（濃さの調整はそこで） */
 
 /** 現在地へ寄せるときのアニメーション時間（ms）。歩行中に酔わない程度に短く */
 const FOLLOW_DURATION_MS = 600
@@ -83,19 +95,33 @@ export function MapView({
   /** 一度でも現在地へ寄せたか。初回だけアニメーションなしで合わせる */
   const centeredRef = useRef(false)
 
+  // 8bit 風表示（?retro=1）。URL は動かないので、描画のたびに読み直しても値は変わらない
+  const retroOptions = readRetroOptions()
+  const retro = retroOptions.enabled
+  const { dotWidth: retroDotWidth, showLabels: retroShowLabels, fogStyle: retroFogStyle } = retroOptions
+
+  /** 8bit 風表示で、地図と霧を合成してパレットへ丸めた結果を映すキャンバス */
+  const retroRef = useRef<HTMLCanvasElement | null>(null)
+  const retroRendererRef = useRef<RetroRenderer | null>(null)
+  /** 素の解像度のまま文字を重ねる、ラベル専用の地図を置く要素 */
+  const labelsRef = useRef<HTMLDivElement | null>(null)
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
     mapboxgl.accessToken = token
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: MAP_STYLE,
       // 測位できるまではエリア中心。位置が届いたら下の追従で現在地へ移す
       center: [area.center.lng, area.center.lat],
       zoom: area.zoom,
       // 霧の半径計算がメルカトル前提。既定の globe のままだと低ズームで半径がずれる
       projection: 'mercator',
       attributionControl: true,
+      // 8bit 風表示では毎フレーム drawImage でキャンバスを読むため、描画結果を保持させる。
+      // 既定の false のままだと読み出しの内容が保証されない。
+      preserveDrawingBuffer: retro,
     })
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
@@ -107,13 +133,49 @@ export function MapView({
       if (event.originalEvent) setFollowing(false)
     })
 
+    let disposeLabels: (() => void) | undefined
+
+    if (retro) {
+      // 地物ごとに色を決め打ちし、細かすぎる要素を間引く。
+      // スタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
+      // 道路の太さはドット数で決めるため、1 ドットが地図上の何 px かを渡す。
+      const dotScale = (containerRef.current?.clientWidth ?? retroDotWidth) / retroDotWidth
+      map.on('style.load', () => simplifyForRetro(map, dotScale))
+
+      // 地図と霧を縮小合成してパレットへ丸める。render は 1 フレーム描き終えるたびに発火する
+      const display = retroRef.current
+      const fog = fogRef.current
+      if (display && fog) {
+        const renderer = createRetroRenderer(map.getCanvas(), fog, display, retroDotWidth, retroFogStyle)
+        retroRendererRef.current = renderer
+        map.on('render', renderer.draw)
+      }
+
+      // 地名・施設名は後処理を通さず、素の解像度のまま上に重ねる
+      if (retroShowLabels && labelsRef.current) {
+        disposeLabels = createLabelOverlay(map, labelsRef.current, MAP_STYLE)
+      }
+    }
+
     return () => {
+      // ラベル用の地図が本体の move を購読しているので、本体より先に外す
+      disposeLabels?.()
       map.remove()
       mapRef.current = null
       markersRef.current.clear()
       centeredRef.current = false
+      retroRendererRef.current = null
     }
-  }, [token, area.center.lat, area.center.lng, area.zoom])
+  }, [
+    token,
+    area.center.lat,
+    area.center.lng,
+    area.zoom,
+    retro,
+    retroDotWidth,
+    retroShowLabels,
+    retroFogStyle,
+  ])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。
@@ -143,7 +205,9 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'source-over'
     ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = FOG_COLOR
+    // 8bit 風表示では色を付けない。renderer 側が縮小後に市松模様で塗るので、
+    // ここでは「どこが未踏か」を示す不透明なマスクだけを描く。
+    ctx.fillStyle = retro ? 'rgba(0, 0, 0, 1)' : FOG_COLOR
     ctx.fillRect(0, 0, width, height)
 
     ctx.globalCompositeOperation = 'destination-out'
@@ -161,24 +225,32 @@ export function MapView({
         continue
       }
 
-      const gradient = ctx.createRadialGradient(
-        point.x,
-        point.y,
-        radius * FOG_FEATHER_START,
-        point.x,
-        point.y,
-        radius,
-      )
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-      ctx.fillStyle = gradient
+      if (retro) {
+        // ぼかさずに削る。丸めたあとに縞が出ないよう、境界をドット単位で立たせる
+        ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+      } else {
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          radius * FOG_FEATHER_START,
+          point.x,
+          point.y,
+          radius,
+        )
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = gradient
+      }
       ctx.beginPath()
       ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
       ctx.fill()
     }
 
     ctx.globalCompositeOperation = 'source-over'
-  }, [revealRadiusM])
+
+    // 霧だけが変わったときは地図が描き直されない。合成をやり直させる
+    if (retro) map.triggerRepaint()
+  }, [revealRadiusM, retro])
 
   // 地図が動いている間ずっと追従させる（move はアニメーション中も毎フレーム発火する）
   useEffect(() => {
@@ -298,10 +370,16 @@ export function MapView({
   }, [position])
 
   return (
-    <div className="map" role="application" aria-label="スポット地図">
+    <div className={retro ? 'map map--retro' : 'map'} role="application" aria-label="スポット地図">
       <div className="map__gl" ref={containerRef} />
       {/* 霧は装飾。読み上げ対象から外し、地図の操作も邪魔しない（pointer-events: none） */}
       <canvas className="map__fog" ref={fogRef} aria-hidden="true" />
+
+      {/* 8bit 風表示の出力先。地図と霧を合成してパレットへ丸めた画をここに映す */}
+      {retro && <canvas className="map__retro" ref={retroRef} aria-hidden="true" />}
+
+      {/* 文字だけを素の解像度で重ねるラベル専用の地図。操作は下の本体が受ける */}
+      {retro && retroShowLabels && <div className="map__labels" ref={labelsRef} aria-hidden="true" />}
 
       {position && (
         <button
