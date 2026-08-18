@@ -24,17 +24,19 @@
 | 有事モード | 災害時にライフライン案内へ切替。蓄積データをもとに避難所・水・電源・バリアフリー情報をマップ案内 |
 | 行政還元ダッシュボード | データ空白地帯・優先整備箇所を可視化し、CSV でオープンデータとして還元 |
 
-## 技術スタック（想定）
+## 技術スタック
 
-- **フロントエンド**: LINE ミニアプリ / LIFF + SPA（TypeScript）、Mapbox GL JS または Leaflet
-- **バックエンド**: Cloudflare Workers / D1 / R2
-- **AI**: マルチモーダル LLM（画像属性抽出・不適切判定）、LLM（クイズ生成）
-- **ダッシュボード**: Cloudflare Pages（閲覧専用）
+- **提供形態**: LINE 公式アカウント（入口・プッシュ通知）＋ LINE ミニアプリ / LIFF
+- **フロントエンド**: React + TypeScript、Mapbox GL JS
+- **バックエンド**: enebular クラウド実行環境（ZIP / Node.js 22.x）＋ Hono
+- **データストア**: enebular データストア（KVS。エリア単位のパーティション設計）
+- **ストレージ**: CUCON（S3）／投稿写真
+- **AI エージェント**: Dify Cloud + Gemini（画像属性抽出・不適切判定・クイズ生成をアプリとして開発し、App API 経由で呼び出す）
+- **ダッシュボード**: 同一 ZIP の別パスで配信（閲覧専用）
 
-選定が未確定の項目は Issue で管理しています。
+未確定の項目（収集する防災データ項目の定義）は Issue で管理しています。
 
-なお [`sample/map-checkin`](sample/map-checkin/) は、上記とは別に **enebular（クラウド実行環境 + データストア）** と
-**React + Mapbox GL JS** の組み合わせで作っています（技術検証用）。サンプルは
+[`sample/map-checkin`](sample/map-checkin/) は上記スタックの技術検証用サンプルです。サンプルは
 [`sample/`](sample/) 配下にサンプルごとの独立したワークスペースとして追加していきます。
 
 ## スケジュール
