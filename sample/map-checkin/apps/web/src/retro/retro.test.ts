@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRetroEnabled } from './index.js'
+import { readRetroOptions } from './index.js'
 import { cubeStripInput } from './lut.js'
 import { NES_PALETTE, nearestNesColor } from './nes-palette.js'
 
@@ -10,16 +10,34 @@ import { NES_PALETTE, nearestNesColor } from './nes-palette.js'
  * この対応を取り違えると地図全体の色が入れ替わるので、リファクタで壊れないようにしておく。
  */
 
-describe('isRetroEnabled', () => {
+describe('readRetroOptions', () => {
   it('?retro=1 で有効になる', () => {
-    expect(isRetroEnabled('?retro=1')).toBe(true)
-    expect(isRetroEnabled('?retro=true')).toBe(true)
+    expect(readRetroOptions('?retro=1').enabled).toBe(true)
+    expect(readRetroOptions('?retro=true').enabled).toBe(true)
   })
 
   it('指定が無い・別の値なら無効', () => {
-    expect(isRetroEnabled('')).toBe(false)
-    expect(isRetroEnabled('?retro=0')).toBe(false)
-    expect(isRetroEnabled('?other=1')).toBe(false)
+    expect(readRetroOptions('').enabled).toBe(false)
+    expect(readRetroOptions('?retro=0').enabled).toBe(false)
+    expect(readRetroOptions('?other=1').enabled).toBe(false)
+  })
+
+  it('既定はファミコンの横解像度、ラベルは非表示', () => {
+    const options = readRetroOptions('?retro=1')
+    expect(options.canvasWidth).toBe(256)
+    expect(options.keepLabels).toBe(false)
+  })
+
+  it('retroWidth と retroLabels で振れる', () => {
+    const options = readRetroOptions('?retro=1&retroWidth=160&retroLabels=1')
+    expect(options.canvasWidth).toBe(160)
+    expect(options.keepLabels).toBe(true)
+  })
+
+  it('極端な幅は使える範囲へ丸める', () => {
+    expect(readRetroOptions('?retroWidth=1').canvasWidth).toBe(64)
+    expect(readRetroOptions('?retroWidth=99999').canvasWidth).toBe(1024)
+    expect(readRetroOptions('?retroWidth=abc').canvasWidth).toBe(256)
   })
 })
 

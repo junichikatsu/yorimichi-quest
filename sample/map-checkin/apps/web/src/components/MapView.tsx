@@ -2,7 +2,14 @@ import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/s
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Position } from '../hooks/useGeolocation.js'
-import { enableRetroPixelRatio, isRetroEnabled, nesColorThemeLut } from '../retro/index.js'
+import {
+  createRetroRenderer,
+  enableRetroPixelRatio,
+  nesColorThemeLut,
+  readRetroOptions,
+  simplifyForRetro,
+  type RetroRenderer,
+} from '../retro/index.js'
 
 interface MapViewProps {
   token: string
@@ -32,6 +39,14 @@ const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
 
 /** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
 const FOG_FEATHER_START = 0.55
+
+/**
+ * 8bit 風表示のときの霧。
+ *
+ * 色はファミコンのパレットにある濃紺（$0C）。ぼかしを入れず、境界をドット単位で立たせる。
+ * ぼかしたままだと、丸めたあとに縞が出て「にじんだ丸」に見えてしまう。
+ */
+const RETRO_FOG_COLOR = 'rgba(0, 64, 88, 0.72)'
 
 /** 現在地へ寄せるときのアニメーション時間（ms）。歩行中に酔わない程度に短く */
 const FOLLOW_DURATION_MS = 600
@@ -85,13 +100,21 @@ export function MapView({
   const centeredRef = useRef(false)
 
   // 8bit 風表示（?retro=1）。URL は動かないので、描画のたびに読み直しても値は変わらない
-  const retro = isRetroEnabled()
+  const retroOptions = readRetroOptions()
+  const retro = retroOptions.enabled
+  const { canvasWidth: retroWidth, keepLabels: retroKeepLabels } = retroOptions
+
+  /** 8bit 風表示で、地図と霧を合成してパレットへ丸めた結果を映すキャンバス */
+  const retroRef = useRef<HTMLCanvasElement | null>(null)
+  const retroRendererRef = useRef<RetroRenderer | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
     // 地図を作る前に差し替える。最初のキャンバス生成から粗い解像度で始めるため
-    const disableRetroPixelRatio = retro ? enableRetroPixelRatio(containerRef.current) : undefined
+    const disableRetroPixelRatio = retro
+      ? enableRetroPixelRatio(containerRef.current, retroWidth)
+      : undefined
 
     mapboxgl.accessToken = token
     const map = new mapboxgl.Map({
@@ -103,6 +126,9 @@ export function MapView({
       // 霧の半径計算がメルカトル前提。既定の globe のままだと低ズームで半径がずれる
       projection: 'mercator',
       attributionControl: true,
+      // 8bit 風表示では毎フレーム drawImage でキャンバスを読むため、描画結果を保持させる。
+      // 既定の false のままだと読み出しの内容が保証されない。
+      preserveDrawingBuffer: retro,
     })
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
@@ -114,12 +140,22 @@ export function MapView({
       if (event.originalEvent) setFollowing(false)
     })
 
-    // 色をファミコンのパレットへ寄せる。
-    // setColorTheme はスタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
     if (retro) {
+      // 色をファミコンのパレットへ寄せ、細かすぎる要素を間引く。
+      // どちらもスタイルの読み込み完了前に呼ぶと例外になるので style.load を待つ。
       map.on('style.load', () => {
         map.setColorTheme({ data: nesColorThemeLut() })
+        simplifyForRetro(map, retroKeepLabels)
       })
+
+      // 地図と霧を合成してパレットへ丸める。render は 1 フレーム描き終えるたびに発火する
+      const display = retroRef.current
+      const fog = fogRef.current
+      if (display && fog) {
+        const renderer = createRetroRenderer(map.getCanvas(), fog, display)
+        retroRendererRef.current = renderer
+        map.on('render', renderer.draw)
+      }
     }
 
     return () => {
@@ -127,9 +163,10 @@ export function MapView({
       mapRef.current = null
       markersRef.current.clear()
       centeredRef.current = false
+      retroRendererRef.current = null
       disableRetroPixelRatio?.()
     }
-  }, [token, area.center.lat, area.center.lng, area.zoom, retro])
+  }, [token, area.center.lat, area.center.lng, area.zoom, retro, retroWidth, retroKeepLabels])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。
@@ -159,7 +196,7 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'source-over'
     ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = FOG_COLOR
+    ctx.fillStyle = retro ? RETRO_FOG_COLOR : FOG_COLOR
     ctx.fillRect(0, 0, width, height)
 
     ctx.globalCompositeOperation = 'destination-out'
@@ -177,24 +214,32 @@ export function MapView({
         continue
       }
 
-      const gradient = ctx.createRadialGradient(
-        point.x,
-        point.y,
-        radius * FOG_FEATHER_START,
-        point.x,
-        point.y,
-        radius,
-      )
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-      ctx.fillStyle = gradient
+      if (retro) {
+        // ぼかさずに削る。丸めたあとに縞が出ないよう、境界をドット単位で立たせる
+        ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+      } else {
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          radius * FOG_FEATHER_START,
+          point.x,
+          point.y,
+          radius,
+        )
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = gradient
+      }
       ctx.beginPath()
       ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
       ctx.fill()
     }
 
     ctx.globalCompositeOperation = 'source-over'
-  }, [revealRadiusM])
+
+    // 霧だけが変わったときは地図が描き直されない。合成をやり直させる
+    if (retro) map.triggerRepaint()
+  }, [revealRadiusM, retro])
 
   // 地図が動いている間ずっと追従させる（move はアニメーション中も毎フレーム発火する）
   useEffect(() => {
@@ -318,6 +363,9 @@ export function MapView({
       <div className="map__gl" ref={containerRef} />
       {/* 霧は装飾。読み上げ対象から外し、地図の操作も邪魔しない（pointer-events: none） */}
       <canvas className="map__fog" ref={fogRef} aria-hidden="true" />
+
+      {/* 8bit 風表示の出力先。地図と霧を合成してパレットへ丸めた画をここに映す */}
+      {retro && <canvas className="map__retro" ref={retroRef} aria-hidden="true" />}
 
       {position && (
         <button

@@ -1,5 +1,5 @@
 import type { Rgb } from './nes-palette.js'
-import { nearestNesColor } from './nes-palette.js'
+import { NES_TABLE_LEVELS, nesLookupTable, nesTableIndex } from './quantize.js'
 
 /**
  * Mapbox の color-theme に渡す LUT（ルックアップテーブル）を作る。
@@ -23,7 +23,7 @@ import { nearestNesColor } from './nes-palette.js'
  * LUT の 1 辺。Mapbox の上限が 32 で、粗くすると隣のセルとの補間が効いて
  * せっかくパレットへ丸めた色が中間色へ戻ってしまうため、上限をそのまま使う。
  */
-const LUT_SIZE = 32
+const LUT_SIZE = NES_TABLE_LEVELS
 
 /**
  * cube strip の (列, 行) が表している入力色。
@@ -55,14 +55,17 @@ function render(): string {
   if (!ctx) throw new Error('2D コンテキストを取得できませんでした')
 
   const image = ctx.createImageData(width, LUT_SIZE)
+  // 合成後の丸めと同じ対応表を引く。両者で色がずれないようにするため
+  const lookup = nesLookupTable()
 
   for (let row = 0; row < LUT_SIZE; row += 1) {
     for (let column = 0; column < width; column += 1) {
-      const mapped = nearestNesColor(cubeStripInput(LUT_SIZE, column, row))
+      const input = cubeStripInput(LUT_SIZE, column, row)
+      const at = nesTableIndex(input.r, input.g, input.b)
       const offset = (row * width + column) * 4
-      image.data[offset] = mapped.r
-      image.data[offset + 1] = mapped.g
-      image.data[offset + 2] = mapped.b
+      image.data[offset] = lookup[at]!
+      image.data[offset + 1] = lookup[at + 1]!
+      image.data[offset + 2] = lookup[at + 2]!
       image.data[offset + 3] = 255
     }
   }
