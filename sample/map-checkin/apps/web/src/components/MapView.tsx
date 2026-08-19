@@ -25,8 +25,8 @@ interface MapViewProps {
   equipment: Equipment | undefined
 }
 
-/** 地図上のキャラクターの拡大率。等倍だと小さすぎ、大きすぎると地図を隠す */
-const AVATAR_SCALE = 2
+/** 地図上のキャラクターの表示倍率。大きすぎると地図そのものを隠してしまう */
+const AVATAR_SCALE = 1.2
 
 /** ラベル用の地図（8bit 風表示）でも同じものを読むので定数にしておく */
 const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
@@ -356,11 +356,16 @@ export function MapView({
     let canvas = el.querySelector('canvas')
     if (!canvas) {
       canvas = document.createElement('canvas')
-      canvas.width = SPRITE_WIDTH * AVATAR_SCALE
-      canvas.height = SPRITE_HEIGHT * AVATAR_SCALE
       el.replaceChildren(canvas)
     }
     el.classList.add('marker-me--avatar')
+
+    // 実ピクセルは devicePixelRatio 倍。地図は高精細端末で見ることが多い
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(SPRITE_WIDTH * AVATAR_SCALE * dpr)
+    canvas.height = Math.round(SPRITE_HEIGHT * AVATAR_SCALE * dpr)
+    canvas.style.width = `${SPRITE_WIDTH * AVATAR_SCALE}px`
+    canvas.style.height = `${SPRITE_HEIGHT * AVATAR_SCALE}px`
 
     drawSprite(canvas, { avatar, equipment, frame: 0, moving: false, direction: 'down' }, AVATAR_SCALE)
   }, [avatar, equipment, position])

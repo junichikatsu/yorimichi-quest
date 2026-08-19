@@ -10,7 +10,7 @@ import {
 interface AvatarCanvasProps {
   avatar: Avatar
   equipment: Equipment
-  /** 拡大率。整数にしないとドットがにじむ */
+  /** 表示倍率。ベクタで描くため小数でもよい */
   scale: number
   /** 歩行アニメーションを再生するか */
   animated?: boolean
@@ -41,6 +41,14 @@ export function AvatarCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // 実ピクセルは devicePixelRatio 倍で確保し、CSS 上の大きさは scale 倍にする。
+    // これをやらないと高精細ディスプレイで輪郭がぼやける。
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(SPRITE_WIDTH * scale * dpr)
+    canvas.height = Math.round(SPRITE_HEIGHT * scale * dpr)
+    canvas.style.width = `${SPRITE_WIDTH * scale}px`
+    canvas.style.height = `${SPRITE_HEIGHT * scale}px`
+
     // 静止画なら 1 回描いて終わり。requestAnimationFrame を回し続けない
     if (!animated) {
       drawSprite(canvas, { avatar, equipment, frame: 0, moving: false, direction }, scale)
@@ -64,8 +72,6 @@ export function AvatarCanvas({
     <canvas
       ref={canvasRef}
       className="avatar-canvas"
-      width={SPRITE_WIDTH * scale}
-      height={SPRITE_HEIGHT * scale}
       role="img"
       aria-label={label ?? `${avatar.name} のすがた`}
     />

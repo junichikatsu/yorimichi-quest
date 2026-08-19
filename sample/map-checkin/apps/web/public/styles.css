@@ -798,12 +798,8 @@ body {
 
 /* ---------- キャラクター・アイテム・クイズ（Issue #25） ---------- */
 
-/*
- * ドット絵は必ず最近傍で拡大する。
- * 既定の平滑化が効くと、せっかくのドットがぼやけて別物になる。
- */
+/* キャラクターはベクタ描画。実ピクセルは JS 側で devicePixelRatio 倍にしている */
 .avatar-canvas {
-  image-rendering: pixelated;
   display: block;
 }
 
@@ -830,9 +826,8 @@ body {
 }
 
 .marker-me--avatar canvas {
-  image-rendering: pixelated;
   display: block;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 /* ---------- キャラメイク ---------- */

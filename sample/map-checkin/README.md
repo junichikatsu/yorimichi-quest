@@ -83,6 +83,19 @@ sample/map-checkin/
 クイズの**正解と解説はサーバー側にのみ置き、配信される JavaScript には含めていません**。
 採点は回答 API で行います（[docs/api.md](docs/api.md)）。
 
+### キャラクターの見た目を確認する
+
+髪型10種・服10種・装備10種の全パターンを並べた確認ページがあります。**サーバー不要**で、ビルド後に
+`apps/web/public/avatar-preview.html` をブラウザで直接開くだけです。
+
+```bash
+pnpm build:web
+# → apps/web/public/avatar-preview.html を開く
+```
+
+アプリ本体と同じ描画コード（`apps/web/src/avatar/sprite.ts`）を使っているので、
+ここで見たとおりの姿が地図上にも出ます。描き直したら `pnpm build:web` で再生成してください。
+
 ## 試作中の機能
 
 `?retro=1` を付けると、**まだ歩いていないエリアだけ**を 8bit 風のドット絵で表示します（[docs/retro-map-spike.md](docs/retro-map-spike.md)）。
