@@ -795,3 +795,283 @@ body {
   text-align: center;
   color: var(--muted);
 }
+
+/* ---------- キャラクター・アイテム・クイズ（Issue #25） ---------- */
+
+/*
+ * ドット絵は必ず最近傍で拡大する。
+ * 既定の平滑化が効くと、せっかくのドットがぼやけて別物になる。
+ */
+.avatar-canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+.statusbar__avatar {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.statusbar__avatar:hover {
+  border-color: var(--accent);
+}
+
+/* 地図上のキャラクター。足元が現在地に来るよう anchor: bottom と組で使う */
+.marker-me--avatar {
+  background: none;
+  border: none;
+  box-shadow: none;
+  width: auto;
+  height: auto;
+}
+
+.marker-me--avatar canvas {
+  image-rendering: pixelated;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* ---------- キャラメイク ---------- */
+
+.creator__preview {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+
+.creator__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.creator__name span {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__name input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.creator__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.creator__label {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.creator__value {
+  min-width: 8em;
+  font-size: 0.9rem;
+}
+
+.creator__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch--on {
+  border-color: var(--text);
+}
+
+/* ---------- クイズ ---------- */
+
+.quiz__options {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.quiz__option {
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quiz__option:disabled {
+  cursor: default;
+}
+
+.quiz__option--answer {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  font-weight: 600;
+}
+
+.quiz__option--wrong {
+  border-color: var(--danger);
+}
+
+.quiz__result {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border-left: 4px solid var(--muted);
+}
+
+.quiz__result--correct {
+  border-left-color: var(--accent);
+}
+
+.quiz__result--wrong {
+  border-left-color: var(--danger);
+}
+
+.quiz__verdict {
+  margin: 0;
+  font-weight: 600;
+}
+
+.quiz__explanation {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.quiz__reward {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.quiz__use {
+  display: block;
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* ---------- 防災リュック ---------- */
+
+.equip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.equip div {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.equip dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.equip dd {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+}
+
+.items {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.item {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.item--locked {
+  opacity: 0.55;
+}
+
+.item--equipped {
+  border-color: var(--accent);
+}
+
+.item__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.item__name {
+  font-weight: 600;
+}
+
+.item__slot {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.item__use {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.item__use--locked {
+  font-style: italic;
+}
+
+.item__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.item__count {
+  font-size: 0.8rem;
+  color: var(--muted);
+}

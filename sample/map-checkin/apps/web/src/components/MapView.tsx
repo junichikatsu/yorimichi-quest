@@ -1,6 +1,7 @@
-import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
+import type { AreaSummary, Avatar, Equipment, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
 import type { Position } from '../hooks/useGeolocation.js'
 import {
   createLabelOverlay,
@@ -19,7 +20,13 @@ interface MapViewProps {
   position: Position | undefined
   selectedSpotId: string | undefined
   onSelectSpot: (spotId: string) => void
+  /** 現在地に立たせるキャラクター。未指定なら従来の点マーカーになる */
+  avatar: Avatar | undefined
+  equipment: Equipment | undefined
 }
+
+/** 地図上のキャラクターの拡大率。等倍だと小さすぎ、大きすぎると地図を隠す */
+const AVATAR_SCALE = 2
 
 /** ラベル用の地図（8bit 風表示）でも同じものを読むので定数にしておく */
 const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
@@ -81,6 +88,8 @@ export function MapView({
   position,
   selectedSpotId,
   onSelectSpot,
+  avatar,
+  equipment,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const fogRef = useRef<HTMLCanvasElement | null>(null)
@@ -319,11 +328,42 @@ export function MapView({
     if (!meMarkerRef.current) {
       const el = document.createElement('div')
       el.className = 'marker-me'
-      meMarkerRef.current = new mapboxgl.Marker({ element: el })
+      // キャラクターを立たせる場合は足元が現在地に来るようにする。
+      // 既定の中央合わせのままだと、体の真ん中が座標を指してしまう。
+      meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
     }
 
     meMarkerRef.current.setLngLat([position.lng, position.lat]).addTo(map)
   }, [position])
+
+  /**
+   * 現在地のキャラクターを描く。
+   *
+   * マーカーの DOM は Mapbox が持っているため、React で再描画せず
+   * キャンバスへ直接描き込む。アバターか装備が変わったときだけ描き直す。
+   */
+  useEffect(() => {
+    const marker = meMarkerRef.current
+    if (!marker) return
+
+    const el = marker.getElement()
+    if (!avatar || !equipment) {
+      el.replaceChildren()
+      el.classList.remove('marker-me--avatar')
+      return
+    }
+
+    let canvas = el.querySelector('canvas')
+    if (!canvas) {
+      canvas = document.createElement('canvas')
+      canvas.width = SPRITE_WIDTH * AVATAR_SCALE
+      canvas.height = SPRITE_HEIGHT * AVATAR_SCALE
+      el.replaceChildren(canvas)
+    }
+    el.classList.add('marker-me--avatar')
+
+    drawSprite(canvas, { avatar, equipment, frame: 0, moving: false, direction: 'down' }, AVATAR_SCALE)
+  }, [avatar, equipment, position])
 
   /**
    * 現在地へ追従する。

@@ -8,6 +8,7 @@ export const TABLE_ENV_KEYS = {
   checkins: 'DS_TABLE_CHECKINS',
   userSpotState: 'DS_TABLE_USER_SPOT_STATE',
   exploredTiles: 'DS_TABLE_EXPLORED_TILES',
+  userItems: 'DS_TABLE_USER_ITEMS',
 } as const
 
 export type TableName = keyof typeof TABLE_ENV_KEYS

@@ -1,4 +1,7 @@
 export * from './ids.js'
 export * from './spot.js'
+export * from './avatar.js'
+export * from './item.js'
+export * from './quiz.js'
 export * from './exploration.js'
 export * from './api.js'

@@ -7,6 +7,9 @@ import {
   type ExploredTile,
 } from './exploration.js'
 import type { SpotId, UserId } from './ids.js'
+import { avatarSchema, type Avatar } from './avatar.js'
+import { equipmentSchema, type Equipment, type ItemDef, type ItemKey, type OwnedItem } from './item.js'
+import type { QuizPrompt } from './quiz.js'
 
 /* ------------------------------------------------------------------ *
  * リクエストスキーマ（サーバ側の入力検証。FE とスキーマを共有する）
@@ -40,6 +43,14 @@ export const explorationRequestSchema = z.object({
 })
 
 export type ExplorationRequest = z.infer<typeof explorationRequestSchema>
+
+export const avatarUpdateRequestSchema = avatarSchema
+
+export type AvatarUpdateRequest = z.infer<typeof avatarUpdateRequestSchema>
+
+export const equipmentUpdateRequestSchema = equipmentSchema
+
+export type EquipmentUpdateRequest = z.infer<typeof equipmentUpdateRequestSchema>
 
 /* ------------------------------------------------------------------ *
  * レスポンス型（= API 契約）
@@ -97,6 +108,8 @@ export interface CheckinResponse {
   totalPoints: number
   /** 再チェックイン可能になる時刻（ISO8601, FR-03-3） */
   nextAvailableAt: string
+  /** 今回はじめて手に入れたアイテム（FR-07-8）。既に持っていたら undefined */
+  acquiredItem: ItemKey | undefined
 }
 
 export interface CheckinLog {
@@ -113,8 +126,31 @@ export interface MeResponse {
     totalPoints: number
     checkinCount: number
     createdAt: string
+    avatar: Avatar
+    equipment: Equipment
   }
   recentCheckins: CheckinLog[]
+}
+
+export interface AvatarUpdateResponse {
+  avatar: Avatar
+}
+
+export interface EquipmentUpdateResponse {
+  equipment: Equipment
+}
+
+/** 所持一覧と全定義を一度に返す。定義は静的だがクライアントに持たせない（表示のブレを防ぐ） */
+export interface ItemsResponse {
+  owned: OwnedItem[]
+  catalog: ItemDef[]
+  equipment: Equipment
+}
+
+export interface QuizResponse {
+  quiz: QuizPrompt
+  /** このスポットのクイズで既にアイテムを獲得済みか（再挑戦は可能だが報酬は出ない） */
+  alreadyCleared: boolean
 }
 
 export interface ExplorationResponse {

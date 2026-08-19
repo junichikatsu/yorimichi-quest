@@ -1,10 +1,34 @@
 import { distanceMeters, interpolatePath } from '@map-checkin/core'
-import type { ClientConfigResponse, MeResponse, SpotWithDistance } from '@map-checkin/shared'
+import {
+  ITEM_DEFS,
+  type Avatar,
+  type ClientConfigResponse,
+  type Equipment,
+  type ItemsResponse,
+  type MeResponse,
+  type QuizAnswerResponse,
+  type QuizResponse,
+  type SpotWithDistance,
+} from '@map-checkin/shared'
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, fetchClientConfig, fetchMe, fetchSpots, postCheckin } from './api.js'
+import {
+  ApiError,
+  fetchClientConfig,
+  fetchItems,
+  fetchMe,
+  fetchQuiz,
+  fetchSpots,
+  postCheckin,
+  postQuizAnswer,
+  putAvatar,
+  putEquipment,
+} from './api.js'
+import { AvatarCreator } from './components/AvatarCreator.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
+import { ItemPanel } from './components/ItemPanel.js'
 import { MapView } from './components/MapView.js'
+import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
@@ -33,6 +57,11 @@ export function App(): React.JSX.Element {
   const [toast, setToast] = useState<Toast | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [fatalError, setFatalError] = useState<string | undefined>(undefined)
+  const [items, setItems] = useState<ItemsResponse | undefined>(undefined)
+  const [quiz, setQuiz] = useState<QuizResponse | undefined>(undefined)
+  const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
+  const [quizSpotId, setQuizSpotId] = useState<string | undefined>(undefined)
+  const [creatorOpen, setCreatorOpen] = useState(false)
 
   const geo = useGeolocation()
   const exploration = useExploration(config?.exploration)
@@ -73,9 +102,14 @@ export function App(): React.JSX.Element {
 
   const reload = useCallback(async () => {
     try {
-      const [spotsResponse, meResponse] = await Promise.all([fetchSpots(fetchPosition), fetchMe()])
+      const [spotsResponse, meResponse, itemsResponse] = await Promise.all([
+        fetchSpots(fetchPosition),
+        fetchMe(),
+        fetchItems(),
+      ])
       setSpots(spotsResponse.spots)
       setMe(meResponse)
+      setItems(itemsResponse)
     } catch (err: unknown) {
       setToast({
         kind: 'error',
@@ -104,11 +138,24 @@ export function App(): React.JSX.Element {
       const result = await postCheckin(selectedSpot.spotId, geo.position)
       const { base, multiplier, firstVisitBonus } = result.breakdown
       const bonusText = firstVisitBonus > 0 ? ` ＋初回${firstVisitBonus}pt` : ''
+      const itemText = result.acquiredItem
+        ? ` ／ ${ITEM_DEFS[result.acquiredItem].name} を手に入れた`
+        : ''
       setToast({
         kind: 'success',
-        message: `+${result.pointsEarned}pt 獲得（${base}pt ×${multiplier}${bonusText}）`,
+        message: `+${result.pointsEarned}pt 獲得（${base}pt ×${multiplier}${bonusText}）${itemText}`,
       })
       await reload()
+
+      // FR-04-1: チェックインに続けてそのスポットのクイズを出す
+      try {
+        const response = await fetchQuiz(selectedSpot.spotId)
+        setQuiz(response)
+        setQuizResult(undefined)
+        setQuizSpotId(selectedSpot.spotId)
+      } catch {
+        // クイズが用意されていないカテゴリもある。チェックイン自体は成功しているので黙って進む
+      }
     } catch (err: unknown) {
       const message =
         err instanceof ApiError && err.code === 'COOLDOWN'
@@ -121,6 +168,65 @@ export function App(): React.JSX.Element {
       setBusy(false)
     }
   }, [selectedSpot, geo.position, reload])
+
+  const handleAnswerQuiz = useCallback(
+    async (choiceIndex: number) => {
+      if (!quiz || !quizSpotId) return
+      setBusy(true)
+      try {
+        const result = await postQuizAnswer(quizSpotId, quiz.quiz.quizId, choiceIndex)
+        setQuizResult(result)
+        // 正解でポイントとアイテムが動くため、ステータスとリュックを取り直す
+        if (result.correct) await reload()
+      } catch (err: unknown) {
+        setToast({
+          kind: 'error',
+          message: err instanceof Error ? err.message : '回答を送れませんでした',
+        })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [quiz, quizSpotId, reload],
+  )
+
+  const handleSaveAvatar = useCallback(
+    async (avatar: Avatar) => {
+      setBusy(true)
+      try {
+        await putAvatar(avatar)
+        await reload()
+        setCreatorOpen(false)
+        setToast({ kind: 'success', message: 'すがたを保存しました' })
+      } catch (err: unknown) {
+        setToast({
+          kind: 'error',
+          message: err instanceof Error ? err.message : 'すがたを保存できませんでした',
+        })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [reload],
+  )
+
+  const handleEquip = useCallback(
+    async (equipment: Equipment) => {
+      setBusy(true)
+      try {
+        await putEquipment(equipment)
+        await reload()
+      } catch (err: unknown) {
+        setToast({
+          kind: 'error',
+          message: err instanceof Error ? err.message : '装備を変更できませんでした',
+        })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [reload],
+  )
 
   /**
    * デモ用：現在地から選択スポットまで「歩いた」ことにして軌跡を塗る。
@@ -168,6 +274,7 @@ export function App(): React.JSX.Element {
         exploration={exploration.summary}
         geoStatus={geo.status}
         areaName={config.area.name}
+        onOpenCreator={() => setCreatorOpen((open) => !open)}
       />
 
       <main className="app__main">
@@ -181,6 +288,8 @@ export function App(): React.JSX.Element {
             position={geo.position}
             selectedSpotId={selectedSpotId}
             onSelectSpot={setSelectedSpotId}
+            avatar={me?.user.avatar}
+            equipment={me?.user.equipment}
           />
         ) : (
           <div className="map map--fallback">
@@ -192,6 +301,32 @@ export function App(): React.JSX.Element {
         )}
 
         <aside className="sidebar">
+          {creatorOpen && me && (
+            <AvatarCreator
+              avatar={me.user.avatar}
+              equipment={me.user.equipment}
+              busy={busy}
+              onSave={(avatar) => void handleSaveAvatar(avatar)}
+              onClose={() => setCreatorOpen(false)}
+            />
+          )}
+
+          {quiz && (
+            <QuizPanel
+              quiz={quiz.quiz}
+              alreadyCleared={quiz.alreadyCleared}
+              result={quizResult}
+              busy={busy}
+              onAnswer={(choiceIndex) => void handleAnswerQuiz(choiceIndex)}
+              onRetry={() => setQuizResult(undefined)}
+              onClose={() => {
+                setQuiz(undefined)
+                setQuizResult(undefined)
+                setQuizSpotId(undefined)
+              }}
+            />
+          )}
+
           {selectedSpot ? (
             <SpotPanel
               spot={selectedSpot}
@@ -216,6 +351,8 @@ export function App(): React.JSX.Element {
               </p>
             </section>
           )}
+
+          <ItemPanel items={items} busy={busy} onEquip={(equipment) => void handleEquip(equipment)} />
 
           <ExplorationPanel
             summary={exploration.summary}

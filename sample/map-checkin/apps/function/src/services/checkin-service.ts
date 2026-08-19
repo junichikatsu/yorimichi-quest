@@ -10,8 +10,10 @@ import {
   type DataStoreContext,
   type UserProfile,
 } from '@map-checkin/datastore'
-import type { AreaId, CheckinResponse, SpotId, UserId } from '@map-checkin/shared'
+import type { AreaId, CheckinResponse, ItemKey, SpotId, UserId } from '@map-checkin/shared'
+import { DEFAULT_AVATAR, EMPTY_EQUIPMENT } from '@map-checkin/shared'
 import { AppError, notFound } from '../errors.js'
+import { grantItem, itemForCheckin } from './game-service.js'
 import { decorateSpot } from './spot-service.js'
 
 export interface PerformCheckinInput {
@@ -29,6 +31,7 @@ export interface PerformCheckinInput {
  *
  * データストアのアクセス回数（E4）: getItem × 3 + putItem × 4 = 7 回／チェックイン。
  * 判定に必要な読み取りを user_spot_state の 1 件に寄せることで、履歴の走査を避けている。
+ * アイテム付与（FR-07-8）を行う場合は getItem × 1 + putItem × 1 が加わる。
  */
 export async function performCheckin(
   ctx: DataStoreContext,
@@ -70,13 +73,25 @@ export async function performCheckin(
     checkinCount: 0,
     createdAt: nowIso,
     lastActiveAt: nowIso,
+    avatar: DEFAULT_AVATAR,
+    equipment: EMPTY_EQUIPMENT,
   }
 
-  const updatedProfile: UserProfile = {
+  let updatedProfile: UserProfile = {
     ...profile,
     totalPoints: profile.totalPoints + decision.pointsEarned,
     checkinCount: profile.checkinCount + 1,
     lastActiveAt: nowIso,
+  }
+
+  // スポットのカテゴリに応じた防災グッズを渡す（FR-07-8）。
+  // 空きスロットなら自動装備されるため、地図上のキャラの見た目がその場で変わる。
+  let acquiredItem: ItemKey | undefined
+  const rewardKey = itemForCheckin(spot.category)
+  if (rewardKey) {
+    const granted = await grantItem(ctx, updatedProfile, rewardKey, nowIso)
+    updatedProfile = granted.profile
+    acquiredItem = granted.acquired
   }
 
   await appendCheckin(ctx, input.userId, {
@@ -91,6 +106,7 @@ export async function performCheckin(
   await putUserSpotState(ctx, input.userId, input.spotId, {
     lastCheckinAt: input.now,
     visitCount: (state?.visitCount ?? 0) + 1,
+    quizClearedAt: state?.quizClearedAt,
   })
 
   await putUser(ctx, updatedProfile)
@@ -104,5 +120,6 @@ export async function performCheckin(
     breakdown: decision.breakdown,
     totalPoints: updatedProfile.totalPoints,
     nextAvailableAt: new Date(decision.nextAvailableAt).toISOString(),
+    acquiredItem,
   }
 }

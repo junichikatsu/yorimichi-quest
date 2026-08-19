@@ -1,11 +1,16 @@
 import type {
+  AvatarUpdateResponse,
   CheckinResponse,
   ClientConfigResponse,
+  EquipmentUpdateResponse,
   ErrorResponse,
   ExplorationResponse,
   ExplorationUpdateResponse,
   HealthResponse,
+  ItemsResponse,
   MeResponse,
+  QuizAnswerResponse,
+  QuizResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
 import { tileOf } from '@map-checkin/core'
@@ -383,6 +388,158 @@ describe('チェックインの通し導線', () => {
     )
     expect(otherMe.recentCheckins).toHaveLength(0)
     expect(otherMe.user.totalPoints).toBe(0)
+  })
+})
+
+describe('クイズ（FR-04）', () => {
+  const spotId = 'sample-hibiya-park'
+  const position = { lat: 35.6739, lng: 139.7568 }
+
+  async function getQuiz(): Promise<QuizResponse> {
+    return json<QuizResponse>(
+      await app.request(`/v1/spots/${spotId}/quiz`, { headers: headers() }),
+    )
+  }
+
+  async function answer(quizId: string, choiceIndex: number): Promise<Response> {
+    return app.request(`/v1/spots/${spotId}/quiz/answer`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ quizId, choiceIndex }),
+    })
+  }
+
+  it('出題に正解は含まれない（配信物から答えが読めないこと）', async () => {
+    const body = await getQuiz()
+    expect(body.quiz.options.length).toBeGreaterThan(1)
+    expect(body.alreadyCleared).toBe(false)
+    expect(JSON.stringify(body)).not.toContain('answerIndex')
+  })
+
+  it('同じスポットでは毎回同じ問題が出る', async () => {
+    const first = await getQuiz()
+    const second = await getQuiz()
+    expect(second.quiz.quizId).toBe(first.quiz.quizId)
+  })
+
+  it('不正解でもポイントは減らず、解説と再挑戦が返る（FR-04-6）', async () => {
+    const quiz = await getQuiz()
+    const wrongIndex = quiz.quiz.options.length - 1
+
+    const result = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, wrongIndex))
+    expect(result.correct).toBe(false)
+    expect(result.pointsEarned).toBe(0)
+    expect(result.totalPoints).toBe(0)
+    expect(result.explanation.length).toBeGreaterThan(0)
+    expect(result.canRetry).toBe(true)
+    expect(result.acquiredItem).toBeUndefined()
+  })
+
+  it('正解でポイントとアイテムを得る。2 回目は加点されない', async () => {
+    const quiz = await getQuiz()
+
+    const first = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, 0))
+    expect(first.correct).toBe(true)
+    expect(first.pointsEarned).toBe(30)
+    expect(first.acquiredItem).toBe('zukin')
+    expect(first.canRetry).toBe(false)
+
+    const second = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, 0))
+    expect(second.correct).toBe(true)
+    expect(second.pointsEarned).toBe(0)
+    expect(second.acquiredItem).toBeUndefined()
+    expect(second.totalPoints).toBe(30)
+  })
+
+  it('別カテゴリのクイズIDを送っても報酬は得られない', async () => {
+    const response = await answer('water-supply-1', 0)
+    expect(response.status).toBe(400)
+  })
+
+  it('存在しないクイズIDは 404', async () => {
+    const response = await answer('no-such-quiz', 0)
+    expect(response.status).toBe(404)
+  })
+
+  it('チェックインでもカテゴリに応じたアイテムを得る（FR-07-8）', async () => {
+    const checkin = await json<CheckinResponse>(
+      await app.request(`/v1/spots/${spotId}/checkin`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(position),
+      }),
+    )
+    expect(checkin.acquiredItem).toBe('helmet')
+  })
+})
+
+describe('アイテムとアバター（FR-07-8）', () => {
+  it('初期状態は所持ゼロ、カタログは全件返る', async () => {
+    const body = await json<ItemsResponse>(await app.request('/v1/items', { headers: headers() }))
+    expect(body.owned).toHaveLength(0)
+    expect(body.catalog).toHaveLength(10)
+    expect(body.equipment).toEqual({ head: null, body: null, hand: null, back: null })
+  })
+
+  it('獲得したアイテムは空きスロットへ自動装備される', async () => {
+    await app.request('/v1/spots/sample-hibiya-park/checkin', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ lat: 35.6739, lng: 139.7568 }),
+    })
+
+    const body = await json<ItemsResponse>(await app.request('/v1/items', { headers: headers() }))
+    expect(body.owned.map((item) => item.itemKey)).toEqual(['helmet'])
+    expect(body.equipment.head).toBe('helmet')
+  })
+
+  it('持っていないアイテムは装備できない（見た目と所持がずれない）', async () => {
+    const response = await app.request('/v1/me/equipment', {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ head: 'helmet', body: null, hand: null, back: null }),
+    })
+
+    const body = await json<EquipmentUpdateResponse>(response)
+    expect(body.equipment.head).toBeNull()
+  })
+
+  it('アバターを保存するとマイページに反映される', async () => {
+    const avatar = { hair: 2, cloth: 5, hairColor: 3, clothColor: 4, skin: 1, name: 'ヨリコ' }
+    const saved = await json<AvatarUpdateResponse>(
+      await app.request('/v1/me/avatar', {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify(avatar),
+      }),
+    )
+    expect(saved.avatar).toEqual(avatar)
+
+    const me = await json<MeResponse>(await app.request('/v1/me', { headers: headers() }))
+    expect(me.user.avatar.name).toBe('ヨリコ')
+    expect(me.user.avatar.hair).toBe(2)
+  })
+
+  it('範囲外のアバター値は 400', async () => {
+    const response = await app.request('/v1/me/avatar', {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ hair: 99, cloth: 0, hairColor: 0, clothColor: 0, skin: 0, name: 'x' }),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('アイテムは他ユーザーに混ざらない', async () => {
+    await app.request('/v1/spots/sample-hibiya-park/checkin', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ lat: 35.6739, lng: 139.7568 }),
+    })
+
+    const other = await json<ItemsResponse>(
+      await app.request('/v1/items', { headers: headers(OTHER_USER_ID) }),
+    )
+    expect(other.owned).toHaveLength(0)
   })
 })
 

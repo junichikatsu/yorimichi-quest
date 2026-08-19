@@ -41,6 +41,8 @@ export interface AppConfig {
   area: AreaSummary
   checkinRadiusM: number
   checkinCooldownHours: number
+  /** クイズ正解時のボーナス（FR-04-3）。暫定値、確定は Issue #7 */
+  quizCorrectPoints: number
   exploreTileSizeM: number
   exploreRevealRadiusM: number
   areaRadiusM: number
@@ -79,6 +81,7 @@ export function loadConfig(): AppConfig {
     // 暫定値。確定は Issue #7「ゲームパラメータの確定」で行う
     checkinRadiusM: readNumber('CHECKIN_RADIUS_M', 100),
     checkinCooldownHours: readNumber('CHECKIN_COOLDOWN_HOURS', 24),
+    quizCorrectPoints: readNumber('QUIZ_CORRECT_POINTS', 30),
     // 記録の粒度。小さくすると軌跡は滑らかになるが、書き込み回数が面積比で増える
     exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
     // タイルより大きくしないと、隣り合うタイルの間に霧が残って軌跡が途切れて見える

@@ -1,5 +1,11 @@
-import type { UserId } from '@map-checkin/shared'
-import { asUserId } from '@map-checkin/shared'
+import type { Avatar, Equipment, UserId } from '@map-checkin/shared'
+import {
+  DEFAULT_AVATAR,
+  EMPTY_EQUIPMENT,
+  asUserId,
+  equipmentSchema,
+  normalizeAvatar,
+} from '@map-checkin/shared'
 import type { DataStoreContext } from '../context.js'
 import { USER_PROFILE_RECORD_KEY, USERS_MAIN_KEY, USERS_SUB_KEY, userKey } from '../keys.js'
 import { runGet, runOp } from '../run.js'
@@ -11,6 +17,39 @@ export interface UserProfile {
   checkinCount: number
   createdAt: string
   lastActiveAt: string
+  /** キャラメイクの結果。未作成なら既定値 */
+  avatar: Avatar
+  /**
+   * 装備。
+   *
+   * 所持アイテムとは別テーブルにせずプロフィールへ持たせている。
+   * 見た目の描画とマイページ表示のたびに user_items を読み直すと
+   * getItem の回数が増えるため、1 レコードに寄せた（既存の設計方針に合わせる）。
+   */
+  equipment: Equipment
+}
+
+/**
+ * データストアは入れ子のオブジェクトを素直に扱えないため JSON 文字列で持つ。
+ * 読み出し側では必ず検証を通し、壊れていたら既定値へ落とす。
+ */
+function parseEquipment(value: unknown): Equipment {
+  if (typeof value !== 'string' || value === '') return EMPTY_EQUIPMENT
+  try {
+    const parsed = equipmentSchema.safeParse(JSON.parse(value))
+    return parsed.success ? parsed.data : EMPTY_EQUIPMENT
+  } catch {
+    return EMPTY_EQUIPMENT
+  }
+}
+
+function parseAvatar(value: unknown): Avatar {
+  if (typeof value !== 'string' || value === '') return DEFAULT_AVATAR
+  try {
+    return normalizeAvatar(JSON.parse(value))
+  } catch {
+    return DEFAULT_AVATAR
+  }
 }
 
 function toProfile(item: unknown): UserProfile | undefined {
@@ -25,6 +64,8 @@ function toProfile(item: unknown): UserProfile | undefined {
     checkinCount: typeof raw['checkinCount'] === 'number' ? raw['checkinCount'] : 0,
     createdAt: typeof raw['createdAt'] === 'string' ? raw['createdAt'] : '',
     lastActiveAt: typeof raw['lastActiveAt'] === 'string' ? raw['lastActiveAt'] : '',
+    avatar: parseAvatar(raw['avatar']),
+    equipment: parseEquipment(raw['equipment']),
   }
 }
 
@@ -61,6 +102,8 @@ export async function putUser(ctx: DataStoreContext, profile: UserProfile): Prom
         checkinCount: profile.checkinCount,
         createdAt: profile.createdAt,
         lastActiveAt: profile.lastActiveAt,
+        avatar: JSON.stringify(profile.avatar),
+        equipment: JSON.stringify(profile.equipment),
       },
     }),
   )

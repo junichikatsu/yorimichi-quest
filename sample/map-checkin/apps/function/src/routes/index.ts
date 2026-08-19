@@ -5,16 +5,26 @@ import {
 } from '@map-checkin/datastore'
 import {
   asSpotId,
+  avatarUpdateRequestSchema,
   checkinRequestSchema,
+  equipmentUpdateRequestSchema,
   explorationRequestSchema,
   isSpotId,
+  quizAnswerRequestSchema,
   spotsQuerySchema,
+  DEFAULT_AVATAR,
+  EMPTY_EQUIPMENT,
   MAX_EXPLORATION_POINTS,
+  type AvatarUpdateResponse,
   type ClientConfigResponse,
+  type EquipmentUpdateResponse,
   type ExplorationResponse,
   type ExplorationUpdateResponse,
   type HealthResponse,
+  type ItemsResponse,
   type MeResponse,
+  type QuizAnswerResponse,
+  type QuizResponse,
   type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
@@ -27,6 +37,13 @@ import { ADMIN_KEY_HEADER } from '../middleware/auth.js'
 import { userGate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { performCheckin } from '../services/checkin-service.js'
+import {
+  answerQuiz,
+  getQuiz,
+  listItems,
+  updateAvatar,
+  updateEquipment,
+} from '../services/game-service.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { seedSpots } from '../services/seed-service.js'
@@ -216,6 +233,79 @@ export function createRoutes(): Hono<AppEnv> {
     return c.json(response)
   })
 
+  /* ---------------- クイズ（FR-04） ---------------- */
+
+  routes.get('/v1/spots/:spotId/quiz', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const ctx = await contextFor()
+    const response: QuizResponse = await getQuiz(ctx, {
+      userId: c.get('userId'),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+    })
+    return c.json(response)
+  })
+
+  routes.post('/v1/spots/:spotId/quiz/answer', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = quizAnswerRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const response: QuizAnswerResponse = await answerQuiz(ctx, {
+      userId: c.get('userId'),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+      quizId: body.quizId,
+      choiceIndex: body.choiceIndex,
+      now: Date.now(),
+      correctPoints: config.quizCorrectPoints,
+    })
+    return c.json(response)
+  })
+
+  /* ---------------- アイテム・アバター（FR-07-8） ---------------- */
+
+  routes.get('/v1/items', async (c) => {
+    const ctx = await contextFor()
+    const response: ItemsResponse = await listItems(ctx, c.get('userId'))
+    return c.json(response)
+  })
+
+  routes.put('/v1/me/avatar', async (c) => {
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = avatarUpdateRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const avatar = await updateAvatar(ctx, c.get('userId'), body, Date.now())
+
+    const response: AvatarUpdateResponse = { avatar }
+    return c.json(response)
+  })
+
+  routes.put('/v1/me/equipment', async (c) => {
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = equipmentUpdateRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const equipment = await updateEquipment(ctx, c.get('userId'), body, Date.now())
+
+    const response: EquipmentUpdateResponse = { equipment }
+    return c.json(response)
+  })
+
   /* ---------------- マイページ ---------------- */
 
   routes.get('/v1/me', async (c) => {
@@ -232,6 +322,8 @@ export function createRoutes(): Hono<AppEnv> {
         totalPoints: profile?.totalPoints ?? 0,
         checkinCount: profile?.checkinCount ?? 0,
         createdAt: profile?.createdAt ?? '',
+        avatar: profile?.avatar ?? DEFAULT_AVATAR,
+        equipment: profile?.equipment ?? EMPTY_EQUIPMENT,
       },
       recentCheckins: recent.map((record) => ({
         checkinAt: new Date(record.checkinAt).toISOString(),

@@ -1,10 +1,17 @@
 import type {
+  Avatar,
+  AvatarUpdateResponse,
   CheckinResponse,
   ClientConfigResponse,
+  Equipment,
+  EquipmentUpdateResponse,
   ErrorResponse,
   ExplorationResponse,
   ExplorationUpdateResponse,
+  ItemsResponse,
   MeResponse,
+  QuizAnswerResponse,
+  QuizResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
 
@@ -49,7 +56,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PUT'
   body?: unknown
   /** 202 Accepted を待機として扱う場合の最大再送回数 */
   maxRetries?: number
@@ -176,6 +183,33 @@ export function postCheckin(
     method: 'POST',
     body: position,
   })
+}
+
+export function fetchQuiz(spotId: string): Promise<QuizResponse> {
+  return request<QuizResponse>(`/v1/spots/${encodeURIComponent(spotId)}/quiz`)
+}
+
+export function postQuizAnswer(
+  spotId: string,
+  quizId: string,
+  choiceIndex: number,
+): Promise<QuizAnswerResponse> {
+  return request<QuizAnswerResponse>(`/v1/spots/${encodeURIComponent(spotId)}/quiz/answer`, {
+    method: 'POST',
+    body: { quizId, choiceIndex },
+  })
+}
+
+export function fetchItems(): Promise<ItemsResponse> {
+  return request<ItemsResponse>('/v1/items')
+}
+
+export function putAvatar(avatar: Avatar): Promise<AvatarUpdateResponse> {
+  return request<AvatarUpdateResponse>('/v1/me/avatar', { method: 'PUT', body: avatar })
+}
+
+export function putEquipment(equipment: Equipment): Promise<EquipmentUpdateResponse> {
+  return request<EquipmentUpdateResponse>('/v1/me/equipment', { method: 'PUT', body: equipment })
 }
 
 export function fetchExploration(): Promise<ExplorationResponse> {

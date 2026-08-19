@@ -17,6 +17,8 @@ import { runGet, runOp } from '../run.js'
 export interface UserSpotState {
   lastCheckinAt: number
   visitCount: number
+  /** このスポットのクイズで報酬を受け取った時刻。再挑戦は可能だが報酬は一度だけ */
+  quizClearedAt: number | undefined
 }
 
 export async function getUserSpotState(
@@ -44,6 +46,11 @@ export async function getUserSpotState(
   return {
     lastCheckinAt: raw['lastCheckinAt'],
     visitCount: typeof raw['visitCount'] === 'number' ? raw['visitCount'] : 1,
+    // 書き込み側が未クリアを 0 で表すため、0 は undefined へ戻す
+    quizClearedAt:
+      typeof raw['quizClearedAt'] === 'number' && raw['quizClearedAt'] > 0
+        ? raw['quizClearedAt']
+        : undefined,
   }
 }
 
@@ -62,6 +69,8 @@ export async function putUserSpotState(
         [USER_SPOT_STATE_SUB_KEY]: spotStateKey(spotId),
         lastCheckinAt: state.lastCheckinAt,
         visitCount: state.visitCount,
+        // undefined は書けないため 0 を「未クリア」として扱う
+        quizClearedAt: state.quizClearedAt ?? 0,
       },
     }),
   )

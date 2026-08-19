@@ -14,6 +14,7 @@ import type { AreaId, SpotId, UserId } from '@map-checkin/shared'
  * | checkins        | user#<userId>     | <epochMs>             | 数値   |
  * | user_spot_state | user#<userId>     | spot#<spotId>         | 文字列 |
  * | explored_tiles  | user#<userId>     | <row>:<col>           | 文字列 |
+ * | user_items      | user#<userId>     | <itemKey>             | 文字列 |
  */
 
 export const SPOTS_MAIN_KEY = 'areaKey'
@@ -32,6 +33,14 @@ export const EXPLORED_TILES_MAIN_KEY = 'userKey'
  */
 export const EXPLORED_TILES_SUB_KEY = 'tileKey'
 
+export const USER_ITEMS_MAIN_KEY = 'userKey'
+/**
+ * ★ explored_tiles と同じく接頭辞を付けない。
+ * このテーブルはアイテムしか持たず、サブキー自体が定義済みのアイテムキーなので衝突しない。
+ * 接頭辞を付けると、レコード内の itemKey 列と名前が重複してしまう。
+ */
+export const USER_ITEMS_SUB_KEY = 'itemKey'
+
 export const USER_PROFILE_RECORD_KEY = 'profile'
 
 export function areaKey(areaId: AreaId): string {
@@ -45,3 +54,4 @@ export function userKey(userId: UserId): string {
 export function spotStateKey(spotId: SpotId): string {
   return `spot#${spotId}`
 }
+
