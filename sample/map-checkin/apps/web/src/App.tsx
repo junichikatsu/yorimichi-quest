@@ -50,6 +50,16 @@ interface Toast {
  */
 const RELOAD_DISTANCE_M = 25
 
+/**
+ * 移動が落ち着いたと見なすまでの待ち時間（ms）。
+ *
+ * ジョイスティックで動かしている間は現在地が毎フレーム変わるため、距離だけで判定すると
+ * 25m 進むたびに /spots・/me・/items の 3 本が飛び、レート制限（既定 60 req/分）に達する。
+ * 動きが止まってから取り直せば、握っている最中の通信をゼロにできる。
+ * 実際の歩行では位置情報が数秒おきにしか届かないので、この待ちは体感に出ない。
+ */
+const RELOAD_SETTLE_MS = 600
+
 export function App(): React.JSX.Element {
   const [config, setConfig] = useState<ClientConfigResponse | undefined>(undefined)
   const [spots, setSpots] = useState<SpotWithDistance[]>([])
@@ -97,11 +107,20 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     const next = geo.position
-    setFetchPosition((current) => {
-      if (!next) return undefined
-      if (current && distanceMeters(current, next) < RELOAD_DISTANCE_M) return current
-      return next
-    })
+    if (!next) {
+      setFetchPosition(undefined)
+      return
+    }
+
+    // 動いている間はタイマーが張り直され続けるので、止まってから 1 回だけ更新される
+    const timer = setTimeout(() => {
+      setFetchPosition((current) => {
+        if (current && distanceMeters(current, next) < RELOAD_DISTANCE_M) return current
+        return next
+      })
+    }, RELOAD_SETTLE_MS)
+
+    return () => clearTimeout(timer)
   }, [geo.position])
 
   const reload = useCallback(async () => {
