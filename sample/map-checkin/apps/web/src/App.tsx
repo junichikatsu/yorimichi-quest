@@ -1,4 +1,4 @@
-import { distanceMeters, interpolatePath } from '@map-checkin/core'
+import { distanceMeters, interpolatePath, offsetByMeters } from '@map-checkin/core'
 import {
   ITEM_DEFS,
   type Avatar,
@@ -10,7 +10,7 @@ import {
   type QuizResponse,
   type SpotWithDistance,
 } from '@map-checkin/shared'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   fetchClientConfig,
@@ -27,6 +27,7 @@ import { AvatarCreator } from './components/AvatarCreator.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
 import { ItemPanel } from './components/ItemPanel.js'
+import { JoystickControl } from './components/JoystickControl.js'
 import { MapView } from './components/MapView.js'
 import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
@@ -62,6 +63,9 @@ export function App(): React.JSX.Element {
   const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
   const [quizSpotId, setQuizSpotId] = useState<string | undefined>(undefined)
   const [creatorOpen, setCreatorOpen] = useState(false)
+  /** スマートフォンでのボトムシートの開閉。広い画面では常に開いた扱いになる */
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [joystickClosed, setJoystickClosed] = useState(false)
 
   const geo = useGeolocation()
   const exploration = useExploration(config?.exploration)
@@ -129,6 +133,11 @@ export function App(): React.JSX.Element {
     return () => clearTimeout(timer)
   }, [toast])
 
+  // 見せたいものが出たらシートを開く。ユーザーが毎回引き上げる手間をなくす
+  useEffect(() => {
+    if (selectedSpotId !== undefined || quiz !== undefined || creatorOpen) setSheetOpen(true)
+  }, [selectedSpotId, quiz, creatorOpen])
+
   const selectedSpot = spots.find((spot) => spot.spotId === selectedSpotId)
 
   const handleCheckin = useCallback(async () => {
@@ -168,6 +177,30 @@ export function App(): React.JSX.Element {
       setBusy(false)
     }
   }, [selectedSpot, geo.position, reload])
+
+  /**
+   * ジョイスティックによるデバッグ移動。
+   *
+   * 毎フレーム呼ばれるため、state の更新を待たずに ref を先に進める。
+   * state だけを見ると 1 フレーム前の位置から動かすことになり、
+   * 倒し続けても速度が出ない（更新のたびに巻き戻る）。
+   */
+  const positionRef = useRef<Position | undefined>(undefined)
+  useEffect(() => {
+    positionRef.current = geo.position
+  }, [geo.position])
+
+  const handleJoystickMove = useCallback(
+    (eastM: number, northM: number) => {
+      const base = positionRef.current ?? config?.area.center
+      if (!base) return
+
+      const next = offsetByMeters(base, eastM, northM)
+      positionRef.current = next
+      geo.simulate(next)
+    },
+    [config, geo],
+  )
 
   const handleAnswerQuiz = useCallback(
     async (choiceIndex: number) => {
@@ -267,6 +300,16 @@ export function App(): React.JSX.Element {
 
   const canUseMap = config.mapboxToken !== '' && !config.mockMode
 
+  // 位置情報が使えない環境でも導線を確認できるようにする（デバッグ用）
+  const needsJoystick = geo.status === 'denied' || geo.status === 'unavailable' || geo.status === 'simulated'
+  const sheetLabel = quiz
+    ? '防災クイズ'
+    : creatorOpen
+      ? 'キャラクターをつくる'
+      : selectedSpot
+        ? selectedSpot.name
+        : 'メニュー'
+
   return (
     <div className="app">
       <StatusBar
@@ -300,7 +343,32 @@ export function App(): React.JSX.Element {
           </div>
         )}
 
-        <aside className="sidebar">
+        {needsJoystick &&
+          (joystickClosed ? (
+            <button
+              type="button"
+              className="joystick-reopen"
+              onClick={() => setJoystickClosed(false)}
+            >
+              デバッグ移動
+            </button>
+          ) : (
+            <JoystickControl onMove={handleJoystickMove} onClose={() => setJoystickClosed(true)} />
+          ))}
+
+        <aside className={`sidebar${sheetOpen ? ' sidebar--open' : ''}`}>
+          <button
+            type="button"
+            className="sidebar__handle"
+            onClick={() => setSheetOpen((open) => !open)}
+            aria-expanded={sheetOpen}
+          >
+            <span className="sidebar__grip" aria-hidden="true" />
+            <span className="sidebar__handle-label">{sheetLabel}</span>
+            <span className="sidebar__handle-hint">{sheetOpen ? '閉じる' : '開く'}</span>
+          </button>
+
+          <div className="sidebar__body">
           {creatorOpen && me && (
             <AvatarCreator
               avatar={me.user.avatar}
@@ -360,7 +428,8 @@ export function App(): React.JSX.Element {
             mapEnabled={canUseMap}
           />
 
-          <HistoryPanel me={me} />
+            <HistoryPanel me={me} />
+          </div>
         </aside>
       </main>
 
