@@ -18,12 +18,34 @@ export interface QuizEntry {
   answerIndex: number
   /** 正解・不正解のどちらでも表示する（FR-04-6） */
   explanation: string
+  /**
+   * 出題の種類（FR-04-7 / 設計原則 G-8）。
+   *
+   * `action` は「まず何をするか」を問うもの、`knowledge` は施設の設備や備蓄など
+   * モノ・情報を問うもの。**行動を先に出す**ため、選択時は action を優先する。
+   */
+  kind: 'action' | 'knowledge'
 }
 
 const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- 避難所 ---------------- */
   {
+    quizId: 'shelter-action-1',
+    kind: 'action',
+    category: 'shelter',
+    question: '大きな地震で強い揺れを感じました。まずすることはどれですか。',
+    options: [
+      '頭を守って身を低くし、揺れが収まるのを待つ',
+      '避難所へ向かって走り出す',
+      '持ち出し袋をまとめる',
+    ],
+    answerIndex: 0,
+    explanation:
+      '揺れている最中に動くと、家具の転倒や落下物でけがをします。まず頭を守って身を低くし、収まってから移動してください。備蓄や持ち出し袋が役に立つのは、この最初の数十秒を生き延びた後です。',
+  },
+  {
     quizId: 'shelter-flood-1',
+    kind: 'action',
     category: 'shelter',
     question: '大雨で道路が冠水しています。歩いて避難するとき、最も危険なのはどれですか。',
     options: ['外れたマンホールや側溝に落ちる', '靴が濡れる', '景色が見えにくい'],
@@ -33,6 +55,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'shelter-open-1',
+    kind: 'knowledge',
     category: 'shelter',
     question: '避難所について、行ってみるまで分からないことが多いのはどれですか。',
     options: ['その時に開設されているか', '建物の名前', 'おおよその場所'],
@@ -42,6 +65,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'shelter-toilet-1',
+    kind: 'knowledge',
     category: 'shelter',
     question: '避難所でトイレが使いにくいと、なぜ命に関わるのですか。',
     options: [
@@ -57,6 +81,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- AED ---------------- */
   {
     quizId: 'aed-time-1',
+    kind: 'knowledge',
     category: 'aed',
     question: 'AEDについて、いざという時に確認しておくと役に立つのはどれですか。',
     options: ['24時間使える場所にあるか', '製造メーカー', '設置された年'],
@@ -66,6 +91,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'aed-use-1',
+    kind: 'action',
     category: 'aed',
     question: '倒れている人を見つけたとき、AEDが届くまでにすべきことはどれですか。',
     options: ['大声で助けを呼び、胸骨圧迫を始める', '到着を静かに待つ', '体を揺すって起こす'],
@@ -76,7 +102,22 @@ const QUIZ_ENTRIES: QuizEntry[] = [
 
   /* ---------------- バリアフリートイレ ---------------- */
   {
+    quizId: 'toilet-action-1',
+    kind: 'action',
+    category: 'accessible_toilet',
+    question: '車いすやベビーカーの家族と避難します。出発前にまず確かめることはどれですか。',
+    options: [
+      '通る道に段差や工事がないか',
+      '避難所の建物が新しいか',
+      '持ち物が全部そろっているか',
+    ],
+    answerIndex: 0,
+    explanation:
+      '避難所にたどり着けるかは、建物ではなく「そこまでの道」で決まります。段差や工事で通れないと、引き返す間に状況が悪くなります。持ち物をそろえるより先に、通れる道を決めてください。',
+  },
+  {
     quizId: 'toilet-access-1',
+    kind: 'knowledge',
     category: 'accessible_toilet',
     question: '車いすの人がトイレを使えるかどうかを左右するのは、次のうちどれですか。',
     options: ['中で向きを変えられる広さがあるか', '鏡の大きさ', '壁の色'],
@@ -86,6 +127,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'toilet-water-1',
+    kind: 'knowledge',
     category: 'accessible_toilet',
     question: '断水したとき、避難所のトイレはどうなりますか。',
     options: [
@@ -100,7 +142,22 @@ const QUIZ_ENTRIES: QuizEntry[] = [
 
   /* ---------------- 給水スポット ---------------- */
   {
+    quizId: 'water-action-1',
+    kind: 'action',
+    category: 'water',
+    question: '地震の揺れが収まりました。水について、まずすることはどれですか。',
+    options: [
+      '断水する前に、浴槽などへ生活用水を確保する',
+      '給水拠点へ向かう',
+      'ペットボトルを買いに行く',
+    ],
+    answerIndex: 0,
+    explanation:
+      '断水は揺れの直後ではなく少し経ってから起きることがあります。まだ水が出るうちに浴槽へ溜めておけば、トイレや手洗いに使えます。給水拠点が開くまでには時間がかかるため、先に手元で確保するほうが確実です。',
+  },
+  {
     quizId: 'water-supply-1',
+    kind: 'knowledge',
     category: 'water',
     question: '断水に備えて、1人が1日に必要とされる飲料水の目安はどれくらいですか。',
     options: ['約3リットル', '約0.5リットル', '約10リットル'],
@@ -110,6 +167,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'water-route-1',
+    kind: 'knowledge',
     category: 'water',
     question: '給水拠点へ水をもらいに行くとき、事前に知っておきたいのはどれですか。',
     options: ['そこまでの道に段差や坂がないか', '拠点の建物の築年数', '周辺の店の営業時間'],
@@ -147,10 +205,19 @@ function hashCode(value: string): number {
   return Math.abs(hash)
 }
 
-/** スポットのカテゴリに応じた出題を1件返す。正解は含めない */
+/**
+ * スポットのカテゴリに応じた出題を1件返す。正解は含めない。
+ *
+ * ★ 行動を問う設問（kind: 'action'）を優先する（FR-04-7 / G-8）。
+ * 備蓄や設備を問う設問しか出ないと、「モノをそろえれば備えたことになる」という
+ * 逆の学習になってしまう。行動の出題が無いカテゴリでは従来どおり全件から選ぶ。
+ */
 export function pickQuizForSpot(spotId: SpotId, category: SpotCategory): QuizPrompt | undefined {
-  const entries = ENTRIES_BY_CATEGORY[category]
-  if (entries === undefined || entries.length === 0) return undefined
+  const all = ENTRIES_BY_CATEGORY[category]
+  if (all === undefined || all.length === 0) return undefined
+
+  const actions = all.filter((entry) => entry.kind === 'action')
+  const entries = actions.length > 0 ? actions : all
 
   const entry = entries[hashCode(spotId) % entries.length]
   if (entry === undefined) return undefined

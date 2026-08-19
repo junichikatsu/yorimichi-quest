@@ -474,6 +474,15 @@ describe('クイズ（FR-04）', () => {
     })
   }
 
+  it('行動を問う設問が優先される（G-8：モノより先に行動）', async () => {
+    const body = await getQuiz()
+
+    // 避難所カテゴリには行動の設問（shelter-action-1）がある。
+    // 備蓄や設備の設問しか出ないと「モノをそろえれば備えたことになる」逆の学習になる
+    expect(body.quiz.quizId).toBe('shelter-action-1')
+    expect(body.quiz.question).toContain('まず')
+  })
+
   it('出題に正解は含まれない（配信物から答えが読めないこと）', async () => {
     const body = await getQuiz()
     expect(body.quiz.options.length).toBeGreaterThan(1)
