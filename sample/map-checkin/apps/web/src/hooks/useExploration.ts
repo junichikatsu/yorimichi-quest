@@ -11,8 +11,17 @@ import type { Position } from './useGeolocation.js'
  * **すでに塗られたタイルは送らない**。同じ場所に留まっている間は通信が発生しない。
  */
 
-/** 送信をまとめる待ち時間。歩きながらでもレート制限に触れない程度に間引く */
-const FLUSH_DELAY_MS = 4_000
+/**
+ * 送信をまとめる待ち時間。
+ *
+ * 同じタイルは積まれないので、待つほど 1 リクエストにまとまる件数が増えるだけで、
+ * 情報が失われることはない。歩行なら 30 秒で数タイル、ジョイスティックで
+ * 動かしても上限（maxPointsPerRequest）に収まる。
+ *
+ * 長く持つぶん、送る前にページを離れると未送信分が消える。
+ * これは下の「離脱時のフラッシュ」で埋めている。
+ */
+const FLUSH_DELAY_MS = 30_000
 
 export interface ExplorationState {
   tiles: ExploredTile[]
@@ -132,6 +141,39 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
     },
     [config, send],
   )
+
+  /**
+   * ページを離れる直前に、溜めている分を送る。
+   *
+   * 30 秒ぶん抱えている状態でタブを閉じられると、歩いた記録がまるごと消える。
+   * `visibilitychange` は iOS Safari を含めて最も確実に発火するタイミングなので、
+   * ここで送り出す。
+   *
+   * 完全な保証ではない（実際の unload では送信が打ち切られうる）。
+   * 探索タイルは失っても歩き直せば復帰する情報なので、確実性より単純さを取っている。
+   */
+  useEffect(() => {
+    const flushNow = (): void => {
+      if (pendingRef.current.size === 0) return
+      if (timerRef.current !== undefined) {
+        clearTimeout(timerRef.current)
+        timerRef.current = undefined
+      }
+      void flush()
+    }
+
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') flushNow()
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pagehide', flushNow)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pagehide', flushNow)
+    }
+  }, [flush])
 
   useEffect(() => {
     return () => {

@@ -1,4 +1,4 @@
-import { distanceMeters, interpolatePath, offsetByMeters } from '@map-checkin/core'
+import { interpolatePath, offsetByMeters } from '@map-checkin/core'
 import {
   ITEM_DEFS,
   type Avatar,
@@ -10,7 +10,7 @@ import {
   type QuizResponse,
   type SpotWithDistance,
 } from '@map-checkin/shared'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   fetchClientConfig,
@@ -35,6 +35,7 @@ import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
 import { useExploration } from './hooks/useExploration.js'
 import { type Position, useGeolocation } from './hooks/useGeolocation.js'
+import { withLocalDistance } from './spots.js'
 
 interface Toast {
   kind: 'success' | 'error'
@@ -42,27 +43,21 @@ interface Toast {
 }
 
 /**
- * スポット一覧を取り直す最小移動距離（m）。
+ * サーバーと同期する間隔（ms）。
  *
- * watchPosition は歩いている間ほぼ毎秒届く。そのたびに /spots と /me を取り直すと
- * レート制限（既定 60 req/分）にすぐ達してしまう。
- * チェックイン半径（既定 100m）より十分小さいので、圏内判定が古くなることはない。
- */
-const RELOAD_DISTANCE_M = 25
-
-/**
- * 移動が落ち着いたと見なすまでの待ち時間（ms）。
+ * 表示に必要な情報のうち**位置に依存するのは距離と並び順だけ**で、これはクライアントで
+ * 計算できる（`withLocalDistance`）。サーバーに問い合わせる必要があるのは、
+ * 他のユーザーのチェックインで checkinCount が動いた場合など、自分の操作では起きない変化だけ。
  *
- * ジョイスティックで動かしている間は現在地が毎フレーム変わるため、距離だけで判定すると
- * 25m 進むたびに /spots・/me・/items の 3 本が飛び、レート制限（既定 60 req/分）に達する。
- * 動きが止まってから取り直せば、握っている最中の通信をゼロにできる。
- * 実際の歩行では位置情報が数秒おきにしか届かないので、この待ちは体感に出ない。
+ * そのため移動では取り直さず、この間隔の定期同期に寄せている。
+ * 自分の操作（チェックイン・クイズ・装備変更）の直後は、待たずにその場で取り直す。
  */
-const RELOAD_SETTLE_MS = 600
+const SYNC_INTERVAL_MS = 30_000
 
 export function App(): React.JSX.Element {
   const [config, setConfig] = useState<ClientConfigResponse | undefined>(undefined)
-  const [spots, setSpots] = useState<SpotWithDistance[]>([])
+  /** サーバーから受け取ったままの一覧。距離と並びは表示直前にクライアントで付け直す */
+  const [rawSpots, setRawSpots] = useState<SpotWithDistance[]>([])
   const [me, setMe] = useState<MeResponse | undefined>(undefined)
   const [selectedSpotId, setSelectedSpotId] = useState<string | undefined>(undefined)
   const [toast, setToast] = useState<Toast | undefined>(undefined)
@@ -102,49 +97,51 @@ export function App(): React.JSX.Element {
     setToast({ kind: 'error', message: explorationError })
   }, [explorationError])
 
-  // 一覧取得に使う現在地。RELOAD_DISTANCE_M 以上動くまでは同じ値を返し続ける
-  const [fetchPosition, setFetchPosition] = useState<Position | undefined>(undefined)
-
-  useEffect(() => {
-    const next = geo.position
-    if (!next) {
-      setFetchPosition(undefined)
-      return
-    }
-
-    // 動いている間はタイマーが張り直され続けるので、止まってから 1 回だけ更新される
-    const timer = setTimeout(() => {
-      setFetchPosition((current) => {
-        if (current && distanceMeters(current, next) < RELOAD_DISTANCE_M) return current
-        return next
-      })
-    }, RELOAD_SETTLE_MS)
-
-    return () => clearTimeout(timer)
-  }, [geo.position])
-
-  const reload = useCallback(async () => {
+  /**
+   * サーバーとの同期。
+   *
+   * 現在地は渡さない。距離と並び順はクライアントで付け直すため、
+   * リクエストが位置に依らなくなり、同じ内容を何度も取り直さずに済む。
+   */
+  const reload = useCallback(async (options?: { silent?: boolean }) => {
     try {
       const [spotsResponse, meResponse, itemsResponse] = await Promise.all([
-        fetchSpots(fetchPosition),
+        fetchSpots(undefined),
         fetchMe(),
         fetchItems(),
       ])
-      setSpots(spotsResponse.spots)
+      setRawSpots(spotsResponse.spots)
       setMe(meResponse)
       setItems(itemsResponse)
     } catch (err: unknown) {
+      // 定期同期の失敗でトーストを出すと、通信が不安定なときに出っぱなしになる
+      if (options?.silent === true) return
       setToast({
         kind: 'error',
         message: err instanceof Error ? err.message : 'データを取得できませんでした',
       })
     }
-  }, [fetchPosition])
+  }, [])
 
   useEffect(() => {
     if (!config) return
     void reload()
   }, [config, reload])
+
+  // 定期同期。他のユーザーの行動による変化を拾う。裏に回っている間は止める
+  useEffect(() => {
+    if (!config) return
+
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'hidden') return
+      void reload({ silent: true })
+    }, SYNC_INTERVAL_MS)
+
+    return () => clearInterval(timer)
+  }, [config, reload])
+
+  /** 距離と並び順はここで付ける。現在地が動いても通信は発生しない */
+  const spots = useMemo(() => withLocalDistance(rawSpots, geo.position), [rawSpots, geo.position])
 
   useEffect(() => {
     if (!toast) return
