@@ -89,6 +89,125 @@ export function summarizeExploration(input: SummarizeExplorationInput): Explorat
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * エリア単位の開放
+ * ------------------------------------------------------------------ */
+
+/**
+ * タイルより大きい「エリア」の単位でまとめて開放する仕組み。
+ *
+ * タイルを 1 枚ずつ塗るだけだと、区画全体を晴らすのに道という道を歩く必要があり、
+ * 現実的な散歩では白い部分が延々と残る。**一定割合を歩いたらその区画は全部開放**する。
+ *
+ * ★ 区画の決め方はこの `areaKeyOf` に閉じ込めてある。
+ * いまはタイルを格子状に束ねているが、本来は**町丁目の境界**を区画にしたい。
+ * 町丁目のポリゴンを用意できたら、この関数を「座標 → 町丁目コード」に差し替えれば、
+ * 開放の判定も面積の集計もそのまま動く（呼び出し側は区画キーの中身を見ていない）。
+ */
+export interface AreaUnlockConfig {
+  tileSizeM: number
+  /** 1 区画の一辺のタイル数。6 なら 50m タイルで 300m 四方 */
+  blockTiles: number
+  /** 区画全体が開放される割合（0〜1） */
+  unlockRatio: number
+}
+
+export interface UnlockedArea {
+  areaKey: string
+  /** 区画の範囲。地図上でこの矩形ぶんの霧を晴らす */
+  north: number
+  south: number
+  east: number
+  west: number
+}
+
+function parseTileKey(tileKey: string): { row: number; col: number } | undefined {
+  const [rowRaw, colRaw] = tileKey.split(':')
+  if (rowRaw === undefined || colRaw === undefined) return undefined
+
+  const row = Number(rowRaw)
+  const col = Number(colRaw)
+  if (!Number.isFinite(row) || !Number.isFinite(col)) return undefined
+
+  return { row, col }
+}
+
+/** タイルが属する区画のキー。区画の決め方を変えるならここだけを差し替える */
+export function areaKeyOf(tileKey: string, blockTiles: number): string | undefined {
+  const parsed = parseTileKey(tileKey)
+  if (!parsed || blockTiles < 1) return undefined
+
+  return `${Math.floor(parsed.row / blockTiles)}:${Math.floor(parsed.col / blockTiles)}`
+}
+
+/** 1 区画に含まれるタイル数 */
+export function tilesPerArea(blockTiles: number): number {
+  return blockTiles * blockTiles
+}
+
+/**
+ * 歩いたタイルから、開放された区画の一覧を返す。
+ *
+ * 判定は区画ごとの「歩いたタイル数 ÷ 区画のタイル数」。
+ * 閾値に届いた区画だけを返すので、届いていない区画は従来どおりタイル単位で晴れる。
+ */
+export function unlockedAreas(
+  tileKeys: Iterable<string>,
+  config: AreaUnlockConfig,
+): UnlockedArea[] {
+  const counts = new Map<string, number>()
+  for (const tileKey of tileKeys) {
+    const areaKey = areaKeyOf(tileKey, config.blockTiles)
+    if (areaKey === undefined) continue
+    counts.set(areaKey, (counts.get(areaKey) ?? 0) + 1)
+  }
+
+  const needed = Math.max(1, Math.ceil(tilesPerArea(config.blockTiles) * config.unlockRatio))
+  const step = stepOf(config.tileSizeM)
+  const areas: UnlockedArea[] = []
+
+  for (const [areaKey, count] of counts) {
+    if (count < needed) continue
+
+    const parsed = parseTileKey(areaKey)
+    if (!parsed) continue
+
+    const south = parsed.row * config.blockTiles * step
+    const west = parsed.col * config.blockTiles * step
+    areas.push({
+      areaKey,
+      south,
+      west,
+      north: south + config.blockTiles * step,
+      east: west + config.blockTiles * step,
+    })
+  }
+
+  return areas
+}
+
+/**
+ * 集計に使う実効タイル数。
+ *
+ * 開放済みの区画は、実際に歩いていないタイルも含めて全面を数える。
+ * 見えている範囲と数値がずれると「晴れているのに探索率が上がらない」ことになるため、
+ * 表示と同じ基準で数える。
+ */
+export function effectiveTileCount(
+  tileKeys: Iterable<string>,
+  config: AreaUnlockConfig,
+): number {
+  const keys = [...tileKeys]
+  const unlocked = new Set(unlockedAreas(keys, config).map((area) => area.areaKey))
+
+  const outside = keys.filter((tileKey) => {
+    const areaKey = areaKeyOf(tileKey, config.blockTiles)
+    return areaKey === undefined || !unlocked.has(areaKey)
+  }).length
+
+  return unlocked.size * tilesPerArea(config.blockTiles) + outside
+}
+
 /**
  * 2 点間を stepM 間隔で補間した経路を返す（始点は含まず、終点を含む）。
  *

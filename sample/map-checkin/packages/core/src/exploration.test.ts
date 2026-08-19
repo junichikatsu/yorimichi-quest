@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  areaKeyOf,
+  effectiveTileCount,
   interpolatePath,
   summarizeExploration,
+  tilesPerArea,
+  unlockedAreas,
   tileAreaM2,
   tileOf,
 } from './exploration.js'
@@ -175,5 +179,97 @@ describe('formatArea', () => {
 
   it('1ha 以上は km² 表記', () => {
     expect(formatArea(180_000)).toBe('0.18km²')
+  })
+})
+
+/**
+ * エリア単位の開放。
+ *
+ * タイルを 1 枚ずつ塗るだけでは区画全体を晴らすのに歩きすぎるため、
+ * 一定割合で全面を開放する。判定は FE と BE の両方から同じ関数を呼ぶので、
+ * ここがずれると「見た目は晴れているのに探索率が上がらない」ことになる。
+ */
+const UNLOCK = { tileSizeM: 50, blockTiles: 6, unlockRatio: 0.25 }
+
+/**
+ * 1 区画の中を埋めるタイルキーを作る。
+ *
+ * ★ 1 行に並べてはいけない。区画は 6×6 なので、横一列では 6 枚で隣の区画へはみ出す。
+ * 行方向へ折り返して同じ区画に収める。
+ */
+function tileKeys(count: number, blockRow = 0, blockCol = 0): string[] {
+  return Array.from({ length: count }, (_, i) => {
+    const row = blockRow * 6 + Math.floor(i / 6)
+    const col = blockCol * 6 + (i % 6)
+    return `${row}:${col}`
+  })
+}
+
+describe('areaKeyOf', () => {
+  it('同じ区画のタイルは同じキーになる', () => {
+    expect(areaKeyOf('0:0', 6)).toBe(areaKeyOf('5:5', 6))
+    expect(areaKeyOf('0:0', 6)).not.toBe(areaKeyOf('6:0', 6))
+  })
+
+  it('負の座標でも区画が分かれる（南半球・西経でも破綻しない）', () => {
+    expect(areaKeyOf('-1:-1', 6)).toBe('-1:-1')
+    expect(areaKeyOf('-6:-6', 6)).toBe('-1:-1')
+    expect(areaKeyOf('-7:-7', 6)).toBe('-2:-2')
+  })
+
+  it('壊れたキーは undefined', () => {
+    expect(areaKeyOf('abc', 6)).toBeUndefined()
+    expect(areaKeyOf('1', 6)).toBeUndefined()
+  })
+})
+
+describe('unlockedAreas', () => {
+  it('閾値に届いた区画だけを返す', () => {
+    // 6×6=36 タイルの 25% は 9 タイル
+    expect(unlockedAreas(tileKeys(8), UNLOCK)).toHaveLength(0)
+    expect(unlockedAreas(tileKeys(9), UNLOCK)).toHaveLength(1)
+  })
+
+  it('区画の範囲はタイル 6 枚ぶんの矩形になる', () => {
+    const [area] = unlockedAreas(tileKeys(9), UNLOCK)
+    expect(area).toBeDefined()
+    if (!area) return
+
+    const step = 50 / 111_320
+    expect(area.south).toBeCloseTo(0, 10)
+    expect(area.north).toBeCloseTo(step * 6, 10)
+    expect(area.east - area.west).toBeCloseTo(step * 6, 10)
+  })
+
+  it('別々の区画は個別に判定される', () => {
+    // 区画 0:0 は 9 枚（開放）、区画 0:1 は 3 枚（未開放）
+    const keys = [...tileKeys(9, 0, 0), ...tileKeys(3, 0, 1)]
+    const areas = unlockedAreas(keys, UNLOCK)
+
+    expect(areas).toHaveLength(1)
+    expect(areas[0]?.areaKey).toBe('0:0')
+  })
+
+  it('区画あたりのタイル数は一辺の 2 乗', () => {
+    expect(tilesPerArea(6)).toBe(36)
+  })
+})
+
+describe('effectiveTileCount', () => {
+  it('未開放なら歩いたタイル数のまま', () => {
+    expect(effectiveTileCount(tileKeys(8), UNLOCK)).toBe(8)
+  })
+
+  it('開放された区画は全面（36枚）として数える', () => {
+    expect(effectiveTileCount(tileKeys(9), UNLOCK)).toBe(36)
+  })
+
+  it('開放済みの区画の中を歩き足しても二重に数えない', () => {
+    expect(effectiveTileCount(tileKeys(20), UNLOCK)).toBe(36)
+  })
+
+  it('開放区画の外のタイルは別に足される', () => {
+    const keys = [...tileKeys(9, 0, 0), ...tileKeys(2, 0, 1)]
+    expect(effectiveTileCount(keys, UNLOCK)).toBe(38)
   })
 })

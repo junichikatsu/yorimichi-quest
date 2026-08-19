@@ -45,6 +45,9 @@ export interface AppConfig {
   quizCorrectPoints: number
   exploreTileSizeM: number
   exploreRevealRadiusM: number
+  /** エリア開放の区画サイズ（タイル数）と閾値。暫定値、確定は Issue #7 */
+  exploreBlockTiles: number
+  exploreUnlockRatio: number
   areaRadiusM: number
   maxSpotsPerRequest: number
   maxExploredTilesPerRequest: number
@@ -84,6 +87,9 @@ export function loadConfig(): AppConfig {
     quizCorrectPoints: readNumber('QUIZ_CORRECT_POINTS', 30),
     // 記録の粒度。小さくすると軌跡は滑らかになるが、書き込み回数が面積比で増える
     exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
+    // 6 タイル＝300m 四方を 1 区画とし、その 25%（9 タイル）を歩けば全面が開く
+    exploreBlockTiles: readNumber('EXPLORE_BLOCK_TILES', 6),
+    exploreUnlockRatio: readNumber('EXPLORE_UNLOCK_RATIO', 0.25),
     // タイルより大きくしないと、隣り合うタイルの間に霧が残って軌跡が途切れて見える
     exploreRevealRadiusM: readNumber('EXPLORE_REVEAL_RADIUS_M', 40),
     // 探索率の分母。エリア中心からこの半径の円を「探索の対象範囲」とみなす

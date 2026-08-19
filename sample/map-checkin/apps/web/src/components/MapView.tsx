@@ -1,4 +1,11 @@
-import type { AreaSummary, Avatar, Equipment, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
+import type {
+  AreaSummary,
+  Avatar,
+  Equipment,
+  ExploredTile,
+  SpotWithDistance,
+  UnlockedAreaBounds,
+} from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
@@ -16,6 +23,8 @@ interface MapViewProps {
   area: AreaSummary
   spots: SpotWithDistance[]
   exploredTiles: ExploredTile[]
+  /** 全面が開放された区画。タイルの円とは別に、矩形でまとめて晴らす */
+  unlockedAreas: UnlockedAreaBounds[]
   revealRadiusM: number
   position: Position | undefined
   selectedSpotId: string | undefined
@@ -84,6 +93,7 @@ export function MapView({
   area,
   spots,
   exploredTiles,
+  unlockedAreas,
   revealRadiusM,
   position,
   selectedSpotId,
@@ -98,6 +108,7 @@ export function MapView({
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   // 地図のイベントから毎フレーム読むので、再購読が要らない ref に持つ
   const tilesRef = useRef<ExploredTile[]>(exploredTiles)
+  const areasRef = useRef<UnlockedAreaBounds[]>(unlockedAreas)
 
   /** 地図の中心を現在地に合わせ続けるか。利用者が地図を動かすと解除する */
   const [following, setFollowing] = useState(true)
@@ -221,6 +232,28 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'destination-out'
     const zoom = map.getZoom()
+
+    /*
+     * 先に開放済みの区画を矩形でくり抜く。
+     *
+     * 円だけで晴らすと、道に沿った筋しか消えず区画の内側が白いまま残る。
+     * 区画は隣と接しているので、境界に隙間が出ないよう 1px ぶん広げて塗る。
+     */
+    for (const area of areasRef.current) {
+      const topLeft = map.project([area.west, area.north])
+      const bottomRight = map.project([area.east, area.south])
+
+      const left = Math.min(topLeft.x, bottomRight.x)
+      const top = Math.min(topLeft.y, bottomRight.y)
+      const right = Math.max(topLeft.x, bottomRight.x)
+      const bottom = Math.max(topLeft.y, bottomRight.y)
+
+      if (right < 0 || bottom < 0 || left > width || top > height) continue
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+      ctx.fillRect(left - 1, top - 1, right - left + 2, bottom - top + 2)
+    }
+
     for (const tile of tilesRef.current) {
       const point = map.project([tile.lng, tile.lat])
       const radius = metersToPixels(revealRadiusM, tile.lat, zoom)
@@ -280,8 +313,9 @@ export function MapView({
 
   useEffect(() => {
     tilesRef.current = exploredTiles
+    areasRef.current = unlockedAreas
     drawFog()
-  }, [exploredTiles, drawFog])
+  }, [exploredTiles, unlockedAreas, drawFog])
 
   // スポットのマーカーを差分更新する
   useEffect(() => {

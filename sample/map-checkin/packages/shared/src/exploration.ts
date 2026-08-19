@@ -28,7 +28,7 @@ export interface ExplorationSummary {
   truncated: boolean
 }
 
-/** グリッドの寸法。FE は送信前の重複判定にこの値を使う */
+/** グリッドの寸法。FE は送信前の重複判定と、開放判定の先読みにこの値を使う */
 export interface ExplorationConfig {
   /** 記録の粒度（m 四方） */
   tileSizeM: number
@@ -38,4 +38,22 @@ export interface ExplorationConfig {
   areaRadiusM: number
   /** 1 リクエストで送れる座標の上限 */
   maxPointsPerRequest: number
+  /** 1 区画の一辺のタイル数（エリア開放の単位） */
+  blockTiles: number
+  /** 区画全体が開放される割合（0〜1） */
+  unlockRatio: number
+  /**
+   * 面積計算の基準にする緯度（対象エリアの中心）。
+   * これが無いと、クライアントはサーバーと同じ探索率を計算できない。
+   */
+  latitude: number
+}
+
+/** 一定割合を歩いたことで全面が開放された区画 */
+export interface UnlockedAreaBounds {
+  areaKey: string
+  north: number
+  south: number
+  east: number
+  west: number
 }

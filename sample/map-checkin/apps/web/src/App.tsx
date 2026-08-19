@@ -343,6 +343,7 @@ export function App(): React.JSX.Element {
             area={config.area}
             spots={spots}
             exploredTiles={exploration.tiles}
+            unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
             position={geo.position}
             selectedSpotId={selectedSpotId}

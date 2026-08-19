@@ -5,6 +5,7 @@ import {
   type ExplorationConfig,
   type ExplorationSummary,
   type ExploredTile,
+  type UnlockedAreaBounds,
 } from './exploration.js'
 import type { SpotId, UserId } from './ids.js'
 import { avatarSchema, type Avatar } from './avatar.js'
@@ -155,6 +156,8 @@ export interface QuizResponse {
 
 export interface ExplorationResponse {
   tiles: ExploredTile[]
+  /** 一定割合を歩いて全面が開放された区画。タイルとは別に返し、payload を膨らませない */
+  unlockedAreas: UnlockedAreaBounds[]
   summary: ExplorationSummary
 }
 

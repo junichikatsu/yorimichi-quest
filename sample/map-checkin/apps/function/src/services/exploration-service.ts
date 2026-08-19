@@ -1,4 +1,11 @@
-import { summarizeExploration, tileOf, type LatLng } from '@map-checkin/core'
+import {
+  effectiveTileCount,
+  summarizeExploration,
+  tileOf,
+  unlockedAreas,
+  type AreaUnlockConfig,
+  type LatLng,
+} from '@map-checkin/core'
 import {
   listExploredTiles,
   putExploredTile,
@@ -19,6 +26,10 @@ export interface ExplorationParams {
   latitude: number
   areaRadiusM: number
   maxTiles: number
+  /** エリア開放の区画サイズ（タイル数） */
+  blockTiles: number
+  /** 区画全体が開放される割合（0〜1） */
+  unlockRatio: number
 }
 
 function toApiTile(record: ExploredTileRecord): ExploredTile {
@@ -31,10 +42,20 @@ function toApiTile(record: ExploredTileRecord): ExploredTile {
 }
 
 function toResponse(records: ExploredTileRecord[], params: ExplorationParams): ExplorationResponse {
+  const unlockConfig: AreaUnlockConfig = {
+    tileSizeM: params.tileSizeM,
+    blockTiles: params.blockTiles,
+    unlockRatio: params.unlockRatio,
+  }
+  const tileKeys = records.map((record) => record.tileKey)
+
   return {
     tiles: records.map(toApiTile),
+    unlockedAreas: unlockedAreas(tileKeys, unlockConfig),
     summary: summarizeExploration({
-      tileCount: records.length,
+      // 開放済みの区画は歩いていないタイルも含めて数える。
+      // 見えている範囲と数値がずれると「晴れているのに探索率が上がらない」ことになる
+      tileCount: effectiveTileCount(tileKeys, unlockConfig),
       tileSizeM: params.tileSizeM,
       latitude: params.latitude,
       areaRadiusM: params.areaRadiusM,

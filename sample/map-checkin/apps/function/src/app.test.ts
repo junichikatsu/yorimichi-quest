@@ -157,6 +157,10 @@ describe('GET /v1/client-config', () => {
       revealRadiusM: 40,
       areaRadiusM: 1500,
       maxPointsPerRequest: 200,
+      // 開放の判定は FE でも先読みするため、閾値と緯度も渡す
+      blockTiles: 6,
+      unlockRatio: 0.25,
+      latitude: 35.6785,
     })
   })
 })
@@ -259,6 +263,67 @@ describe('探索済みエリア（歩いたところ）', () => {
 
   it('緯度経度が範囲外なら 400', async () => {
     expect((await record([{ lat: 999, lng: 139.7 }])).status).toBe(400)
+  })
+})
+
+describe('エリア開放（一定割合を歩くと区画全体が開く）', () => {
+  /**
+   * 既定は 6×6 タイル＝36 枚の区画で、25%（9 枚）歩けば全面が開く。
+   * タイルは 50m 四方なので、東西へ 6 枚進むと隣の区画に入る。行方向へ折り返して埋める。
+   */
+  function pointsInBlock(count: number): { lat: number; lng: number }[] {
+    const step = 50 / 111_320
+    const base = { lat: 35.6785, lng: 139.7594 }
+    return Array.from({ length: count }, (_, i) => ({
+      lat: base.lat + Math.floor(i / 6) * step,
+      lng: base.lng + (i % 6) * step,
+    }))
+  }
+
+  async function record(points: { lat: number; lng: number }[]): Promise<ExplorationUpdateResponse> {
+    return json<ExplorationUpdateResponse>(
+      await app.request('/v1/exploration', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ points }),
+      }),
+    )
+  }
+
+  it('閾値に届かないうちは区画が開かない', async () => {
+    const result = await record(pointsInBlock(8))
+
+    expect(result.unlockedAreas).toHaveLength(0)
+    expect(result.summary.tileCount).toBe(8)
+  })
+
+  it('25%（9枚）歩くと区画全体が開き、探索率も全面ぶんになる', async () => {
+    const result = await record(pointsInBlock(9))
+
+    expect(result.unlockedAreas).toHaveLength(1)
+    // 歩いたのは 9 枚でも、開放されたので 36 枚ぶんとして数える
+    expect(result.summary.tileCount).toBe(36)
+  })
+
+  it('開放後に GET で取り直しても同じ結果になる（FE と BE で判定がずれない）', async () => {
+    await record(pointsInBlock(9))
+
+    const fetched = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers() }),
+    )
+    expect(fetched.unlockedAreas).toHaveLength(1)
+    expect(fetched.summary.tileCount).toBe(36)
+    // 保存しているのは実際に歩いた分だけ。開放は都度計算する
+    expect(fetched.tiles).toHaveLength(9)
+  })
+
+  it('開放は他ユーザーに影響しない', async () => {
+    await record(pointsInBlock(9))
+
+    const other = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers(OTHER_USER_ID) }),
+    )
+    expect(other.unlockedAreas).toHaveLength(0)
   })
 })
 
