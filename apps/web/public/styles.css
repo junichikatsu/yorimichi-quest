@@ -719,3 +719,16 @@ button {
     bottom: 16px;
   }
 }
+
+/* 実測へ戻すボタン。模擬位置のときだけ出る */
+.joystick__reset {
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}

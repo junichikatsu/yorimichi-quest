@@ -49,10 +49,33 @@ describe('shouldOfferDebugMove', () => {
     )
   })
 
-  it('模擬位置に切り替わったあとも出し続ける（操作を続けられる）', () => {
+  it('★ 模擬位置に切り替わったあとも出し続ける（PC）', () => {
     expect(shouldOfferDebugMove(context({ geoStatus: 'simulated', hasFinePointer: true }))).toBe(
       true,
     )
+  })
+
+  it('★ 模擬位置なら精密なポインタが無くても出し続ける', () => {
+    /*
+     * 動かすと状態が simulated へ変わる。ここを落とすと、
+     * 「測位できないから出した」ジョイスティックが**操作した途端に消える**。
+     * 出した理由が操作の結果で消えてしまう形の抜けで、実際にそうなった。
+     */
+    expect(shouldOfferDebugMove(context({ geoStatus: 'simulated', hasFinePointer: false }))).toBe(
+      true,
+    )
+  })
+
+  it('★ 模擬位置でも LINE アプリ内では出さない', () => {
+    expect(
+      shouldOfferDebugMove(context({ geoStatus: 'simulated', inLineClient: true })),
+    ).toBe(false)
+  })
+
+  it('★ 模擬位置でもサーバーが無効にしていれば出さない', () => {
+    expect(
+      shouldOfferDebugMove(context({ geoStatus: 'simulated', enabledByServer: false })),
+    ).toBe(false)
   })
 
   it('測位前（idle）にスマートフォンで開いた場合は出さない', () => {

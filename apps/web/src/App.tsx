@@ -289,7 +289,12 @@ export function App(): React.JSX.Element {
               デモ移動
             </button>
           ) : (
-            <JoystickControl onMove={handleJoystickMove} onClose={() => setJoystickClosed(true)} />
+            <JoystickControl
+              onMove={handleJoystickMove}
+              onClose={() => setJoystickClosed(true)}
+              onReset={() => geo.simulate(undefined)}
+              simulating={geo.status === 'simulated'}
+            />
           ))}
 
         <aside className="sidebar">
