@@ -80,12 +80,38 @@ export function isNotFoundError(err: unknown): boolean {
   return /not\s*found/i.test(rawMessageOf(err))
 }
 
+/**
+ * 失敗理由の記述をログへ出す長さの上限。
+ *
+ * ★ SDK の生メッセージには送信したアイテムの記述が混ざりうるため、
+ * レスポンスには出さず、ログにも頭だけを出す。
+ */
+const REASON_LOG_LIMIT = 300
+
+/**
+ * ★ 失敗理由の記述を捨てない。
+ *
+ * SDK は操作エラーを**文字列のまま** throw する。分類（`failed`）だけ取り出して
+ * 文字列を捨てると、「テーブルが無い」「キー名が違う」「上限に達した」がすべて
+ * 同じ `failed` に見え、**本番で切り分けられなくなる**。
+ *
+ * レスポンスには出さない（アイテムの記述が混ざりうる）。実行環境のログには
+ * 頭 300 文字までに切って出す。
+ */
+function logReason(operation: DataStoreOperation, reason: string): void {
+  const head = reason.slice(0, REASON_LOG_LIMIT)
+  console.warn(`[datastore] ${operation} failed: ${head}`)
+}
+
 export function classifyDataStoreError(operation: DataStoreOperation, err: unknown): DataStoreError {
   if (typeof err === 'string') {
-    // 文字列 throw = 操作自体は届いたが失敗した
+    // 文字列 throw = 操作自体は届いたが失敗した（テーブル不在・キー不正・上限など）
+    logReason(operation, err)
     return new DataStoreError(operation, 'failed', 'DataStoreOperationError')
   }
   if (err instanceof Error) {
+    // 到達できない側。message には接続情報が入りうるので name だけ出す
+    console.warn(`[datastore] ${operation} unreachable: ${err.name || 'Error'}`)
     return new DataStoreError(operation, 'threw', err.name || 'Error')
   }
   return new DataStoreError(operation, 'threw', 'UnknownError')

@@ -152,6 +152,37 @@ export interface SpotResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * 管理（FR-10-2）
+ * ------------------------------------------------------------------ */
+
+/**
+ * スポット投入の範囲。
+ *
+ * ★ 一息に全件入れない。データストアに一括投入が無く、**アクセス数に月次上限がある**ため、
+ * 少しずつ入れて途中で止まっても再開できる形にしている。
+ */
+export const seedQuerySchema = z.object({
+  offset: z.coerce.number().int().min(0).optional(),
+  count: z.coerce.number().int().min(1).max(500).optional(),
+  /** 1件ごとの間隔（ミリ秒）。書き込みが速すぎて弾かれる場合に効かせる */
+  delayMs: z.coerce.number().int().min(0).max(1000).optional(),
+})
+
+export type SeedQuery = z.infer<typeof seedQuerySchema>
+
+export interface SeedResponse {
+  area: AreaSummary
+  total: number
+  from: number
+  to: number
+  inserted: number
+  /** 途中で止まった位置。undefined なら指定範囲を完走した */
+  stoppedAt: number | undefined
+  /** 次に指定する offset。null なら全件終わっている */
+  nextOffset: number | null
+}
+
+/* ------------------------------------------------------------------ *
  * 死活確認
  * ------------------------------------------------------------------ */
 

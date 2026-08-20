@@ -5,6 +5,7 @@ import type {
   HealthResponse,
   LoginResponse,
   MeResponse,
+  SeedResponse,
   SpotsResponse,
 } from '@imanouchi/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -414,7 +415,61 @@ describe('POST /v1/admin/seed', () => {
       headers: { 'x-admin-key': 'test-admin-key' },
     })
     expect(response.status).toBe(200)
-    expect((await json<{ inserted: number }>(response)).inserted).toBeGreaterThan(0)
+    expect((await json<SeedResponse>(response)).inserted).toBeGreaterThan(0)
+  })
+
+  it('★ 範囲を指定して少しずつ入れられる（一息に入れない）', async () => {
+    const first = await json<SeedResponse>(
+      await app.request('/v1/admin/seed?offset=0&count=2', {
+        method: 'POST',
+        headers: { 'x-admin-key': 'test-admin-key' },
+      }),
+    )
+    expect(first.inserted).toBe(2)
+    expect(first.from).toBe(0)
+    expect(first.to).toBe(2)
+    // 続きの位置が返る
+    expect(first.nextOffset).toBe(2)
+    expect(first.stoppedAt).toBeUndefined()
+
+    const second = await json<SeedResponse>(
+      await app.request(`/v1/admin/seed?offset=${first.nextOffset}&count=100`, {
+        method: 'POST',
+        headers: { 'x-admin-key': 'test-admin-key' },
+      }),
+    )
+    expect(second.from).toBe(2)
+    // 全件入り切ったので次は無い
+    expect(second.nextOffset).toBeNull()
+  })
+
+  it('★ 1件だけ入れて設定の誤りを切り分けられる', async () => {
+    const body = await json<SeedResponse>(
+      await app.request('/v1/admin/seed?count=1', {
+        method: 'POST',
+        headers: { 'x-admin-key': 'test-admin-key' },
+      }),
+    )
+    expect(body.inserted).toBe(1)
+    expect(body.total).toBeGreaterThan(1)
+  })
+
+  it('★ 範囲の指定が不正なら 400', async () => {
+    const response = await app.request('/v1/admin/seed?count=0', {
+      method: 'POST',
+      headers: { 'x-admin-key': 'test-admin-key' },
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('間隔を指定しても入る（速すぎる書き込みを避けられる）', async () => {
+    const body = await json<SeedResponse>(
+      await app.request('/v1/admin/seed?count=2&delayMs=1', {
+        method: 'POST',
+        headers: { 'x-admin-key': 'test-admin-key' },
+      }),
+    )
+    expect(body.inserted).toBe(2)
   })
 
   it('★ 管理キーが違えば 403（401 ではない）', async () => {

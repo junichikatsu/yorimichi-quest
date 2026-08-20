@@ -4,12 +4,14 @@ import {
   consentRequestSchema,
   isSpotId,
   loginRequestSchema,
+  seedQuerySchema,
   spotsQuerySchema,
   toUserView,
   type ClientConfigResponse,
   type HealthResponse,
   type LoginResponse,
   type MeResponse,
+  type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
 } from '@imanouchi/shared'
@@ -222,6 +224,8 @@ export function createRoutes(): Hono<AppEnv> {
    * スポットの投入（FR-10-2）。
    *
    * ★ 件数ぶん putItem が走るので、管理キーを必須にしている。
+   * ★ 既定では 50 件ずつ。全件入れるには nextOffset をたどって繰り返す。
+   *   一息に入れるとタイムアウトし、やり直しのたびにアクセス数（月次上限）を消費する。
    */
   routes.post('/v1/admin/seed', async (c) => {
     const config = loadConfig()
@@ -232,9 +236,25 @@ export function createRoutes(): Hono<AppEnv> {
       throw forbidden('管理キーが一致しません')
     }
 
+    const query = seedQuerySchema.parse({
+      offset: c.req.query('offset'),
+      count: c.req.query('count'),
+      delayMs: c.req.query('delayMs'),
+    })
+
     const ctx = await contextFor()
-    const result = await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()))
-    return c.json({ area: config.area, ...result })
+    const result = await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()), {
+      offset: query.offset ?? 0,
+      count: query.count ?? 50,
+      delayMs: query.delayMs ?? 0,
+    })
+
+    if (result.stoppedAt !== undefined) {
+      console.warn(`[seed] stopped at ${result.stoppedAt} after ${result.inserted} inserted`)
+    }
+
+    const response: SeedResponse = { area: config.area, ...result }
+    return c.json(response)
   })
 
   return routes

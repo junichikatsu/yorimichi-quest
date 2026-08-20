@@ -34,5 +34,7 @@ export async function ensureFakeSeeded(ctx: DataStoreContext): Promise<void> {
   const config = loadConfig()
   if (!config.useFakeDataStore || fakeSeeded) return
   fakeSeeded = true
-  await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()))
+  const spots = datasetSpots(config.area.areaId, new Date().toISOString())
+  // インメモリ実装なので上限も速度も関係ない。全件入れる
+  await seedSpots(ctx, spots, { offset: 0, count: spots.length, delayMs: 0 })
 }
