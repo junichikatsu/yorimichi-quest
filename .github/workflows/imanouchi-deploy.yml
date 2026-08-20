@@ -51,9 +51,12 @@ jobs:
           done
           exit $fail
 
+      # ★ pnpm のバージョンは package.json の packageManager を正とする。
+      #   ここに version: を書くと「Multiple versions of pnpm specified」で失敗する。
+      #   action-setup は既定でリポジトリ直下を読むため、どちらを読むかを明示する。
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          package_json_file: package.json
 
       - uses: actions/setup-node@v4
         with:

@@ -55,9 +55,11 @@ jobs:
           done
           exit $fail
 
+      # ★ リポジトリ直下にも package.json ができたため、読む対象を明示する。
+      #   既定（直下）のままだと、直下の packageManager と version: が衝突して失敗する。
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          package_json_file: sample/map-checkin/package.json
 
       - uses: actions/setup-node@v4
         with:
