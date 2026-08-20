@@ -14,6 +14,7 @@
 | [要件定義書](doc/requirements.md) | 第1部 概要編（目的・スコープ・KPI）／第2部 詳細編（機能要件・画面・データモデル・API・非機能要件） |
 | [ピッチ資料](doc/YORIMICHI_QUEST_Gamified_Safety.pdf) | リーンキャンバス／バリュープロポジション・キャンバスを含むスライド |
 | [オープンデータ ソース一覧](doc/opendata-sources.md) | FR-10 で取り込む候補データセット（東京都・区市町村）の棚卸し |
+| [防災士ヒアリング アンケート設計](doc/hearing-bousaishi.md) | #14（収集データ項目の定義）の入力を集めるための Google フォーム設問設計と生成スクリプト |
 | [サンプル実装](sample/README.md) | 技術検証用サンプルの一覧。現在は [map-checkin](sample/map-checkin/)（地図・チェックイン・ポイント）を収録 |
 
 ## サービス概要
