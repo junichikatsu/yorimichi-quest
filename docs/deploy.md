@@ -231,8 +231,17 @@ curl -s "$HTTP_TRIGGER_URL/v1/health"
 # → {"status":"ok","commit":"<デプロイしたコミット>","configOk":true,"configMissing":0}
 ```
 
-`configOk` が false のときは**実行環境のログを見る。** 不足キー名はレスポンスに
-出さない（認証不要のエンドポイントのため）。
+`configOk` が false のときは、**管理キーで名前を確認できる。**
+
+```bash
+curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
+# → {"configOk":false,"missing":["DS_TABLE_EXPLORED_TILES"],"area":{...},"seedDataset":"opendata"}
+```
+
+`/v1/health` は認証不要なので**件数しか返さない**。「1件足りない」と分かっても
+何が足りないかは分からないため、こちらを使う。**値は返さず、名前だけ**を返す。
+
+実行環境のログにも出る。
 
 ```
 [config] missing: LIFF_ID, SESSION_SECRET
@@ -254,6 +263,7 @@ curl -s "$HTTP_TRIGGER_URL/v1/health"
 | API が 500 `CONFIG_ERROR` | テーブル ID の環境変数が未設定 | 実行環境のログに不足キー名が出る |
 | 画面が白い | 静的ファイル未ビルド | `/app.js` が 500 `ASSET_NOT_BUILT` を返す。ZIP を作り直す |
 | **`/v1/exploration` だけ 500、他は正常** | `explored_tiles` テーブルまたは `DS_TABLE_EXPLORED_TILES` の作成漏れ | テーブルを作り、UUID を envVars へ |
+| **デプロイは成功するがスモークテストで `configOk が false`** | 必須の環境変数が足りない（テーブル追加後に起きやすい） | `/v1/admin/config` で名前を確認する。**コードは既に稼働しているので再デプロイは不要** |
 | 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | 地図が出ず一覧になる | `MAPBOX_ACCESS_TOKEN` 未設定 | `/v1/client-config` の `mapboxToken` を確認 |

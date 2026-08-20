@@ -247,6 +247,23 @@ export const purgeQuerySchema = z.object({
 
 export type PurgeQuery = z.infer<typeof purgeQuerySchema>
 
+/**
+ * 設定の確認（運用用）。
+ *
+ * ★ `/v1/health` は認証不要なのでキー名を出せない。件数だけでは
+ * 「1件足りない」と分かっても何が足りないか分からず、実行環境のログを
+ * 見に行くしかない。**管理キーで守った上で名前を返す。**
+ */
+export interface AdminConfigResponse {
+  configOk: boolean
+  /** 不足または不整合の識別子。値は返さない */
+  missing: string[]
+  /** 使っているエリア。取り違えの確認に使う */
+  area: AreaSummary
+  /** 投入するデータの出どころ */
+  seedDataset: string
+}
+
 export interface PurgeResponse {
   area: AreaSummary
   deleted: number

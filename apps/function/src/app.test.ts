@@ -1,5 +1,6 @@
 import { FakeDataStoreClient, setDataStoreClient } from '@imanouchi/datastore'
 import type {
+  AdminConfigResponse,
   ClientConfigResponse,
   ErrorResponse,
   HealthResponse,
@@ -144,6 +145,46 @@ describe('GET /v1/health', () => {
   it('トリガーのパスが前置されても届く', async () => {
     const response = await app.request(`${TRIGGER_PATH}/v1/health`)
     expect(response.status).toBe(200)
+  })
+})
+
+describe('GET /v1/admin/config（運用用）', () => {
+  it('★ 不足しているキー名を返す（health は件数しか返せないため）', async () => {
+    delete process.env['DS_TABLE_EXPLORED_TILES']
+    process.env['USE_FAKE_DATASTORE'] = 'false'
+
+    const body = await json<AdminConfigResponse>(
+      await app.request('/v1/admin/config', { headers: { 'x-admin-key': 'test-admin-key' } }),
+    )
+    expect(body.configOk).toBe(false)
+    expect(body.missing).toContain('DS_TABLE_EXPLORED_TILES')
+  })
+
+  it('LIFF ID とチャネルIDの組み合わせ違いも名前で分かる', async () => {
+    process.env['LIFF_ID'] = '2011183531-CoJerXk1'
+    process.env['LINE_CHANNEL_ID'] = '2011183533'
+
+    const body = await json<AdminConfigResponse>(
+      await app.request('/v1/admin/config', { headers: { 'x-admin-key': 'test-admin-key' } }),
+    )
+    expect(body.missing).toContain('LIFF_ID_CHANNEL_MISMATCH')
+  })
+
+  it('揃っていれば configOk。エリアと出どころも返す（取り違えの確認）', async () => {
+    const body = await json<AdminConfigResponse>(
+      await app.request('/v1/admin/config', { headers: { 'x-admin-key': 'test-admin-key' } }),
+    )
+    expect(body.configOk).toBe(true)
+    expect(body.missing).toEqual([])
+    expect(body.area.areaId).toBe('chiyoda-minato')
+    expect(body.seedDataset).toBe('sample')
+  })
+
+  it('★ 管理キーが無ければ 403（キー名を誰にでも見せない）', async () => {
+    expect((await app.request('/v1/admin/config')).status).toBe(403)
+    expect(
+      (await app.request('/v1/admin/config', { headers: { 'x-admin-key': 'wrong' } })).status,
+    ).toBe(403)
   })
 })
 
