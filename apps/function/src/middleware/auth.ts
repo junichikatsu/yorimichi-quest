@@ -13,15 +13,25 @@ import type { AppEnv } from '../types.js'
  */
 
 /**
- * 認証を通さないパス。**末尾一致で判定する。**
+ * LINE のセッショントークンを要求しないパス。**末尾一致で判定する。**
  *
  * enebular の HTTP トリガーはトリガーのパスを前置してハンドラを呼ぶため、
  * 完全一致にすると本番だけ通らなくなる。
+ *
+ * ★ `/v1/admin/seed` は「認証不要」ではない。**LINE ログインの代わりに管理キーで
+ * 認証する。** 運用者が端末や CI から叩くものなので、LINE のセッションを要求すると
+ * 呼べない（トークンを取るために LINE アプリを開く必要が出てしまう）。
+ * 鍵は 32 バイトのランダム値で、照合はタイミング差の出ない比較で行う。
  */
-const PUBLIC_SUFFIXES = ['/v1/health', '/v1/client-config', '/v1/auth/login']
+const NO_SESSION_SUFFIXES = [
+  '/v1/health',
+  '/v1/client-config',
+  '/v1/auth/login',
+  '/v1/admin/seed',
+]
 
-export function isPublicPath(path: string): boolean {
-  return PUBLIC_SUFFIXES.some((suffix) => path === suffix || path.endsWith(suffix))
+export function skipsSessionGate(path: string): boolean {
+  return NO_SESSION_SUFFIXES.some((suffix) => path === suffix || path.endsWith(suffix))
 }
 
 export const ADMIN_KEY_HEADER = 'x-admin-key'
@@ -47,7 +57,7 @@ export function matchesAdminKey(provided: string | undefined, expected: string):
 
 export function userGate(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (isPublicPath(c.req.path)) return next()
+    if (skipsSessionGate(c.req.path)) return next()
 
     const header = c.req.header('authorization') ?? ''
     // Bearer 以外は受け取らない。クエリ文字列でのトークン受け渡しも許さない

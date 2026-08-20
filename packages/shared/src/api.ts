@@ -137,6 +137,14 @@ export type SpotsQuery = z.infer<typeof spotsQuerySchema>
 export interface SpotsResponse {
   area: AreaSummary
   spots: SpotWithDistance[]
+  /**
+   * 上限で打ち切られたか。
+   *
+   * ★ 黙って切らないために持たせている。データストアの query はサブキーの昇順で
+   * 返すため、`spotId` の接頭辞（カテゴリ名）が辞書順で先のものだけが残り、
+   * **カテゴリごと消える**。実際に aed だけが表示される事故が起きた。
+   */
+  truncated: boolean
 }
 
 export interface SpotResponse {

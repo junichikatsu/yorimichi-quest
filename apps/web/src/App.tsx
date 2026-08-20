@@ -35,6 +35,7 @@ export function App(): React.JSX.Element {
   const [config, setConfig] = useState<ClientConfigResponse | undefined>(undefined)
   const [user, setUser] = useState<UserView | undefined>(undefined)
   const [spots, setSpots] = useState<SpotWithDistance[]>([])
+  const [spotsTruncated, setSpotsTruncated] = useState(false)
   const [selectedSpotId, setSelectedSpotId] = useState<SpotId | undefined>(undefined)
   const [busy, setBusy] = useState(false)
 
@@ -92,6 +93,7 @@ export function App(): React.JSX.Element {
       // 送ると「位置が変わったら取り直す」設計に引きずられる。
       const response = await fetchSpots(undefined)
       setSpots(response.spots)
+      setSpotsTruncated(response.truncated)
     } catch (err) {
       if (isAuthExpired(err)) {
         // 期限切れは再読み込みで復帰する。ここで無言に失敗させると原因が分からない
@@ -200,6 +202,11 @@ export function App(): React.JSX.Element {
 
           <section className="panel" aria-label="近くのスポット">
             <h2 className="panel__title">近くのスポット</h2>
+            {spotsTruncated && (
+              <p className="panel__warn" role="status">
+                件数が上限で打ち切られています。表示されていないスポットがあります（カテゴリごと欠けることがあります）。
+              </p>
+            )}
             <SpotList
               spots={sortedSpots}
               selectedSpotId={selectedSpotId}
