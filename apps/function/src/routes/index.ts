@@ -137,6 +137,18 @@ export function createRoutes(): Hono<AppEnv> {
          */
         console.warn(`[auth] line verify failed: ${err.reason}`)
 
+        /*
+         * ★ 期限切れだけ別のコードで返す。
+         *
+         * IDトークンは LIFF が保持したまま期限切れになる。クライアントは
+         * **取り直せば復帰できる**ので、それが分かるコードを返す。
+         * ここを UNAUTHORIZED にまとめると、クライアントは「もう開けない」と
+         * 判断して行き止まりになる（実際にそうなった）。
+         */
+        if (err.reason === 'token expired') {
+          throw new AppError('TOKEN_EXPIRED', 401, 'ログインの有効期限が切れました')
+        }
+
         // 401 は「トークンが不正」、502 は「LINE 側に届かない」。混ぜると切り分けできない
         if (err.status === 401) throw unauthorized('ログインに失敗しました')
         if (err.status === 500) throw new AppError('CONFIG_ERROR', 500, 'サーバー設定が不足しています')

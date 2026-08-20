@@ -13,6 +13,7 @@ interface LiffSdk {
   init(config: { liffId: string }): Promise<void>
   isLoggedIn(): boolean
   login(config?: { redirectUri?: string }): void
+  logout(): void
   getIDToken(): string | null
   isInClient(): boolean
 }
@@ -66,11 +67,62 @@ export async function loginAndGetIdToken(liffId: string): Promise<string> {
   }
 
   const idToken = liff.getIDToken()
-  // ★ LIFF の設定で「メールアドレス」等のスコープを付けていないと null になる。
+  // ★ LIFF の設定で openid スコープが無いと null になる。
   // 権限不足を「原因不明のログイン失敗」にしないため、区別して投げる。
   if (idToken === null || idToken === '') throw new LiffError('no-id-token')
 
   return idToken
+}
+
+/**
+ * ★ IDトークンは LIFF が保持したまま期限切れになる。
+ *
+ * `isLoggedIn()` は**セッションが残っていれば true を返す**ので、期限切れの
+ * IDトークンをそのまま渡し続けることになる。サーバーが期限切れと言ってきたら、
+ * ログアウトしてから入り直して**新しいIDトークンを発行させる**。
+ *
+ * ログアウトを挟むのは、`login()` だけでは保持している古い状態が使われうるため。
+ *
+ * この関数は**戻ってこない**（リダイレクトする）。
+ */
+const RELOGIN_MARK = 'imanouchi.relogin'
+
+export function hasTriedRelogin(): boolean {
+  try {
+    return sessionStorage.getItem(RELOGIN_MARK) !== null
+  } catch {
+    // プライベートブラウズ等で sessionStorage が使えない場合は「試していない」とする
+    return false
+  }
+}
+
+export function clearReloginMark(): void {
+  try {
+    sessionStorage.removeItem(RELOGIN_MARK)
+  } catch {
+    // 消せなくても支障はない
+  }
+}
+
+/**
+ * 取り直す。
+ *
+ * ★ 一度だけ。印を付けてから飛ばす。付けずに繰り返すと、設定が壊れている場合に
+ * **リダイレクトが無限に続く**（原因が分からないまま画面が点滅する）。
+ */
+export function forceRelogin(): void {
+  const liff = window.liff
+  if (!liff) throw new LiffError('sdk-missing')
+
+  try {
+    sessionStorage.setItem(RELOGIN_MARK, String(Date.now()))
+  } catch {
+    // 印を残せない環境では、繰り返しを防げないので取り直さない
+    throw new LiffError('init-failed')
+  }
+
+  if (liff.isLoggedIn()) liff.logout()
+  liff.login()
 }
 
 /** LINE アプリ内で開かれているか。外部ブラウザでの動作確認と区別する */

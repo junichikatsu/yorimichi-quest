@@ -78,8 +78,22 @@ export async function verifyLineIdToken(
   }
 
   if (!response.ok) {
-    // LINE 側が「トークンが不正」と言っている場合は 401 に落とす（500 にしない）
-    const reason = typeof payload.error === 'string' ? payload.error : `http ${response.status}`
+    /*
+     * ★ 期限切れを他の不正と区別する。
+     *
+     * LINE は期限切れのIDトークンにも 400 を返し、理由は error_description に入る。
+     * ここを一括で「トークンが不正」にすると、**再ログインで直る状態と
+     * 設定が壊れている状態が同じに見える。** クライアントは前者なら
+     * 取り直せばよく、後者は取り直しても直らない。
+     */
+    const description = typeof payload.error_description === 'string' ? payload.error_description : ''
+    const code = typeof payload.error === 'string' ? payload.error : `http ${response.status}`
+
+    if (/expire/i.test(description)) {
+      throw new LineVerifyError('token expired', 401)
+    }
+
+    const reason = description === '' ? code : `${code}: ${description}`
     throw new LineVerifyError(reason, response.status === 400 ? 401 : 502)
   }
 

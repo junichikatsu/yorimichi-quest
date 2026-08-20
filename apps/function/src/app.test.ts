@@ -253,7 +253,7 @@ describe('ログイン（FR-01-1・FR-01-2）', () => {
     expect(response.status).toBe(401)
   })
 
-  it('★ 期限切れのトークンは拒否する', async () => {
+  it('★ 期限切れは TOKEN_EXPIRED で返す（取り直せば直ることを伝える）', async () => {
     mockLineVerify(validPayload({ exp: Math.floor(Date.now() / 1000) - 10 }))
     const response = await app.request('/v1/auth/login', {
       method: 'POST',
@@ -261,6 +261,32 @@ describe('ログイン（FR-01-1・FR-01-2）', () => {
       body: JSON.stringify({ idToken: 'dummy' }),
     })
     expect(response.status).toBe(401)
+
+    // ★ UNAUTHORIZED と混ぜない。クライアントは取り直しに走れるかを code で判断する
+    const body = await json<ErrorResponse>(response)
+    expect(body.error.code).toBe('TOKEN_EXPIRED')
+  })
+
+  it('★ LINE が期限切れと言ってきた場合も TOKEN_EXPIRED にする', async () => {
+    // LINE は期限切れのIDトークンにも 400 を返し、理由は error_description に入る
+    mockLineVerify({ error: 'invalid_request', error_description: 'IdToken expired.' }, 400)
+    const response = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'dummy' }),
+    })
+    expect(response.status).toBe(401)
+    expect((await json<ErrorResponse>(response)).error.code).toBe('TOKEN_EXPIRED')
+  })
+
+  it('★ 設定違い（aud 不一致）は TOKEN_EXPIRED にしない（取り直しても直らない）', async () => {
+    mockLineVerify(validPayload({ aud: '9999999999' }))
+    const response = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'dummy' }),
+    })
+    expect((await json<ErrorResponse>(response)).error.code).toBe('UNAUTHORIZED')
   })
 
   it('★ LINE が 400 を返したら 401 にする（500 にしない）', async () => {
