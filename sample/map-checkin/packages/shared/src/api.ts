@@ -77,9 +77,32 @@ export interface HealthResponse {
 }
 
 /** フロントエンドは環境変数を持たないため、必要な設定はここから受け取る */
+/**
+ * 出典表示（FR-10-2）。
+ *
+ * ライセンスが出典明記を求めるため画面に出す。**任意の飾りではない。**
+ * 架空のサンプルデータを使っているときも、そうであることをここで伝える。
+ */
+export interface DataSourceCredit {
+  title: string
+  /** 空文字はリンク無し（サンプルデータのとき） */
+  url: string
+  /** 空文字は取得日なし */
+  fetchedAt: string
+}
+
 export interface ClientConfigResponse {
   mapboxToken: string
   area: AreaSummary
+  /** スポットの出典。表示は必須（FR-10-2） */
+  dataSources: DataSourceCredit[]
+  /**
+   * 架空のサンプルデータで動いているか。
+   *
+   * ★ 画面の断り書きを切り替えるために必要。実データを「架空です」と書いたり、
+   * 架空データを実データのように見せたりしないための判定である。
+   */
+  usesSampleData: boolean
   checkinRadiusM: number
   checkinCooldownHours: number
   exploration: ExplorationConfig

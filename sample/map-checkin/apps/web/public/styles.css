@@ -1550,3 +1550,33 @@ body {
   font-weight: 700;
   text-anchor: middle;
 }
+
+/* ---------------- 出典表示（FR-10-2） ---------------- */
+/* ライセンスが出典明記を求めるため置いている。畳めるが消せない */
+
+.credits {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.credits__summary {
+  cursor: pointer;
+  color: var(--muted, #5b5560);
+}
+
+.credits__list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.credits__item {
+  overflow-wrap: anywhere;
+}
+
+.credits__date {
+  margin-left: 0.4rem;
+  color: var(--muted, #5b5560);
+}

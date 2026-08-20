@@ -48,6 +48,12 @@ beforeEach(() => {
   process.env['MAPBOX_ACCESS_TOKEN'] = 'pk.test-token'
   process.env['ADMIN_KEY'] = 'test-admin-key'
   process.env['RATE_LIMIT_PER_MINUTE'] = '100'
+  // 実データではなく架空の固定データで検証する（件数と名称が動かないため）
+  process.env['SEED_DATASET'] = 'sample'
+  // エリアの既定値が変わってもテストが動かないよう、ここで固定する
+  process.env['AREA_ID'] = 'chiyoda'
+  process.env['AREA_CENTER_LAT'] = '35.6785'
+  process.env['AREA_CENTER_LNG'] = '139.7594'
   delete process.env['MOCK_MODE']
   resetFakeDataStore()
   resetRateLimit()

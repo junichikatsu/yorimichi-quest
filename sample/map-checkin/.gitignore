@@ -12,3 +12,6 @@ apps/function/*.zip
 .env
 .env.*
 !.env.example
+
+# 取込スクリプトのダウンロードキャッシュ（避難所CSVが13MBあるためコミットしない）
+tools/ingest/.cache/
