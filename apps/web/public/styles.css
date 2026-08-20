@@ -212,10 +212,6 @@ button {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr;
-  /*
-   * ★ ジョイスティック（position: absolute）の基準にする。
-   * 無いとページ全体を基準に配置され、地図の外に出る。
-   */
   position: relative;
 }
 
@@ -622,8 +618,17 @@ button {
  * 見た目でもデモだと分かるようにしておく。
  */
 
+/*
+ * ★ absolute にしてはいけない。
+ *
+ * absolute だと基準（.app__main）の下端に付く。スポット一覧が伸びると
+ * .app__main も伸びるため、**画面の遥か下へ移動して見えなくなる**。
+ * 「開いてしばらくすると消える」の原因がこれだった（一覧が読み込まれた時点で動く）。
+ *
+ * 画面に対して固定する。
+ */
 .joystick {
-  position: absolute;
+  position: fixed;
   left: 12px;
   left: max(12px, env(safe-area-inset-left));
   bottom: 64px;
@@ -696,8 +701,9 @@ button {
   pointer-events: none;
 }
 
+/* 開き直すボタンも同じ理由で fixed にする */
 .joystick-reopen {
-  position: absolute;
+  position: fixed;
   left: 12px;
   left: max(12px, env(safe-area-inset-left));
   bottom: 64px;

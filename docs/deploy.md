@@ -291,7 +291,8 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | **ジョイスティックが出ない** | LINE アプリ内で開いている（仕様）／スマートフォンで測位できている／`ENABLE_DEBUG_MOVE=false` | `/v1/client-config` の `debugMoveEnabled` を確認 |
-| **ジョイスティックが操作しないのに消える** | 測位の状況が `denied` → `watching` と変わり、出す条件から外れていた（修正済み） | 一度出したら出し続ける。`debug-move.ts` のテストで固定 |
+| **ジョイスティックが操作しないのに消える** | スポット一覧が伸びてページが縦に長くなり、`position: absolute` の要素が画面外へ出ていた（修正済み） | 画面に固定する（`position: fixed`）。一覧は近い順20件までに絞る |
+| 出す条件から外れて消える | 測位の状況が `denied` → `watching` と変わっていた（修正済み） | 一度出したら出し続ける。`debug-move.ts` のテストで固定 |
 | **タッチ対応の PC でジョイスティックが出ない** | `pointer` は主たる入力装置を指すため、タッチがあると `coarse` になる（修正済み） | `any-pointer` で見る |
 | 模擬位置から戻れない | 一度動かすと実測に戻らない | ジョイスティックの「実測へ」を押す |
 | ジョイスティックが画面の外に出る | `.app__main` の `position: relative` が外れている | 基準が無いとページ全体を基準に配置される |
