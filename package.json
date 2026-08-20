@@ -1,0 +1,28 @@
+{
+  "name": "imanouchi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.0.0",
+  "description": "イマノウチ — 歩いて集める防災データ",
+  "scripts": {
+    "dev": "pnpm --filter @imanouchi/function dev",
+    "dev:web": "pnpm --filter @imanouchi/web dev",
+    "build:web": "pnpm --filter @imanouchi/web build",
+    "build:zip": "pnpm --filter @imanouchi/function build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build:zip",
+    "ingest": "node tools/ingest/ingest.mjs",
+    "ingest:boundaries": "node tools/ingest/boundaries.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "turbo": "^2.5.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^3.2.4"
+  }
+}
