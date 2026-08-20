@@ -19,6 +19,31 @@ const css = readFileSync(
   'utf-8',
 )
 
+/**
+ * メディアクエリの本体を取り出す。
+ *
+ * ★ `indexOf('}
+}')` のような切り出しをしてはいけない。整形の揺れと、
+ * 後ろに CSS が増えたときに壊れる。**実際に壊れた。** 波括弧を数えて範囲を取る。
+ */
+function mediaBlock(source: string, header: string): string {
+  const start = source.indexOf(header)
+  expect(start, `${header} が見つからない`).toBeGreaterThanOrEqual(0)
+
+  const open = source.indexOf('{', start)
+  let depth = 0
+
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1
+    else if (source[i] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(open + 1, i)
+    }
+  }
+
+  throw new Error(`${header} の波括弧が閉じていない`)
+}
+
 describe('styles.css', () => {
   it('★ 使っている CSS 変数がすべて定義されている', () => {
     const used = new Set([...css.matchAll(/var\((--[a-z0-9_-]+)/g)].map((m) => m[1]))
@@ -41,8 +66,7 @@ describe('styles.css', () => {
      * 実測でジョイスティックは約145px、フッタは約80pxなので完全に隠れた。
      * 広い画面では地図の領域の内側に収める。
      */
-    const wide = css.slice(css.indexOf('@media (min-width: 901px)'))
-    const block = wide.slice(0, wide.indexOf('}\n}') + 3)
+    const block = mediaBlock(css, '@media (min-width: 901px)')
 
     expect(block).toContain('.joystick')
     expect(block, 'PC では absolute にする（fixed だとフッタを覆う）').toContain(
@@ -51,8 +75,7 @@ describe('styles.css', () => {
   })
 
   it('★ PC ではページを伸ばさない（絶対配置が画面外へ出ないため）', () => {
-    const wide = css.slice(css.indexOf('@media (min-width: 900px)'))
-    const block = wide.slice(0, wide.indexOf('\n}\n\n/*'))
+    const block = mediaBlock(css, '@media (min-width: 900px)')
 
     expect(block).toContain('overflow: hidden')
     // min-height: 0 が無いと子が縮まず overflow が効かない
@@ -60,7 +83,10 @@ describe('styles.css', () => {
   })
 
   it('霧のキャンバスは操作を通す', () => {
-    const fog = css.slice(css.indexOf('.map__fog'))
-    expect(fog.slice(0, fog.indexOf('}'))).toContain('pointer-events: none')
+    // 宣言ブロックも同じ理由でブレース数えで取る
+    const start = css.indexOf('.map__fog')
+    const open = css.indexOf('{', start)
+    const close = css.indexOf('}', open)
+    expect(css.slice(open + 1, close)).toContain('pointer-events: none')
   })
 })
