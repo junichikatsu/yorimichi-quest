@@ -71,7 +71,9 @@ enebular 実行環境の envVars に設定します。
 
 ## デプロイ
 
-`.github/workflows/imanouchi-deploy.yml` を手動実行します。
+手順は [docs/deploy.md](docs/deploy.md) にまとめてあります。`.github/workflows/imanouchi-deploy.yml` を手動実行します。
+
+**`workflow_dispatch` はワークフローが既定ブランチ（`develop`）に無いと Actions の画面に出ません。** 機能ブランチに置いただけでは実行できません。
 
 **サンプルとは enebular プロジェクトが別です。** 値の取り違えを防ぐため、変数名を
 `PROD_` で始める別の名前にしています。
