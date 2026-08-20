@@ -1,4 +1,4 @@
-import { asAreaId, asSpotId, asUserId } from '@map-checkin/shared'
+import { asAreaId, asSpotId, asUserId, DEFAULT_AVATAR, EMPTY_EQUIPMENT } from '@map-checkin/shared'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDataStoreContext, isPlaceholder } from './context.js'
 import { DataStoreConfigError, DataStoreError, classifyDataStoreError, isNotFoundError } from './errors.js'
@@ -140,6 +140,8 @@ describe('リポジトリ（fake データストア）', () => {
       totalPoints: 30,
       checkinCount: 1,
       createdAt: '2026-08-16T00:00:00.000Z',
+      avatar: DEFAULT_AVATAR,
+      equipment: EMPTY_EQUIPMENT,
       lastActiveAt: '2026-08-16T00:00:00.000Z',
     })
 
@@ -193,12 +195,12 @@ describe('リポジトリ（fake データストア）', () => {
 
   it('user_spot_state は 1 回の getItem で判定できる', async () => {
     const { ctx, client } = createFakeDataStore()
-    await putUserSpotState(ctx, USER, SPOT, { lastCheckinAt: 1234, visitCount: 1 })
+    await putUserSpotState(ctx, USER, SPOT, { quizClearedAt: undefined, lastCheckinAt: 1234, visitCount: 1 })
 
     const before = client.accessCount
     const state = await getUserSpotState(ctx, USER, SPOT)
 
-    expect(state).toEqual({ lastCheckinAt: 1234, visitCount: 1 })
+    expect(state).toEqual({ quizClearedAt: undefined, lastCheckinAt: 1234, visitCount: 1 })
     expect(client.accessCount - before).toBe(1)
   })
 })

@@ -29,11 +29,27 @@ const options = {
   },
 }
 
+/**
+ * キャラクター確認ページ（開発用）。
+ *
+ * 本体のバンドルとは別に出す。アプリに同梱すると、確認用のコードが
+ * 配信物へ混ざってしまう。生成物はサーバー不要でそのまま開ける。
+ */
+const previewOptions = {
+  ...options,
+  entryPoints: [join(here, 'src/avatar/preview.ts')],
+  outfile: join(here, 'public/avatar-preview.js'),
+  minify: false,
+}
+
 if (watch) {
   const ctx = await context(options)
   await ctx.watch()
+  const previewCtx = await context(previewOptions)
+  await previewCtx.watch()
   console.log('[web] watching src/ …')
 } else {
   await build(options)
-  console.log('[web] built public/app.js, public/app.css')
+  await build(previewOptions)
+  console.log('[web] built public/app.js, public/app.css, public/avatar-preview.js')
 }

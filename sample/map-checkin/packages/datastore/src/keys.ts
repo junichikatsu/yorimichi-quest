@@ -14,6 +14,7 @@ import type { AreaId, SpotId, UserId } from '@map-checkin/shared'
  * | checkins        | user#<userId>     | <epochMs>             | 数値   |
  * | user_spot_state | user#<userId>     | spot#<spotId>         | 文字列 |
  * | explored_tiles  | user#<userId>     | <row>:<col>           | 文字列 |
+ * | user_cards      | user#<userId>     | <種類>:<キー>         | 文字列 |
  */
 
 export const SPOTS_MAIN_KEY = 'areaKey'
@@ -32,6 +33,15 @@ export const EXPLORED_TILES_MAIN_KEY = 'userKey'
  */
 export const EXPLORED_TILES_SUB_KEY = 'tileKey'
 
+export const USER_CARDS_MAIN_KEY = 'userKey'
+/**
+ * 達成したカードの識別子（`<種類>:<キー>`）をそのまま入れる。
+ *
+ * ★ 列名が `itemKey` なのは、所持アイテム用に作ったテーブルを流用しているため。
+ * 名前と中身がずれるが、enebular コンソールでのテーブル追加を避けるほうを選んだ（FR-14）。
+ */
+export const USER_CARDS_SUB_KEY = 'itemKey'
+
 export const USER_PROFILE_RECORD_KEY = 'profile'
 
 export function areaKey(areaId: AreaId): string {
@@ -45,3 +55,4 @@ export function userKey(userId: UserId): string {
 export function spotStateKey(spotId: SpotId): string {
   return `spot#${spotId}`
 }
+

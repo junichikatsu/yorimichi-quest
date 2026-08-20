@@ -1,6 +1,14 @@
-import type { AreaSummary, ExploredTile, SpotWithDistance } from '@map-checkin/shared'
+import type {
+  AreaSummary,
+  Avatar,
+  Equipment,
+  ExploredTile,
+  SpotWithDistance,
+  UnlockedAreaBounds,
+} from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
 import type { Position } from '../hooks/useGeolocation.js'
 import {
   createLabelOverlay,
@@ -15,11 +23,19 @@ interface MapViewProps {
   area: AreaSummary
   spots: SpotWithDistance[]
   exploredTiles: ExploredTile[]
+  /** 全面が開放された区画。タイルの円とは別に、矩形でまとめて晴らす */
+  unlockedAreas: UnlockedAreaBounds[]
   revealRadiusM: number
   position: Position | undefined
   selectedSpotId: string | undefined
   onSelectSpot: (spotId: string) => void
+  /** 現在地に立たせるキャラクター。未指定なら従来の点マーカーになる */
+  avatar: Avatar | undefined
+  equipment: Equipment | undefined
 }
+
+/** 地図上のキャラクターの表示倍率。大きすぎると地図そのものを隠してしまう */
+const AVATAR_SCALE = 1.2
 
 /** ラベル用の地図（8bit 風表示）でも同じものを読むので定数にしておく */
 const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
@@ -77,10 +93,13 @@ export function MapView({
   area,
   spots,
   exploredTiles,
+  unlockedAreas,
   revealRadiusM,
   position,
   selectedSpotId,
   onSelectSpot,
+  avatar,
+  equipment,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const fogRef = useRef<HTMLCanvasElement | null>(null)
@@ -89,6 +108,7 @@ export function MapView({
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   // 地図のイベントから毎フレーム読むので、再購読が要らない ref に持つ
   const tilesRef = useRef<ExploredTile[]>(exploredTiles)
+  const areasRef = useRef<UnlockedAreaBounds[]>(unlockedAreas)
 
   /** 地図の中心を現在地に合わせ続けるか。利用者が地図を動かすと解除する */
   const [following, setFollowing] = useState(true)
@@ -212,6 +232,28 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'destination-out'
     const zoom = map.getZoom()
+
+    /*
+     * 先に開放済みの区画を矩形でくり抜く。
+     *
+     * 円だけで晴らすと、道に沿った筋しか消えず区画の内側が白いまま残る。
+     * 区画は隣と接しているので、境界に隙間が出ないよう 1px ぶん広げて塗る。
+     */
+    for (const area of areasRef.current) {
+      const topLeft = map.project([area.west, area.north])
+      const bottomRight = map.project([area.east, area.south])
+
+      const left = Math.min(topLeft.x, bottomRight.x)
+      const top = Math.min(topLeft.y, bottomRight.y)
+      const right = Math.max(topLeft.x, bottomRight.x)
+      const bottom = Math.max(topLeft.y, bottomRight.y)
+
+      if (right < 0 || bottom < 0 || left > width || top > height) continue
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+      ctx.fillRect(left - 1, top - 1, right - left + 2, bottom - top + 2)
+    }
+
     for (const tile of tilesRef.current) {
       const point = map.project([tile.lng, tile.lat])
       const radius = metersToPixels(revealRadiusM, tile.lat, zoom)
@@ -271,8 +313,9 @@ export function MapView({
 
   useEffect(() => {
     tilesRef.current = exploredTiles
+    areasRef.current = unlockedAreas
     drawFog()
-  }, [exploredTiles, drawFog])
+  }, [exploredTiles, unlockedAreas, drawFog])
 
   // スポットのマーカーを差分更新する
   useEffect(() => {
@@ -319,11 +362,47 @@ export function MapView({
     if (!meMarkerRef.current) {
       const el = document.createElement('div')
       el.className = 'marker-me'
-      meMarkerRef.current = new mapboxgl.Marker({ element: el })
+      // キャラクターを立たせる場合は足元が現在地に来るようにする。
+      // 既定の中央合わせのままだと、体の真ん中が座標を指してしまう。
+      meMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
     }
 
     meMarkerRef.current.setLngLat([position.lng, position.lat]).addTo(map)
   }, [position])
+
+  /**
+   * 現在地のキャラクターを描く。
+   *
+   * マーカーの DOM は Mapbox が持っているため、React で再描画せず
+   * キャンバスへ直接描き込む。アバターか装備が変わったときだけ描き直す。
+   */
+  useEffect(() => {
+    const marker = meMarkerRef.current
+    if (!marker) return
+
+    const el = marker.getElement()
+    if (!avatar || !equipment) {
+      el.replaceChildren()
+      el.classList.remove('marker-me--avatar')
+      return
+    }
+
+    let canvas = el.querySelector('canvas')
+    if (!canvas) {
+      canvas = document.createElement('canvas')
+      el.replaceChildren(canvas)
+    }
+    el.classList.add('marker-me--avatar')
+
+    // 実ピクセルは devicePixelRatio 倍。地図は高精細端末で見ることが多い
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(SPRITE_WIDTH * AVATAR_SCALE * dpr)
+    canvas.height = Math.round(SPRITE_HEIGHT * AVATAR_SCALE * dpr)
+    canvas.style.width = `${SPRITE_WIDTH * AVATAR_SCALE}px`
+    canvas.style.height = `${SPRITE_HEIGHT * AVATAR_SCALE}px`
+
+    drawSprite(canvas, { avatar, equipment, frame: 0, moving: false, direction: 'down' }, AVATAR_SCALE)
+  }, [avatar, equipment, position])
 
   /**
    * 現在地へ追従する。

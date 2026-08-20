@@ -4,6 +4,7 @@ node_modules/
 # 生成物
 apps/web/public/app.js
 apps/web/public/app.css
+apps/web/public/avatar-preview.js
 apps/function/build/
 apps/function/*.zip
 

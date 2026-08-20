@@ -12,6 +12,27 @@ export const SPOT_CATEGORY_LABELS: Record<SpotCategory, string> = {
   water: '給水スポット',
 }
 
+/** 地図マーカーとカードで共有する配色。片方だけ変えると対応が崩れるので1か所に置く */
+export const SPOT_CATEGORY_COLORS: Record<SpotCategory, string> = {
+  shelter: '#2f6f3e',
+  aed: '#c0392b',
+  accessible_toilet: '#2d6ca2',
+  water: '#1f8a8a',
+}
+
+/**
+ * カードの絵に使う1文字。
+ *
+ * 絵文字ではなく漢字にしているのは、環境による字形の差が出にくく、
+ * シニアでも意味が取れるため（NFR-08）。
+ */
+export const SPOT_CATEGORY_GLYPHS: Record<SpotCategory, string> = {
+  shelter: '避',
+  aed: '＋',
+  accessible_toilet: 'WC',
+  water: '水',
+}
+
 export interface Spot {
   spotId: SpotId
   areaId: AreaId

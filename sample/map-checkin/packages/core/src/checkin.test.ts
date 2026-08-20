@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { classifyExploration, evaluateCheckin, POINT_RULES } from './checkin.js'
-import { distanceMeters, formatDistance } from './geo.js'
+import { distanceMeters, formatDistance, offsetByMeters } from './geo.js'
 
 const TOKYO_STATION = { lat: 35.681236, lng: 139.767125 }
 const HOUR = 60 * 60 * 1000
@@ -126,5 +126,37 @@ describe('evaluateCheckin', () => {
     })
 
     expect(result).toMatchObject({ ok: false, reason: 'too_far' })
+  })
+})
+
+describe('offsetByMeters', () => {
+  it('指定した距離ぶんだけ動く（東西・南北とも）', () => {
+    const north = offsetByMeters(TOKYO_STATION, 0, 100)
+    expect(distanceMeters(TOKYO_STATION, north)).toBeCloseTo(100, 0)
+
+    const east = offsetByMeters(TOKYO_STATION, 100, 0)
+    expect(distanceMeters(TOKYO_STATION, east)).toBeCloseTo(100, 0)
+  })
+
+  it('東西は緯度で補正する（補正を忘れると日本付近で約2割ずれる）', () => {
+    const east = offsetByMeters(TOKYO_STATION, 1000, 0)
+    const naive = { lat: TOKYO_STATION.lat, lng: TOKYO_STATION.lng + 1000 / 111_320 }
+
+    // 固定の m/度 を使う近似なので誤差が残る。1km で数メートル以内に収まればよい
+    expect(distanceMeters(TOKYO_STATION, east)).toBeGreaterThan(995)
+    expect(distanceMeters(TOKYO_STATION, east)).toBeLessThan(1005)
+
+    // 補正しない場合は cos(緯度) 倍に縮み、1km 進んだつもりで 810m ほどしか進まない
+    expect(distanceMeters(TOKYO_STATION, naive)).toBeLessThan(840)
+  })
+
+  it('0 を渡せば動かない', () => {
+    expect(offsetByMeters(TOKYO_STATION, 0, 0)).toEqual(TOKYO_STATION)
+  })
+
+  it('南・西へは負の値で動く', () => {
+    const southWest = offsetByMeters(TOKYO_STATION, -50, -50)
+    expect(southWest.lat).toBeLessThan(TOKYO_STATION.lat)
+    expect(southWest.lng).toBeLessThan(TOKYO_STATION.lng)
   })
 })

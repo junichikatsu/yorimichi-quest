@@ -201,6 +201,9 @@ body {
   grid-template-columns: 1fr 360px;
   flex: 1;
   min-height: 0;
+  /* ジョイスティックとボトムシートの絶対配置の基準。狭い画面だけでなく
+     広い画面でも必要（無いと画面全体を基準にしてしまう） */
+  position: relative;
 }
 
 .map {
@@ -318,6 +321,18 @@ body {
 .sidebar {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+}
+
+.sidebar__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* min-height を切らないと、中身の高さがそのまま出てスクロールしなくなる */
+  min-height: 0;
   gap: 12px;
   padding: 12px;
   padding-left: max(12px, env(safe-area-inset-left));
@@ -325,29 +340,107 @@ body {
   overflow: auto;
   /* サイドバー内でスクロールが端に着いても、背後の地図やページを動かさない */
   overscroll-behavior: contain;
-  background: var(--bg);
-  border-left: 1px solid var(--border);
+}
+
+/* 開閉ハンドルはボトムシートのときだけ使う */
+.sidebar__handle {
+  display: none;
 }
 
 /* 縦積みレイアウト。基底の .map / .sidebar を上書きするので、この位置に置く */
+/*
+ * 狭い画面ではサイドバーをボトムシートにする。
+ *
+ * 以前は上下 52%/48% で分けていたが、それだと地図が画面の半分しか使えなかった。
+ * 地図を全面に敷き、パネルは必要なときだけ引き上げる形にしている。
+ */
 @media (max-width: 900px) {
   .app__main {
+    position: relative;
     grid-template-columns: minmax(0, 1fr);
-    /*
-     * minmax(0, …) にしないと .map の min-height が行を押し広げ、
-     * 2 行の合計が画面の高さを超えてフッターや履歴が画面外へ出てしまう。
-     */
-    grid-template-rows: minmax(0, 52%) minmax(0, 48%);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .map {
     min-height: 0;
   }
 
-  /* 縦積みになるので、区切り線も左辺から上辺へ移す */
   .sidebar {
-    border-left: none;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    max-height: 78%;
     border-top: 1px solid var(--border);
+    border-left: none;
+    border-radius: 16px 16px 0 0;
+    background: var(--surface);
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.18);
+    transition: max-height 0.22s ease;
+  }
+
+  /* たたんだ状態。ハンドルのぶんだけ残して地図に譲る */
+  .sidebar:not(.sidebar--open) {
+    max-height: 52px;
+  }
+
+  .sidebar:not(.sidebar--open) .sidebar__body {
+    display: none;
+  }
+
+  .sidebar__handle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 16px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    border: none;
+    border-radius: 16px 16px 0 0;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    /* ハンドル自体は縮まないようにする（中身が伸びても押せる場所を残す） */
+    flex: 0 0 auto;
+  }
+
+  .sidebar__grip {
+    width: 32px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    flex: 0 0 auto;
+  }
+
+  .sidebar__handle-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .sidebar__handle-hint {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .sidebar__body {
+    background: var(--bg);
+  }
+
+  /* 画面が狭いほど注意書きの行数が効くので 1 行に抑える */
+  .app__footer {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -794,4 +887,666 @@ body {
   padding: 24px;
   text-align: center;
   color: var(--muted);
+}
+
+/* ---------- キャラクター・アイテム・クイズ（Issue #25） ---------- */
+
+/* キャラクターはベクタ描画。実ピクセルは JS 側で devicePixelRatio 倍にしている */
+.avatar-canvas {
+  display: block;
+}
+
+.statusbar__avatar {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.statusbar__avatar:hover {
+  border-color: var(--accent);
+}
+
+/* 地図上のキャラクター。足元が現在地に来るよう anchor: bottom と組で使う */
+.marker-me--avatar {
+  background: none;
+  border: none;
+  box-shadow: none;
+  width: auto;
+  height: auto;
+}
+
+.marker-me--avatar canvas {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* ---------- キャラメイク ---------- */
+
+.creator__preview {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+
+.creator__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.creator__name span {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__name input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.creator__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.creator__label {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.creator__value {
+  min-width: 8em;
+  font-size: 0.9rem;
+}
+
+.creator__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch--on {
+  border-color: var(--text);
+}
+
+/* ---------- クイズ ---------- */
+
+.quiz__options {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.quiz__option {
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quiz__option:disabled {
+  cursor: default;
+}
+
+.quiz__option--answer {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  font-weight: 600;
+}
+
+.quiz__option--wrong {
+  border-color: var(--danger);
+}
+
+.quiz__result {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border-left: 4px solid var(--muted);
+}
+
+.quiz__result--correct {
+  border-left-color: var(--accent);
+}
+
+.quiz__result--wrong {
+  border-left-color: var(--danger);
+}
+
+.quiz__verdict {
+  margin: 0;
+  font-weight: 600;
+}
+
+.quiz__explanation {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.quiz__reward {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.quiz__use {
+  display: block;
+  font-weight: 400;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* ---------- 防災リュック ---------- */
+
+.equip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.equip div {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.equip dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.equip dd {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+}
+
+.items {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.item {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.item--locked {
+  opacity: 0.55;
+}
+
+.item--equipped {
+  border-color: var(--accent);
+}
+
+.item__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.item__name {
+  font-weight: 600;
+}
+
+.item__slot {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.item__use {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.item__use--locked {
+  font-style: italic;
+}
+
+.item__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.item__count {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ---------- デバッグ用ジョイスティック（Issue #25） ---------- */
+
+/*
+ * 位置情報が取れない環境で現在地を動かすための操作。
+ * 本番の機能ではないので、見た目でも「デバッグ」と分かるようにしている。
+ *
+ * ボトムシートより上に置くと操作が重なるため、z-index はシート（5）より下にし、
+ * 位置もシートのたたんだ高さぶん持ち上げている。
+ */
+.joystick {
+  position: absolute;
+  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: 64px;
+  z-index: 4;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.joystick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.joystick__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.joystick__close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.joystick__base {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    color-mix(in srgb, var(--border) 45%, transparent)
+  );
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+
+.joystick__base:active {
+  cursor: grabbing;
+}
+
+.joystick__knob {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  /* transform は JS が毎フレーム書き換えるので、遷移は付けない */
+  pointer-events: none;
+}
+
+.joystick-reopen {
+  position: absolute;
+  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: 64px;
+  z-index: 4;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* 広い画面ではシートが無いぶん、下端に寄せてよい */
+@media (min-width: 901px) {
+  .joystick,
+  .joystick-reopen {
+    bottom: 16px;
+  }
+}
+
+/* ---------- カードコレクション（FR-14） ---------- */
+
+.cardfilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.cardfilter__button {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cardfilter__button--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+/* トレーディングカードの縦横比（およそ 5:7）で枠を確保する */
+.cards__slot {
+  aspect-ratio: 5 / 7;
+  perspective: 700px;
+}
+
+/*
+ * カード1枚。
+ *
+ * 上段＝種類と状態、中段＝絵、下段＝文字の3段構成。
+ * 未達成（.card--pending）は裏地の模様を敷いて「まだ自分のものになっていない」ことを示すが、
+ * **見出しと達成条件は読める状態を保つ**（FR-14-3）。
+ * 装飾で文字が読めなくなると NFR-08（WCAG AA）に反するため、文字のコントラストは落とさない。
+ */
+.card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  /* 種類ごとの色。既定は控えめな灰 */
+  --card-accent: var(--muted);
+}
+
+.card--action { --card-accent: #c8503f; }
+.card--tool { --card-accent: #3f7fbf; }
+.card--place { --card-accent: #2f9e6f; }
+.card--mission { --card-accent: #d9a01f; }
+
+/* 達成したカードは縁を色で囲み、上辺に帯を出す */
+.card--achieved {
+  border-color: var(--card-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 3px 0 0 var(--card-accent);
+  padding-top: 9px;
+}
+
+/*
+ * 未達成の裏地。
+ *
+ * 斜めの縞を薄く敷く。透過を強くしすぎると文字が読みづらくなるので、
+ * 縞は背景側だけに置き、文字は不透明な帯の上に載せる。
+ */
+.card--pending {
+  border-style: dashed;
+  background-color: var(--bg);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--card-accent) 12%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.card--equipped {
+  outline: 2px solid var(--card-accent);
+  outline-offset: 1px;
+}
+
+.card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.card__kind {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--card-accent);
+  color: #fff;
+}
+
+.card__state {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.card__seal {
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.card__art {
+  display: grid;
+  place-items: center;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-accent) 8%, var(--surface));
+  overflow: hidden;
+}
+
+/* 未達成の絵は色を落とす。「これから手に入るもの」として見せる */
+.card--pending .card__art {
+  background: color-mix(in srgb, var(--card-accent) 5%, var(--surface));
+}
+
+.card--pending .cardart {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+
+.card__text {
+  /* 文字は不透明な面に載せる。裏地の縞が透けると読みづらくなる */
+  background: var(--surface);
+  border-radius: 5px;
+  padding: 4px 5px;
+}
+
+.card__title {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.card__body {
+  margin: 3px 0 0;
+  font-size: 0.66rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.card__condition {
+  margin: 3px 0 0;
+  font-size: 0.64rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.card__foot {
+  margin-top: 4px;
+}
+
+.card__equip {
+  width: 100%;
+  padding: 4px;
+  border: 1px solid var(--card-accent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--card-accent);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.card__equip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/*
+ * 達成した瞬間に表へ返る（FR-14-8）。
+ *
+ * 今回はじめて達成したカードにだけ付ける。画面を開くたびに全部返ると
+ * 何が変わったのか分からなくなる。
+ */
+@keyframes card-flip {
+  0% { transform: rotateY(180deg) scale(0.92); }
+  60% { transform: rotateY(0deg) scale(1.04); }
+  100% { transform: rotateY(0deg) scale(1); }
+}
+
+.card--flip {
+  animation: card-flip 0.7s ease-out;
+  transform-style: preserve-3d;
+}
+
+/* 動きを減らす設定を尊重する（NFR-08） */
+@media (prefers-reduced-motion: reduce) {
+  .card--flip {
+    animation: none;
+  }
+}
+
+/* ---------- カードの絵 ---------- */
+
+.cardart {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  --art-color: var(--card-accent);
+}
+
+.cardart__glyph {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--art-color);
+  line-height: 1;
+}
+
+.cardart--action .cardart__glyph {
+  /* 記号だけだと弱いので丸で囲む */
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--art-color);
+  border-radius: 50%;
+  font-size: 1.2rem;
+}
+
+.cardart--place .cardart__glyph {
+  font-size: 1.45rem;
+}
+
+.cardart__ring {
+  width: 100%;
+  max-width: 58px;
+  height: auto;
+}
+
+.cardart__ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--card-accent) 22%, transparent);
+  stroke-width: 6;
+}
+
+.cardart__ring-value {
+  fill: none;
+  stroke: var(--card-accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.cardart__ring-text {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
 }

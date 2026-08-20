@@ -24,7 +24,13 @@ https://<trigger-host>/<trigger-path>/v1/...
 | `POST /v1/spots/:spotId/checkin` | 要 | チェックイン（位置検証・ポイント付与） |
 | `GET /v1/exploration` | 要 | 探索済みエリア（歩いたところ）のタイル一覧と集計 |
 | `POST /v1/exploration` | 要 | 歩いた座標をまとめて記録し、タイルを塗る |
-| `GET /v1/me` | 要 | 累計ポイント・チェックイン履歴（直近 20 件） |
+| `GET /v1/spots/:spotId/quiz` | 要 | そのスポットの防災クイズ（**正解は含まない**） |
+| `POST /v1/spots/:spotId/quiz/answer` | 要 | 採点・解説・ポイント付与・アイテム付与 |
+| `GET /v1/cards` | 要 | **4種のカード一覧**（達成／未達成、達成条件、種類別の進捗、装備） |
+| `GET /v1/items` | 要 | 道具カードのみをアイテムの形で返す（装備画面の互換用） |
+| `PUT /v1/me/avatar` | 要 | キャラメイクの結果を保存 |
+| `PUT /v1/me/equipment` | 要 | 装備の変更（未所持のアイテムは無視される） |
+| `GET /v1/me` | 要 | 累計ポイント・チェックイン履歴（直近 20 件）・アバター・装備 |
 | `POST /v1/admin/seed` | 管理キー | サンプルスポットの初期投入（既存分は skip） |
 | `GET /` `/styles.css` `/app.js` `/app.css` | 不要 | 静的ファイル（同一オリジン配信） |
 
@@ -120,6 +126,57 @@ POST のリクエスト（座標は 200 点まで。超えると `BAD_REQUEST`�
 
 **同じタイルへの再送は書き込みを増やさない**（`putItem` が同じキーへの上書きになる）。
 フロントエンドも既に塗ったタイルは送らないため、同じ場所に留まっている間は通信が発生しない。
+
+## クイズ（FR-04）
+
+**出題データはサーバー側にのみ置き、正解をクライアントへ渡さない。** 共有パッケージへ入れると
+フロントエンドのバンドルに含まれ、配信された JavaScript から答えが読めてしまう。
+
+```jsonc
+// GET /v1/spots/sample-hibiya-park/quiz
+{ "quiz": { "quizId": "shelter-toilet-1", "question": "…", "options": ["…", "…", "…"],
+            "generatedBy": "fixture" },
+  "alreadyCleared": false }
+
+// POST /v1/spots/sample-hibiya-park/quiz/answer  { "quizId": "…", "choiceIndex": 0 }
+{ "correct": true, "answerIndex": 0, "explanation": "…",
+  "pointsEarned": 30, "totalPoints": 80, "acquiredItem": "zukin", "canRetry": false }
+```
+
+- 出題は `spotId` から決まるため、**同じスポットでは毎回同じ問題**が出る（リロードで問題が変わらない）
+- **不正解でもポイントは減らず、解説を返し、`canRetry: true` で再挑戦できる**（FR-04-6）
+- 報酬はスポットごとに一度だけ。2 回目以降の正解でも解説は返るが加点はしない
+- 別カテゴリのクイズ ID を送ると 400。スポットとクイズの対応をサーバー側で検証している
+
+`generatedBy` は固定データなら `fixture`。本実装では Dify のクイズ生成アプリ（AI-3）が
+生成した場合に `llm` を返す想定で、口だけ用意してある（FR-04-2）。
+
+## カードコレクション（FR-14）
+
+出題・道具・スポット・ミッションを**すべてカードとして扱う**。状態は **達成／未達成** の2つだけ。
+
+```jsonc
+// GET /v1/cards
+{ "cards": [
+    { "cardId": "action:shelter-action-1", "kind": "action",
+      "title": "大きな地震の直後",              // 未達成でも見せる
+      "condition": "このスポットのクイズに正解する",
+      "body": undefined,                        // ★ 未達成では含めない
+      "achieved": false, "achievedAt": undefined },
+    { "cardId": "place:sample-hibiya-park", "kind": "place",
+      "title": "日比谷公園", "condition": "この場所でチェックインする",
+      "body": "避難所・避難場所／千代田区日比谷公園1-6",
+      "achieved": true, "achievedAt": "2026-08-20T…" }
+  ],
+  "summary": { "achieved": 3, "total": 38,
+               "byKind": { "action": {"achieved":1,"total":12}, … } },
+  "equipment": { "head": "helmet", "body": null, "hand": null, "back": null } }
+```
+
+- **未達成カードの中身（`body`）はレスポンスに含めない。** 表示側で隠すと、配信されたデータを見れば読めてしまう
+- **行動カードの見出しは「場面」**（例：「大きな地震の直後」）。行動そのものを見出しにすると、カード一覧を見るだけで対応するクイズの答えが読める
+- **未達成カードは保存していない。** 定義から全枚数を組み立て、達成済みのレコードを重ねている
+- **ミッションは他のカードの達成枚数を数えるだけで判定する。** 専用のカウンタを持たないため、表示している枚数と判定が食い違わない
 
 ## エラー
 

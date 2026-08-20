@@ -1,11 +1,17 @@
 import type {
+  AvatarUpdateResponse,
   CheckinResponse,
   ClientConfigResponse,
+  EquipmentUpdateResponse,
   ErrorResponse,
   ExplorationResponse,
   ExplorationUpdateResponse,
   HealthResponse,
+  CardsResponse,
+  ItemsResponse,
   MeResponse,
+  QuizAnswerResponse,
+  QuizResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
 import { tileOf } from '@map-checkin/core'
@@ -152,6 +158,10 @@ describe('GET /v1/client-config', () => {
       revealRadiusM: 40,
       areaRadiusM: 1500,
       maxPointsPerRequest: 200,
+      // 開放の判定は FE でも先読みするため、閾値と緯度も渡す
+      blockTiles: 6,
+      unlockRatio: 0.25,
+      latitude: 35.6785,
     })
   })
 })
@@ -254,6 +264,67 @@ describe('探索済みエリア（歩いたところ）', () => {
 
   it('緯度経度が範囲外なら 400', async () => {
     expect((await record([{ lat: 999, lng: 139.7 }])).status).toBe(400)
+  })
+})
+
+describe('エリア開放（一定割合を歩くと区画全体が開く）', () => {
+  /**
+   * 既定は 6×6 タイル＝36 枚の区画で、25%（9 枚）歩けば全面が開く。
+   * タイルは 50m 四方なので、東西へ 6 枚進むと隣の区画に入る。行方向へ折り返して埋める。
+   */
+  function pointsInBlock(count: number): { lat: number; lng: number }[] {
+    const step = 50 / 111_320
+    const base = { lat: 35.6785, lng: 139.7594 }
+    return Array.from({ length: count }, (_, i) => ({
+      lat: base.lat + Math.floor(i / 6) * step,
+      lng: base.lng + (i % 6) * step,
+    }))
+  }
+
+  async function record(points: { lat: number; lng: number }[]): Promise<ExplorationUpdateResponse> {
+    return json<ExplorationUpdateResponse>(
+      await app.request('/v1/exploration', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ points }),
+      }),
+    )
+  }
+
+  it('閾値に届かないうちは区画が開かない', async () => {
+    const result = await record(pointsInBlock(8))
+
+    expect(result.unlockedAreas).toHaveLength(0)
+    expect(result.summary.tileCount).toBe(8)
+  })
+
+  it('25%（9枚）歩くと区画全体が開き、探索率も全面ぶんになる', async () => {
+    const result = await record(pointsInBlock(9))
+
+    expect(result.unlockedAreas).toHaveLength(1)
+    // 歩いたのは 9 枚でも、開放されたので 36 枚ぶんとして数える
+    expect(result.summary.tileCount).toBe(36)
+  })
+
+  it('開放後に GET で取り直しても同じ結果になる（FE と BE で判定がずれない）', async () => {
+    await record(pointsInBlock(9))
+
+    const fetched = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers() }),
+    )
+    expect(fetched.unlockedAreas).toHaveLength(1)
+    expect(fetched.summary.tileCount).toBe(36)
+    // 保存しているのは実際に歩いた分だけ。開放は都度計算する
+    expect(fetched.tiles).toHaveLength(9)
+  })
+
+  it('開放は他ユーザーに影響しない', async () => {
+    await record(pointsInBlock(9))
+
+    const other = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: headers(OTHER_USER_ID) }),
+    )
+    expect(other.unlockedAreas).toHaveLength(0)
   })
 })
 
@@ -383,6 +454,263 @@ describe('チェックインの通し導線', () => {
     )
     expect(otherMe.recentCheckins).toHaveLength(0)
     expect(otherMe.user.totalPoints).toBe(0)
+  })
+})
+
+describe('クイズ（FR-04）', () => {
+  const spotId = 'sample-hibiya-park'
+  const position = { lat: 35.6739, lng: 139.7568 }
+
+  async function getQuiz(): Promise<QuizResponse> {
+    return json<QuizResponse>(
+      await app.request(`/v1/spots/${spotId}/quiz`, { headers: headers() }),
+    )
+  }
+
+  async function answer(quizId: string, choiceIndex: number): Promise<Response> {
+    return app.request(`/v1/spots/${spotId}/quiz/answer`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ quizId, choiceIndex }),
+    })
+  }
+
+  it('行動を問う設問が優先される（G-8：モノより先に行動）', async () => {
+    const body = await getQuiz()
+
+    // 避難所カテゴリには行動の設問（shelter-action-1）がある。
+    // 備蓄や設備の設問しか出ないと「モノをそろえれば備えたことになる」逆の学習になる
+    expect(body.quiz.quizId).toBe('shelter-action-1')
+    expect(body.quiz.question).toContain('まず')
+  })
+
+  it('出題に正解は含まれない（配信物から答えが読めないこと）', async () => {
+    const body = await getQuiz()
+    expect(body.quiz.options.length).toBeGreaterThan(1)
+    expect(body.alreadyCleared).toBe(false)
+    expect(JSON.stringify(body)).not.toContain('answerIndex')
+  })
+
+  it('同じスポットでは毎回同じ問題が出る', async () => {
+    const first = await getQuiz()
+    const second = await getQuiz()
+    expect(second.quiz.quizId).toBe(first.quiz.quizId)
+  })
+
+  it('不正解でもポイントは減らず、解説と再挑戦が返る（FR-04-6）', async () => {
+    const quiz = await getQuiz()
+    const wrongIndex = quiz.quiz.options.length - 1
+
+    const result = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, wrongIndex))
+    expect(result.correct).toBe(false)
+    expect(result.pointsEarned).toBe(0)
+    expect(result.totalPoints).toBe(0)
+    expect(result.explanation.length).toBeGreaterThan(0)
+    expect(result.canRetry).toBe(true)
+    expect(result.acquiredItem).toBeUndefined()
+  })
+
+  it('正解でポイントとアイテムを得る。2 回目は加点されない', async () => {
+    const quiz = await getQuiz()
+
+    const first = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, 0))
+    expect(first.correct).toBe(true)
+    expect(first.pointsEarned).toBe(30)
+    expect(first.acquiredItem).toBe('zukin')
+    expect(first.canRetry).toBe(false)
+
+    const second = await json<QuizAnswerResponse>(await answer(quiz.quiz.quizId, 0))
+    expect(second.correct).toBe(true)
+    expect(second.pointsEarned).toBe(0)
+    expect(second.acquiredItem).toBeUndefined()
+    expect(second.totalPoints).toBe(30)
+  })
+
+  it('別カテゴリのクイズIDを送っても報酬は得られない', async () => {
+    const response = await answer('water-supply-1', 0)
+    expect(response.status).toBe(400)
+  })
+
+  it('存在しないクイズIDは 404', async () => {
+    const response = await answer('no-such-quiz', 0)
+    expect(response.status).toBe(404)
+  })
+
+  it('チェックインでもカテゴリに応じたアイテムを得る（FR-07-8）', async () => {
+    const checkin = await json<CheckinResponse>(
+      await app.request(`/v1/spots/${spotId}/checkin`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(position),
+      }),
+    )
+    expect(checkin.acquiredItem).toBe('helmet')
+  })
+})
+
+describe('アイテムとアバター（FR-07-8）', () => {
+  it('初期状態は所持ゼロ、カタログは全件返る', async () => {
+    const body = await json<ItemsResponse>(await app.request('/v1/items', { headers: headers() }))
+    expect(body.owned).toHaveLength(0)
+    expect(body.catalog).toHaveLength(10)
+    expect(body.equipment).toEqual({ head: null, body: null, hand: null, back: null })
+  })
+
+  it('獲得したアイテムは空きスロットへ自動装備される', async () => {
+    await app.request('/v1/spots/sample-hibiya-park/checkin', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ lat: 35.6739, lng: 139.7568 }),
+    })
+
+    const body = await json<ItemsResponse>(await app.request('/v1/items', { headers: headers() }))
+    expect(body.owned.map((item) => item.itemKey)).toEqual(['helmet'])
+    expect(body.equipment.head).toBe('helmet')
+  })
+
+  it('持っていないアイテムは装備できない（見た目と所持がずれない）', async () => {
+    const response = await app.request('/v1/me/equipment', {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ head: 'helmet', body: null, hand: null, back: null }),
+    })
+
+    const body = await json<EquipmentUpdateResponse>(response)
+    expect(body.equipment.head).toBeNull()
+  })
+
+  it('アバターを保存するとマイページに反映される', async () => {
+    const avatar = { hair: 2, cloth: 5, hairColor: 3, clothColor: 4, skin: 1, name: 'ヨリコ' }
+    const saved = await json<AvatarUpdateResponse>(
+      await app.request('/v1/me/avatar', {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify(avatar),
+      }),
+    )
+    expect(saved.avatar).toEqual(avatar)
+
+    const me = await json<MeResponse>(await app.request('/v1/me', { headers: headers() }))
+    expect(me.user.avatar.name).toBe('ヨリコ')
+    expect(me.user.avatar.hair).toBe(2)
+  })
+
+  it('範囲外のアバター値は 400', async () => {
+    const response = await app.request('/v1/me/avatar', {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ hair: 99, cloth: 0, hairColor: 0, clothColor: 0, skin: 0, name: 'x' }),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('アイテムは他ユーザーに混ざらない', async () => {
+    await app.request('/v1/spots/sample-hibiya-park/checkin', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ lat: 35.6739, lng: 139.7568 }),
+    })
+
+    const other = await json<ItemsResponse>(
+      await app.request('/v1/items', { headers: headers(OTHER_USER_ID) }),
+    )
+    expect(other.owned).toHaveLength(0)
+  })
+})
+
+describe('カードコレクション（FR-14）', () => {
+  const spotId = 'sample-hibiya-park'
+  const position = { lat: 35.6739, lng: 139.7568 }
+
+  async function cards(userId = USER_ID): Promise<CardsResponse> {
+    return json<CardsResponse>(await app.request('/v1/cards', { headers: headers(userId) }))
+  }
+
+  async function checkin(): Promise<void> {
+    await app.request(`/v1/spots/${spotId}/checkin`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(position),
+    })
+  }
+
+  async function answerQuizCorrectly(): Promise<string> {
+    const quiz = await json<QuizResponse>(
+      await app.request(`/v1/spots/${spotId}/quiz`, { headers: headers() }),
+    )
+    await app.request(`/v1/spots/${spotId}/quiz/answer`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ quizId: quiz.quiz.quizId, choiceIndex: 0 }),
+    })
+    return quiz.quiz.quizId
+  }
+
+  it('4種のカードが未達成の枠として並ぶ', async () => {
+    const body = await cards()
+
+    expect(body.summary.achieved).toBe(0)
+    expect(body.summary.total).toBeGreaterThan(20)
+    for (const kind of ['action', 'tool', 'place', 'mission'] as const) {
+      expect(body.summary.byKind[kind].total).toBeGreaterThan(0)
+      expect(body.summary.byKind[kind].achieved).toBe(0)
+    }
+  })
+
+  it('未達成カードの中身はレスポンスに含まれない（表示側で隠すのではなく送らない）', async () => {
+    const body = await cards()
+
+    expect(body.cards.every((card) => card.body === undefined)).toBe(true)
+    // 達成条件は未達成でも見せる
+    expect(body.cards.every((card) => card.condition.length > 0)).toBe(true)
+  })
+
+  it('行動カードの見出しは「場面」で、行動そのものは達成まで見えない', async () => {
+    const body = await cards()
+    const action = body.cards.find((card) => card.cardId === 'action:shelter-action-1')
+
+    expect(action?.title).toBe('大きな地震の直後')
+    // 答えになる行動が未達成で漏れていないこと
+    expect(JSON.stringify(body)).not.toContain('頭を守って身を低くし')
+  })
+
+  it('チェックインで場所カードと道具カードが達成される', async () => {
+    await checkin()
+    const body = await cards()
+
+    const place = body.cards.find((card) => card.cardId === `place:${spotId}`)
+    expect(place?.achieved).toBe(true)
+    expect(place?.body).toContain('避難所')
+    expect(body.summary.byKind.tool.achieved).toBe(1)
+  })
+
+  it('クイズ正解で行動カードが達成され、中身が届く', async () => {
+    const quizId = await answerQuizCorrectly()
+    const body = await cards()
+
+    const action = body.cards.find((card) => card.cardId === `action:${quizId}`)
+    expect(action?.achieved).toBe(true)
+    expect(action?.body).toContain('頭を守って')
+  })
+
+  it('ミッションは他のカードの枚数で達成される（専用カウンタを持たない）', async () => {
+    await answerQuizCorrectly()
+    const body = await cards()
+
+    // 行動カード1枚で「まず身を守る」が達成される
+    const mission = body.cards.find((card) => card.cardId === 'mission:first-action')
+    expect(mission?.achieved).toBe(true)
+    expect(mission?.body).toContain('生き延びた')
+
+    // 避難所3枚のミッションはまだ未達成
+    expect(body.cards.find((card) => card.cardId === 'mission:shelter-3')?.achieved).toBe(false)
+  })
+
+  it('カードは他ユーザーに混ざらない', async () => {
+    await checkin()
+    const other = await cards(OTHER_USER_ID)
+
+    expect(other.summary.achieved).toBe(0)
   })
 })
 

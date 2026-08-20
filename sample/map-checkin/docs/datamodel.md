@@ -6,7 +6,7 @@
 
 ## テーブル一覧
 
-コンソールで 5 つ作成し、テーブル ID（UUID）を環境変数へ設定する。
+コンソールで 6 つ作成し、テーブル ID（UUID）を環境変数へ設定する。
 
 | # | 用途 | 環境変数 | メインキー名 | サブキー名 | サブキー型 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -15,6 +15,7 @@
 | 3 | チェックイン履歴 | `DS_TABLE_CHECKINS` | `userKey` | `checkinAt` | **数値** |
 | 4 | ユーザー×スポットの状態 | `DS_TABLE_USER_SPOT_STATE` | `userKey` | `spotKey` | 文字列 |
 | 5 | 探索済みタイル（歩いたところ） | `DS_TABLE_EXPLORED_TILES` | `userKey` | `tileKey` | 文字列 |
+| 6 | **達成したカード** | `DS_TABLE_USER_ITEMS` | `userKey` | `itemKey` | 文字列 |
 
 > **時系列サブキーは必ず数値型で作る。** 文字列で作ると範囲クエリが辞書順になり、桁が変わった時点で壊れる。
 
@@ -26,7 +27,22 @@ users            userKey = "user#<uuid>"                 recordKey = "profile"
 checkins         userKey = "user#<uuid>"                 checkinAt = 1755300000000
 user_spot_state  userKey = "user#<uuid>"                 spotKey = "spot#sample-hibiya-park"
 explored_tiles   userKey = "user#<uuid>"                 tileKey = "79423:252775"
+user_cards       userKey = "user#<uuid>"                 itemKey = "tool:helmet"
+                                                        itemKey = "place:sample-hibiya-park"
+                                                        itemKey = "action:shelter-action-1"
+                                                        itemKey = "mission:first-action"
 ```
+
+> テーブルは所持アイテム用に作ったものを流用しており、**サブキーの列名が `itemKey` のまま
+> カードの識別子を持つ**。名前と中身がずれるが、enebular コンソールでのテーブル追加を
+> 避けるほうを選んだ（FR-14）。
+>
+> **未達成のカードは保存しない。** 保存すると書き込み回数が「歩いた量」ではなく
+> 「カードの総数」に比例してしまう。
+
+> `user_items` のサブキーには `item#` の接頭辞を付けない。`explored_tiles` と同じく、
+> このテーブルはアイテムしか持たずサブキー自体が定義済みのキーなので衝突しないうえ、
+> 接頭辞を付けるとレコード内の `itemKey` 列と名前が重複してしまう。
 
 `explored_tiles` のサブキーだけ接頭辞を付けていない。このテーブルはタイルしか持たず、
 キー自体がグリッド座標（`<row>:<col>`）なので、他の種類のレコードと衝突しようがないため。
@@ -72,8 +88,28 @@ explored_tiles   userKey = "user#<uuid>"                 tileKey = "79423:252775
 { "userKey": "user#…", "checkinAt": 1755300000000, "spotId": "…",
   "spotName": "…", "pointsEarned": 50, "lat": 35.6, "lng": 139.7 }
 
-// user_spot_state（再チェックイン制限の判定用）
-{ "userKey": "user#…", "spotKey": "spot#…", "lastCheckinAt": 1755300000000, "visitCount": 1 }
+// user_spot_state（再チェックイン制限とクイズ報酬の判定用）
+// quizClearedAt は 0 が「未クリア」。データストアに undefined を書けないため
+{ "userKey": "user#…", "spotKey": "spot#…", "lastCheckinAt": 1755300000000,
+  "visitCount": 1, "quizClearedAt": 0 }
+```
+
+`users` の `avatar` と `equipment` は入れ子のオブジェクトを素直に扱えないため **JSON 文字列**で持つ。
+読み出し側では必ず検証を通し、壊れていたら既定値へ落とす。
+
+```jsonc
+{ "userKey": "user#…", "recordKey": "profile", …,
+  "avatar": "{\"hair\":0,\"cloth\":3,\"hairColor\":0,\"clothColor\":1,\"skin\":0,\"name\":\"ヨリ\"}",
+  "equipment": "{\"head\":\"helmet\",\"body\":null,\"hand\":null,\"back\":null}" }
+```
+
+装備を所持アイテムとは別テーブルにせずプロフィールへ入れているのは、
+見た目の描画とマイページ表示のたびに `user_items` を読み直すと getItem が増えるため。
+
+### user_cards
+
+```jsonc
+{ "userKey": "user#…", "itemKey": "tool:helmet", "count": 1, "achievedAt": "…" }
 ```
 
 ### explored_tiles

@@ -22,6 +22,26 @@ export function distanceMeters(a: LatLng, b: LatLng): number {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
+/** 緯度1度あたりの距離（m）。緯度によらずほぼ一定 */
+const M_PER_DEG_LAT = 111_320
+
+/**
+ * 現在地から東西・南北へ指定メートル動かした座標を返す。
+ *
+ * 経度1度あたりの距離は緯度によって縮むため、cos(緯度) で補正する。
+ * これを忘れると、日本付近では東西方向の移動量が実際より約2割大きくなる。
+ *
+ * 数十〜数百メートルの移動を想定した近似で、極付近や数百km規模の移動には使わない。
+ */
+export function offsetByMeters(origin: LatLng, eastM: number, northM: number): LatLng {
+  const mPerDegLng = M_PER_DEG_LAT * Math.cos(toRadians(origin.lat))
+  return {
+    lat: origin.lat + northM / M_PER_DEG_LAT,
+    // 極付近で 0 除算にならないよう下限を置く
+    lng: origin.lng + eastM / Math.max(1, mPerDegLng),
+  }
+}
+
 /** 表示用の距離文字列（1km 以上は km 表記） */
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)}m`
