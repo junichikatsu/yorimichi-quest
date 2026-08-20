@@ -4,7 +4,7 @@ import {
   type Avatar,
   type ClientConfigResponse,
   type Equipment,
-  type ItemsResponse,
+  type CardsResponse,
   type MeResponse,
   type QuizAnswerResponse,
   type QuizResponse,
@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   fetchClientConfig,
-  fetchItems,
+  fetchCards,
   fetchMe,
   fetchQuiz,
   fetchSpots,
@@ -26,7 +26,7 @@ import {
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
-import { ItemPanel } from './components/ItemPanel.js'
+import { CardPanel } from './components/CardPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { MapView } from './components/MapView.js'
 import { QuizPanel } from './components/QuizPanel.js'
@@ -63,7 +63,7 @@ export function App(): React.JSX.Element {
   const [toast, setToast] = useState<Toast | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [fatalError, setFatalError] = useState<string | undefined>(undefined)
-  const [items, setItems] = useState<ItemsResponse | undefined>(undefined)
+  const [cards, setCards] = useState<CardsResponse | undefined>(undefined)
   const [quiz, setQuiz] = useState<QuizResponse | undefined>(undefined)
   const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
   const [quizSpotId, setQuizSpotId] = useState<string | undefined>(undefined)
@@ -105,14 +105,14 @@ export function App(): React.JSX.Element {
    */
   const reload = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      const [spotsResponse, meResponse, itemsResponse] = await Promise.all([
+      const [spotsResponse, meResponse, cardsResponse] = await Promise.all([
         fetchSpots(undefined),
         fetchMe(),
-        fetchItems(),
+        fetchCards(),
       ])
       setRawSpots(spotsResponse.spots)
       setMe(meResponse)
-      setItems(itemsResponse)
+      setCards(cardsResponse)
     } catch (err: unknown) {
       // 定期同期の失敗でトーストを出すと、通信が不安定なときに出っぱなしになる
       if (options?.silent === true) return
@@ -437,7 +437,7 @@ export function App(): React.JSX.Element {
             </section>
           )}
 
-          <ItemPanel items={items} busy={busy} onEquip={(equipment) => void handleEquip(equipment)} />
+          <CardPanel cards={cards} busy={busy} onEquip={(equipment) => void handleEquip(equipment)} />
 
           <ExplorationPanel
             summary={exploration.summary}

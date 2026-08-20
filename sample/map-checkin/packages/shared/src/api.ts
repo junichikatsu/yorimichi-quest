@@ -10,6 +10,7 @@ import {
 import type { SpotId, UserId } from './ids.js'
 import { avatarSchema, type Avatar } from './avatar.js'
 import { equipmentSchema, type Equipment, type ItemDef, type ItemKey, type OwnedItem } from './item.js'
+import type { CardCollectionSummary, CardView } from './card.js'
 import type { QuizPrompt } from './quiz.js'
 
 /* ------------------------------------------------------------------ *
@@ -145,6 +146,18 @@ export interface EquipmentUpdateResponse {
 export interface ItemsResponse {
   owned: OwnedItem[]
   catalog: ItemDef[]
+  equipment: Equipment
+}
+
+/**
+ * カード一覧（FR-14）。
+ *
+ * 未達成のカードも枠として返すが、**達成後にだけ見せる中身（`body`）は未達成では含めない**。
+ */
+export interface CardsResponse {
+  cards: CardView[]
+  summary: CardCollectionSummary
+  /** 道具カードの装備状態。カード一覧から装備を変えられるようにするため一緒に返す */
   equipment: Equipment
 }
 

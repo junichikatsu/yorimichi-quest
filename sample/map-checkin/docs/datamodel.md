@@ -15,7 +15,7 @@
 | 3 | チェックイン履歴 | `DS_TABLE_CHECKINS` | `userKey` | `checkinAt` | **数値** |
 | 4 | ユーザー×スポットの状態 | `DS_TABLE_USER_SPOT_STATE` | `userKey` | `spotKey` | 文字列 |
 | 5 | 探索済みタイル（歩いたところ） | `DS_TABLE_EXPLORED_TILES` | `userKey` | `tileKey` | 文字列 |
-| 6 | 所持アイテム | `DS_TABLE_USER_ITEMS` | `userKey` | `itemKey` | 文字列 |
+| 6 | **達成したカード** | `DS_TABLE_USER_ITEMS` | `userKey` | `itemKey` | 文字列 |
 
 > **時系列サブキーは必ず数値型で作る。** 文字列で作ると範囲クエリが辞書順になり、桁が変わった時点で壊れる。
 
@@ -27,8 +27,18 @@ users            userKey = "user#<uuid>"                 recordKey = "profile"
 checkins         userKey = "user#<uuid>"                 checkinAt = 1755300000000
 user_spot_state  userKey = "user#<uuid>"                 spotKey = "spot#sample-hibiya-park"
 explored_tiles   userKey = "user#<uuid>"                 tileKey = "79423:252775"
-user_items       userKey = "user#<uuid>"                 itemKey = "helmet"
+user_cards       userKey = "user#<uuid>"                 itemKey = "tool:helmet"
+                                                        itemKey = "place:sample-hibiya-park"
+                                                        itemKey = "action:shelter-action-1"
+                                                        itemKey = "mission:first-action"
 ```
+
+> テーブルは所持アイテム用に作ったものを流用しており、**サブキーの列名が `itemKey` のまま
+> カードの識別子を持つ**。名前と中身がずれるが、enebular コンソールでのテーブル追加を
+> 避けるほうを選んだ（FR-14）。
+>
+> **未達成のカードは保存しない。** 保存すると書き込み回数が「歩いた量」ではなく
+> 「カードの総数」に比例してしまう。
 
 > `user_items` のサブキーには `item#` の接頭辞を付けない。`explored_tiles` と同じく、
 > このテーブルはアイテムしか持たずサブキー自体が定義済みのキーなので衝突しないうえ、
@@ -96,10 +106,10 @@ user_items       userKey = "user#<uuid>"                 itemKey = "helmet"
 装備を所持アイテムとは別テーブルにせずプロフィールへ入れているのは、
 見た目の描画とマイページ表示のたびに `user_items` を読み直すと getItem が増えるため。
 
-### user_items
+### user_cards
 
 ```jsonc
-{ "userKey": "user#…", "itemKey": "helmet", "count": 1, "firstAcquiredAt": "…" }
+{ "userKey": "user#…", "itemKey": "tool:helmet", "count": 1, "achievedAt": "…" }
 ```
 
 ### explored_tiles

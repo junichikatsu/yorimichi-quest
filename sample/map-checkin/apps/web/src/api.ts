@@ -1,6 +1,7 @@
 import type {
   Avatar,
   AvatarUpdateResponse,
+  CardsResponse,
   CheckinResponse,
   ClientConfigResponse,
   Equipment,
@@ -202,6 +203,10 @@ export function postQuizAnswer(
 
 export function fetchItems(): Promise<ItemsResponse> {
   return request<ItemsResponse>('/v1/items')
+}
+
+export function fetchCards(): Promise<CardsResponse> {
+  return request<CardsResponse>('/v1/cards')
 }
 
 export function putAvatar(avatar: Avatar): Promise<AvatarUpdateResponse> {

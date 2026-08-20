@@ -16,6 +16,7 @@ import {
   EMPTY_EQUIPMENT,
   MAX_EXPLORATION_POINTS,
   type AvatarUpdateResponse,
+  type CardsResponse,
   type ClientConfigResponse,
   type EquipmentUpdateResponse,
   type ExplorationResponse,
@@ -37,6 +38,7 @@ import { ADMIN_KEY_HEADER } from '../middleware/auth.js'
 import { userGate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { performCheckin } from '../services/checkin-service.js'
+import { buildCards } from '../services/card-service.js'
 import {
   answerQuiz,
   getQuiz,
@@ -280,6 +282,18 @@ export function createRoutes(): Hono<AppEnv> {
   })
 
   /* ---------------- アイテム・アバター（FR-07-8） ---------------- */
+
+  routes.get('/v1/cards', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+
+    const response: CardsResponse = await buildCards(ctx, {
+      userId: c.get('userId'),
+      areaId: config.area.areaId,
+      maxSpots: config.maxSpotsPerRequest,
+    })
+    return c.json(response)
+  })
 
   routes.get('/v1/items', async (c) => {
     const ctx = await contextFor()

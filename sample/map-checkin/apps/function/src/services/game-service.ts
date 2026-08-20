@@ -1,9 +1,9 @@
 import {
-  acquireItem,
+  achieveCard,
   getSpot,
   getUser,
   getUserSpotState,
-  listUserItems,
+  listAchievedCards,
   putUser,
   putUserSpotState,
   type DataStoreContext,
@@ -15,7 +15,9 @@ import {
   ITEM_DEFS,
   ITEM_ORDER,
   checkinItemFor,
+  parseCardId,
   sanitizeEquipment,
+  toCardId,
   type AreaId,
   type Avatar,
   type Equipment,
@@ -70,7 +72,7 @@ export async function grantItem(
   itemKey: ItemKey,
   nowIso: string,
 ): Promise<{ profile: UserProfile; acquired: ItemKey | undefined }> {
-  const result = await acquireItem(ctx, profile.userId, itemKey, nowIso)
+  const result = await achieveCard(ctx, profile.userId, toCardId('tool', itemKey), nowIso)
   if (!result.isNew) return { profile, acquired: undefined }
 
   const slot = ITEM_DEFS[itemKey].slot
@@ -178,6 +180,9 @@ export async function answerQuiz(
     acquired = granted.acquired
   }
 
+  // 行動カードを達成させる（FR-14-5）。クイズIDがそのままカードのキーになる
+  await achieveCard(ctx, input.userId, toCardId('action', entry.quizId), nowIso)
+
   await putUser(ctx, profile)
   await putUserSpotState(ctx, input.userId, input.spotId, {
     lastCheckinAt: state?.lastCheckinAt ?? input.now,
@@ -221,9 +226,22 @@ function quizRewardFor(category: Parameters<typeof checkinItemFor>[0]): ItemKey 
  * アイテム・アバター
  * ------------------------------------------------------------------ */
 
+/** 道具カードだけを所持アイテムの形に戻す。装備画面が使う */
+async function listOwnedTools(ctx: DataStoreContext, userId: UserId) {
+  const cards = await listAchievedCards(ctx, userId)
+  return cards
+    .map((card) => ({ parsed: parseCardId(card.cardId), card }))
+    .filter((entry) => entry.parsed?.kind === 'tool')
+    .map((entry) => ({
+      itemKey: entry.parsed!.key as ItemKey,
+      count: entry.card.count,
+      firstAcquiredAt: entry.card.achievedAt,
+    }))
+}
+
 export async function listItems(ctx: DataStoreContext, userId: UserId): Promise<ItemsResponse> {
   const [owned, profile] = await Promise.all([
-    listUserItems(ctx, userId),
+    listOwnedTools(ctx, userId),
     getUser(ctx, userId),
   ])
 
@@ -258,7 +276,7 @@ export async function updateEquipment(
   const nowIso = new Date(now).toISOString()
   const [profile, owned] = await Promise.all([
     loadProfile(ctx, userId, now),
-    listUserItems(ctx, userId),
+    listOwnedTools(ctx, userId),
   ])
 
   // 持っていないアイテムを装備した状態で保存されないよう、ここで必ず整える

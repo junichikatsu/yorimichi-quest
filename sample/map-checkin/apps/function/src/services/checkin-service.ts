@@ -1,5 +1,6 @@
 import { evaluateCheckin } from '@map-checkin/core'
 import {
+  achieveCard,
   appendCheckin,
   getSpot,
   getUser,
@@ -11,7 +12,7 @@ import {
   type UserProfile,
 } from '@map-checkin/datastore'
 import type { AreaId, CheckinResponse, ItemKey, SpotId, UserId } from '@map-checkin/shared'
-import { DEFAULT_AVATAR, EMPTY_EQUIPMENT } from '@map-checkin/shared'
+import { DEFAULT_AVATAR, EMPTY_EQUIPMENT, toCardId } from '@map-checkin/shared'
 import { AppError, notFound } from '../errors.js'
 import { grantItem, itemForCheckin } from './game-service.js'
 import { decorateSpot } from './spot-service.js'
@@ -102,6 +103,9 @@ export async function performCheckin(
     lat: input.position.lat,
     lng: input.position.lng,
   })
+
+  // 場所カードを達成させる（FR-14-4）
+  await achieveCard(ctx, input.userId, toCardId('place', spot.spotId), nowIso)
 
   await putUserSpotState(ctx, input.userId, input.spotId, {
     lastCheckinAt: input.now,

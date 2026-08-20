@@ -7,6 +7,7 @@ import type {
   ExplorationResponse,
   ExplorationUpdateResponse,
   HealthResponse,
+  CardsResponse,
   ItemsResponse,
   MeResponse,
   QuizAnswerResponse,
@@ -614,6 +615,102 @@ describe('アイテムとアバター（FR-07-8）', () => {
       await app.request('/v1/items', { headers: headers(OTHER_USER_ID) }),
     )
     expect(other.owned).toHaveLength(0)
+  })
+})
+
+describe('カードコレクション（FR-14）', () => {
+  const spotId = 'sample-hibiya-park'
+  const position = { lat: 35.6739, lng: 139.7568 }
+
+  async function cards(userId = USER_ID): Promise<CardsResponse> {
+    return json<CardsResponse>(await app.request('/v1/cards', { headers: headers(userId) }))
+  }
+
+  async function checkin(): Promise<void> {
+    await app.request(`/v1/spots/${spotId}/checkin`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(position),
+    })
+  }
+
+  async function answerQuizCorrectly(): Promise<string> {
+    const quiz = await json<QuizResponse>(
+      await app.request(`/v1/spots/${spotId}/quiz`, { headers: headers() }),
+    )
+    await app.request(`/v1/spots/${spotId}/quiz/answer`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ quizId: quiz.quiz.quizId, choiceIndex: 0 }),
+    })
+    return quiz.quiz.quizId
+  }
+
+  it('4種のカードが未達成の枠として並ぶ', async () => {
+    const body = await cards()
+
+    expect(body.summary.achieved).toBe(0)
+    expect(body.summary.total).toBeGreaterThan(20)
+    for (const kind of ['action', 'tool', 'place', 'mission'] as const) {
+      expect(body.summary.byKind[kind].total).toBeGreaterThan(0)
+      expect(body.summary.byKind[kind].achieved).toBe(0)
+    }
+  })
+
+  it('未達成カードの中身はレスポンスに含まれない（表示側で隠すのではなく送らない）', async () => {
+    const body = await cards()
+
+    expect(body.cards.every((card) => card.body === undefined)).toBe(true)
+    // 達成条件は未達成でも見せる
+    expect(body.cards.every((card) => card.condition.length > 0)).toBe(true)
+  })
+
+  it('行動カードの見出しは「場面」で、行動そのものは達成まで見えない', async () => {
+    const body = await cards()
+    const action = body.cards.find((card) => card.cardId === 'action:shelter-action-1')
+
+    expect(action?.title).toBe('大きな地震の直後')
+    // 答えになる行動が未達成で漏れていないこと
+    expect(JSON.stringify(body)).not.toContain('頭を守って身を低くし')
+  })
+
+  it('チェックインで場所カードと道具カードが達成される', async () => {
+    await checkin()
+    const body = await cards()
+
+    const place = body.cards.find((card) => card.cardId === `place:${spotId}`)
+    expect(place?.achieved).toBe(true)
+    expect(place?.body).toContain('避難所')
+    expect(body.summary.byKind.tool.achieved).toBe(1)
+  })
+
+  it('クイズ正解で行動カードが達成され、中身が届く', async () => {
+    const quizId = await answerQuizCorrectly()
+    const body = await cards()
+
+    const action = body.cards.find((card) => card.cardId === `action:${quizId}`)
+    expect(action?.achieved).toBe(true)
+    expect(action?.body).toContain('頭を守って')
+  })
+
+  it('ミッションは他のカードの枚数で達成される（専用カウンタを持たない）', async () => {
+    await answerQuizCorrectly()
+    const body = await cards()
+
+    // 行動カード1枚で「まず身を守る」が達成される
+    const mission = body.cards.find((card) => card.cardId === 'mission:first-action')
+    expect(mission?.achieved).toBe(true)
+    expect(mission?.body).toContain('生き延びた')
+
+    // 避難所3枚のミッションはまだ未達成
+    expect(body.cards.find((card) => card.cardId === 'mission:shelter-3')?.achieved).toBe(false)
+  })
+
+  it('カードは他ユーザーに混ざらない', async () => {
+    await checkin()
+    const other = await cards(OTHER_USER_ID)
+
+    expect(other.summary.achieved).toBe(0)
   })
 })
 
