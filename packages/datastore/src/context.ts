@@ -11,6 +11,7 @@ import type { DataStoreClient } from './types.js'
 export const TABLE_ENV_KEYS = {
   spots: 'DS_TABLE_SPOTS',
   users: 'DS_TABLE_USERS',
+  exploredTiles: 'DS_TABLE_EXPLORED_TILES',
 } as const
 
 export type TableName = keyof typeof TABLE_ENV_KEYS

@@ -492,3 +492,121 @@ button {
   color: #6b4a1e;
   font-size: 0.78rem;
 }
+
+/* ---------------- 霧（FR-02-7） ---------------- */
+
+/*
+ * 地図の上に重ねる。
+ * ★ pointer-events: none を外さないこと。外すと地図のドラッグとピンのタップを
+ *   キャンバスが奪い、地図が動かなくなる。
+ */
+.map__fog {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* マーカーは霧より上に出す。未踏の場所のスポットも見えている必要がある */
+.marker,
+.me {
+  z-index: 2;
+}
+
+.exploration {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+
+.exploration__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.exploration__chome {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
+.exploration__value {
+  margin: 0.2rem 0 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.exploration__unit {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 0.2rem;
+}
+
+.exploration__bar {
+  margin-top: 0.4rem;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.exploration__bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.exploration__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+}
+
+.exploration__stats dt {
+  color: var(--muted);
+}
+
+.exploration__stats dd {
+  margin: 0.1rem 0 0;
+  font-weight: 700;
+}
+
+.exploration__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* 歩ききった町丁目 */
+
+.exploration__unlocked {
+  margin: 0.6rem 0 0.3rem;
+}
+
+.exploration__unlocked-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.exploration__chomes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.exploration__chome-item {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--chip);
+  font-size: 0.74rem;
+  font-weight: 600;
+}

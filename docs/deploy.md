@@ -18,7 +18,7 @@ Actions の画面に出てこない。** 機能ブランチに置いただけで
 | # | 作業 | 取得する値 |
 | :--- | :--- | :--- |
 | 1 | プロジェクトを作成 | `PROJECT_ID` |
-| 2 | データストアのテーブルを2つ作成（キーは下記） | テーブル ID × 2 |
+| 2 | データストアのテーブルを3つ作成（キーは下記） | テーブル ID × 3 |
 | 3 | ZIP をファイルアセットとして登録（`--deploy-type cloud --handler index.handler`） | `ASSET_ID` |
 | 4 | ZIP 向けクラウド実行環境を作成（ランタイム **Node.js 22.x**） | `CLOUD_ID` |
 | 5 | HTTP トリガーを有効化し、パスを設定（インスタンス内で一意） | トリガー URL |
@@ -33,10 +33,14 @@ Actions の画面に出てこない。** 機能ブランチに置いただけで
 
 ### データストアのキー
 
-| テーブル | メインキー | サブキー | 型 |
-| :--- | :--- | :--- | :--- |
-| スポット | `areaKey` | `spotId` | 文字列 / 文字列 |
-| ユーザー | `userKey` | `recordKey` | 文字列 / 文字列 |
+| テーブル | メインキー | サブキー | 型 | 環境変数 |
+| :--- | :--- | :--- | :--- | :--- |
+| スポット | `areaKey` | `spotId` | 文字列 / 文字列 | `DS_TABLE_SPOTS` |
+| ユーザー | `userKey` | `recordKey` | 文字列 / 文字列 | `DS_TABLE_USERS` |
+| **歩いたところ** | `userKey` | `tileKey` | 文字列 / 文字列 | `DS_TABLE_EXPLORED_TILES` |
+
+**「歩いたところ」は FR-02-7 で追加した。** 作り忘れると **`/v1/exploration` だけが 500 に
+なる。** 他は正常に見えるので気づきにくい（地図もスポットも出る）。
 
 **FR-03 以降で増えるテーブルのうち、時系列のサブキーは必ず数値型にする。**
 文字列にすると範囲クエリが辞書順になり、桁が上がった時点で並びが壊れる。
@@ -249,6 +253,9 @@ curl -s "$HTTP_TRIGGER_URL/v1/health"
 | `/v1/health` は返るが API が 503 | `connectDataStore` が無効／実行環境の外 | `details.reason === "client_init"` なら接続設定側 |
 | API が 500 `CONFIG_ERROR` | テーブル ID の環境変数が未設定 | 実行環境のログに不足キー名が出る |
 | 画面が白い | 静的ファイル未ビルド | `/app.js` が 500 `ASSET_NOT_BUILT` を返す。ZIP を作り直す |
+| **`/v1/exploration` だけ 500、他は正常** | `explored_tiles` テーブルまたは `DS_TABLE_EXPLORED_TILES` の作成漏れ | テーブルを作り、UUID を envVars へ |
+| 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
+| 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | 地図が出ず一覧になる | `MAPBOX_ACCESS_TOKEN` 未設定 | `/v1/client-config` の `mapboxToken` を確認 |
 | ログインで 401 | IDトークンの検証に失敗 | ログの `[auth] line verify failed: <理由>` を見る |
 | 「LINE からユーザー情報を取得できませんでした」 | LIFF に `openid` スコープが無い | LINE Developers 側で付与 |

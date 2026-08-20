@@ -11,11 +11,13 @@ import {
   setToken,
 } from './api.js'
 import { ConsentGate } from './components/ConsentGate.js'
+import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { DataCredits } from './components/DataCredits.js'
 import { MapView } from './components/MapView.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
+import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import { LiffError, loginAndGetIdToken } from './liff.js'
 
@@ -45,6 +47,18 @@ export function App(): React.JSX.Element {
    */
   const consented = user?.locationConsentGiven ?? false
   const geo = useGeolocation(consented)
+  const exploration = useExploration(phase === 'ready' ? config?.exploration : undefined)
+
+  /**
+   * 現在地を歩いた記録として積む（FR-02-7）。
+   *
+   * ★ 送信はフックがまとめる。位置は数秒おきに届くが、同じタイルは積まれないので
+   * 留まっている間は通信が起きない。
+   */
+  useEffect(() => {
+    if (phase !== 'ready' || !geo.position) return
+    exploration.track(geo.position)
+  }, [phase, geo.position, exploration])
 
   /* ---------------- 起動 → 設定取得 → LINE ログイン ---------------- */
 
@@ -186,6 +200,9 @@ export function App(): React.JSX.Element {
             position={geo.position}
             selectedSpotId={selectedSpotId}
             onSelectSpot={setSelectedSpotId}
+            exploredTiles={exploration.tiles}
+            unlockedAreas={exploration.unlockedAreas}
+            revealRadiusM={config.exploration.revealRadiusM}
           />
         ) : (
           <div className="map map--fallback">
@@ -199,6 +216,14 @@ export function App(): React.JSX.Element {
           {selectedSpot && (
             <SpotPanel spot={selectedSpot} onClose={() => setSelectedSpotId(undefined)} />
           )}
+
+          <ExplorationPanel
+            summary={exploration.summary}
+            areaRadiusM={config?.exploration.areaRadiusM ?? 0}
+            mapEnabled={canUseMap}
+            position={geo.position}
+            unlockedAreas={exploration.unlockedAreas}
+          />
 
           <section className="panel" aria-label="近くのスポット">
             <h2 className="panel__title">近くのスポット</h2>

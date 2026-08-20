@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
 import type { UserView } from './user.js'
 
@@ -113,6 +114,8 @@ export interface ClientConfigResponse {
   usesSampleData: boolean
   /** 静的ファイルのキャッシュ破棄に使う */
   assetVersion: string
+  /** 探索の寸法。FE は環境変数を持たないのでここから配る（FR-02-7） */
+  exploration: ExplorationConfig
 }
 
 /* ------------------------------------------------------------------ *
@@ -149,6 +152,40 @@ export interface SpotsResponse {
 
 export interface SpotResponse {
   spot: SpotWithDistance
+}
+
+/* ------------------------------------------------------------------ *
+ * 探索（FR-02-7）
+ * ------------------------------------------------------------------ */
+
+const coordinateSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+})
+
+/**
+ * 歩いた座標の記録。
+ *
+ * ★ 1リクエストの点数に上限を置く。書き込みはタイル単位に量子化されるので
+ * 点をいくら送っても件数は増えないが、**リクエストの大きさは制限しないと
+ * 無制限になる**。
+ */
+export const explorationRequestSchema = z.object({
+  points: z.array(coordinateSchema).min(1).max(MAX_EXPLORATION_POINTS),
+})
+
+export type ExplorationRequest = z.infer<typeof explorationRequestSchema>
+
+export interface ExplorationResponse {
+  tiles: ExploredTile[]
+  /** 全面が開放された町丁目（FR-02-7） */
+  unlockedAreas: UnlockedAreaBounds[]
+  summary: ExplorationSummary
+}
+
+export interface ExplorationUpdateResponse extends ExplorationResponse {
+  /** 今回の記録で新しく増えたタイル数。0 なら書き込みは発生していない */
+  newTileCount: number
 }
 
 /* ------------------------------------------------------------------ *
