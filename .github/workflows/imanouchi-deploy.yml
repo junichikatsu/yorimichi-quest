@@ -1,40 +1,36 @@
-name: sample/map-checkin deploy (enebular)
+name: イマノウチ deploy (enebular)
 
-# 意図しないタイミングでデモ環境が入れ替わらないよう、当面は手動実行のみ。
-# push デプロイを有効にする場合は下のコメントを外す。
-# on:
-#   push:
-#     branches: [develop]
-#     paths: ['sample/map-checkin/**']
+# ★ サンプルとは enebular プロジェクトが別。値の取り違えを防ぐため、
+#   変数名を PROD_ で始める別の名前にしている。同じ名前を使い回すと、
+#   環境の設定漏れがあったときにサンプル側の値を拾って**別のプロジェクトへ
+#   デプロイしてしまう**（もっとも気づきにくい壊れ方）。
+#
+# 意図しないタイミングで環境が入れ替わらないよう、当面は手動実行のみ。
 on:
   workflow_dispatch:
     inputs:
       environment:
         description: デプロイ先の GitHub Environment
         required: true
-        default: development
+        default: production
         type: choice
-        options: [development, staging]
+        options: [production]
 
 concurrency:
-  group: sample-map-checkin-deploy-${{ inputs.environment }}
+  group: imanouchi-deploy-${{ inputs.environment }}
   cancel-in-progress: false
-
-defaults:
-  run:
-    working-directory: sample/map-checkin
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
-      ENEBULAR_ACCESS_KEY: ${{ secrets.ENEBULAR_ACCESS_KEY }}
-      ENEBULAR_SECRET_KEY: ${{ secrets.ENEBULAR_SECRET_KEY }}
-      PROJECT_ID: ${{ vars.ENEBULAR_PROJECT_ID }}
-      CLOUD_ID: ${{ vars.ENEBULAR_CLOUD_ID }}
-      ASSET_ID: ${{ vars.ENEBULAR_FILE_ASSET_ID }}
-      HTTP_TRIGGER_URL: ${{ vars.HTTP_TRIGGER_URL }}
+      ENEBULAR_ACCESS_KEY: ${{ secrets.PROD_ENEBULAR_ACCESS_KEY }}
+      ENEBULAR_SECRET_KEY: ${{ secrets.PROD_ENEBULAR_SECRET_KEY }}
+      PROJECT_ID: ${{ vars.PROD_ENEBULAR_PROJECT_ID }}
+      CLOUD_ID: ${{ vars.PROD_ENEBULAR_CLOUD_ID }}
+      ASSET_ID: ${{ vars.PROD_ENEBULAR_FILE_ASSET_ID }}
+      HTTP_TRIGGER_URL: ${{ vars.PROD_HTTP_TRIGGER_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +42,7 @@ jobs:
           for name in ENEBULAR_ACCESS_KEY ENEBULAR_SECRET_KEY PROJECT_ID CLOUD_ID ASSET_ID HTTP_TRIGGER_URL; do
             value="${!name:-}"
             if [ -z "$value" ]; then
-              echo "::error::$name が未設定です"
+              echo "::error::$name が未設定です（PROD_ 付きの名前で登録してください）"
               fail=1
             elif [ "$value" != "$(printf '%s' "$value" | tr -d '[:space:]')" ]; then
               echo "::error::$name に空白または改行が含まれています"
@@ -55,17 +51,18 @@ jobs:
           done
           exit $fail
 
-      # ★ リポジトリ直下にも package.json ができたため、読む対象を明示する。
-      #   既定（直下）のままだと、直下の packageManager と version: が衝突して失敗する。
+      # ★ pnpm のバージョンは package.json の packageManager を正とする。
+      #   ここに version: を書くと「Multiple versions of pnpm specified」で失敗する。
+      #   action-setup は既定でリポジトリ直下を読むため、どちらを読むかを明示する。
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: sample/map-checkin/package.json
+          package_json_file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: sample/map-checkin/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -74,7 +71,7 @@ jobs:
       - name: Verify ZIP layout
         run: |
           set -euo pipefail
-          ZIP=apps/function/map-checkin-function.zip
+          ZIP=apps/function/imanouchi-function.zip
           ENTRIES=$(unzip -Z1 "$ZIP" | sort | tr '\n' ' ')
           [ "$ENTRIES" = "index.js package.json " ] || { echo "::error::ZIP レイアウト不正: $ENTRIES"; exit 1; }
           unzip -p "$ZIP" package.json | grep -q '"type"' && { echo "::error::type フィールドあり"; exit 1; }
@@ -89,7 +86,7 @@ jobs:
       - name: Deploy
         run: |
           set -euo pipefail
-          ZIP_PATH="$PWD/apps/function/map-checkin-function.zip"
+          ZIP_PATH="$PWD/apps/function/imanouchi-function.zip"
 
           # --name は 1〜30 文字の英数字・アンダースコア・ハイフンのみ。
           # ブランチ名やタグはそのままでは通らないため、弾かずに整形する。

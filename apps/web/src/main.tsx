@@ -1,0 +1,8 @@
+import { createRoot } from 'react-dom/client'
+import { App } from './App.js'
+import 'mapbox-gl/dist/mapbox-gl.css'
+
+const container = document.getElementById('root')
+if (!container) throw new Error('#root が見つかりません')
+
+createRoot(container).render(<App />)

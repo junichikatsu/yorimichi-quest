@@ -1,28 +1,16 @@
-# OS
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-.DS_Store
-
-# Editor
-.vscode/*
-!.vscode/extensions.json
-.idea/
-*.swp
-
-# Node（実装開始後に使用）
 node_modules/
-dist/
-build/
-.wrangler/
-.dev.vars
+.turbo/
 
-# 環境変数・シークレット
+# 生成物
+apps/web/public/app.js
+apps/web/public/app.css
+apps/function/build/
+apps/function/*.zip
+
+# 環境変数（値の入ったファイルはコミットしない）
 .env
 .env.*
 !.env.example
 
-# ログ・一時ファイル
-*.log
-npm-debug.log*
-tmp/
+# 取込スクリプトのダウンロードキャッシュ（避難所CSVが13MBあるためコミットしない）
+tools/ingest/.cache/
