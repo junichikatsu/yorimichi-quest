@@ -1,4 +1,10 @@
-import { asUserId, type UserId, type UserProfile } from '@imanouchi/shared'
+import {
+  DEFAULT_AVATAR,
+  asUserId,
+  normalizeAvatar,
+  type UserId,
+  type UserProfile,
+} from '@imanouchi/shared'
 import type { DataStoreContext } from '../context.js'
 import { USER_PROFILE_RECORD_KEY, USERS_MAIN_KEY, USERS_SUB_KEY, userKey } from '../keys.js'
 import { runGet, runOp } from '../run.js'
@@ -22,6 +28,22 @@ function parseTitles(value: unknown): string[] {
   }
 }
 
+/**
+ * キャラクターの見た目。
+ *
+ * ★ データストアは入れ子のオブジェクトを素直に扱えないため JSON 文字列で持つ。
+ * 読み出しでは必ず検証し、壊れていたら既定値へ落とす。**読めない値でアプリを
+ * 落とさない**ほうを選んでいる（描画側で存在しない髪型を引くと落ちる）。
+ */
+function parseAvatar(value: unknown): ReturnType<typeof normalizeAvatar> {
+  if (typeof value !== 'string' || value === '') return DEFAULT_AVATAR
+  try {
+    return normalizeAvatar(JSON.parse(value))
+  } catch {
+    return DEFAULT_AVATAR
+  }
+}
+
 function toProfile(item: unknown): UserProfile | undefined {
   if (typeof item !== 'object' || item === null) return undefined
   const raw = item as Record<string, unknown>
@@ -33,6 +55,7 @@ function toProfile(item: unknown): UserProfile | undefined {
     userId: asUserId(raw['userId']),
     displayName: typeof raw['displayName'] === 'string' ? raw['displayName'] : '',
     pictureUrl: typeof raw['pictureUrl'] === 'string' ? raw['pictureUrl'] : '',
+    avatar: parseAvatar(raw['avatar']),
     totalPoints: typeof raw['totalPoints'] === 'number' ? raw['totalPoints'] : 0,
     titles: parseTitles(raw['titles']),
     // 空文字は「未同意」と同じ扱いにする（データストアは undefined を保持できない）
@@ -73,6 +96,7 @@ export async function putUser(ctx: DataStoreContext, profile: UserProfile): Prom
         userId: profile.userId,
         displayName: profile.displayName,
         pictureUrl: profile.pictureUrl,
+        avatar: JSON.stringify(profile.avatar),
         totalPoints: profile.totalPoints,
         titles: JSON.stringify(profile.titles),
         // undefined は保持できないので空文字に落とす

@@ -1,5 +1,11 @@
 import { distanceMeters, offsetByMeters } from '@imanouchi/core'
-import type { ClientConfigResponse, SpotId, SpotWithDistance, UserView } from '@imanouchi/shared'
+import type {
+  Avatar,
+  ClientConfigResponse,
+  SpotId,
+  SpotWithDistance,
+  UserView,
+} from '@imanouchi/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
@@ -7,9 +13,11 @@ import {
   fetchSpots,
   isAuthExpired,
   login,
+  saveAvatar,
   setLocationConsent,
   setToken,
 } from './api.js'
+import { AvatarCreator } from './components/AvatarCreator.js'
 import { ConsentGate } from './components/ConsentGate.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
@@ -50,6 +58,7 @@ export function App(): React.JSX.Element {
   const [selectedSpotId, setSelectedSpotId] = useState<SpotId | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [joystickClosed, setJoystickClosed] = useState(false)
+  const [creatorOpen, setCreatorOpen] = useState(false)
   /**
    * デモ用の移動操作を一度でも出したか。
    *
@@ -225,6 +234,20 @@ export function App(): React.JSX.Element {
     [geo, config?.area.center],
   )
 
+  /** キャラクターの見た目を保存する（FR-01-6） */
+  const handleSaveAvatar = async (avatar: Avatar): Promise<void> => {
+    setBusy(true)
+    try {
+      const response = await saveAvatar(avatar)
+      setUser(response.user)
+      setCreatorOpen(false)
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : '見た目を保存できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleAgree = async (): Promise<void> => {
     setBusy(true)
     try {
@@ -270,6 +293,7 @@ export function App(): React.JSX.Element {
         areaName={config?.area.name ?? ''}
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
+        onOpenCreator={() => setCreatorOpen((open) => !open)}
       />
 
       <main className="app__main">
@@ -284,6 +308,7 @@ export function App(): React.JSX.Element {
             exploredTiles={exploration.tiles}
             unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
+            avatar={user?.avatar}
           />
         ) : (
           <div className="map map--fallback">
@@ -312,6 +337,15 @@ export function App(): React.JSX.Element {
           ))}
 
         <aside className="sidebar">
+          {creatorOpen && user && (
+            <AvatarCreator
+              avatar={user.avatar}
+              busy={busy}
+              onSave={(avatar) => void handleSaveAvatar(avatar)}
+              onClose={() => setCreatorOpen(false)}
+            />
+          )}
+
           {selectedSpot && (
             <SpotPanel spot={selectedSpot} onClose={() => setSelectedSpotId(undefined)} />
           )}

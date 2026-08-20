@@ -3,6 +3,7 @@ import {
   SPOT_CATEGORY_GLYPHS,
   chomeByCode,
   type AreaSummary,
+  type Avatar,
   type ExploredTile,
   type SpotId,
   type SpotWithDistance,
@@ -10,6 +11,7 @@ import {
 } from '@imanouchi/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface MapViewProps {
@@ -24,6 +26,8 @@ interface MapViewProps {
   /** 全面が開放された町丁目（FR-02-7） */
   unlockedAreas: UnlockedAreaBounds[]
   revealRadiusM: number
+  /** 現在地に描くキャラクター（FR-02-8）。未取得なら点で描く */
+  avatar: Avatar | undefined
 }
 
 const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
@@ -69,6 +73,30 @@ function createMarkerElement(spot: SpotWithDistance, selected: boolean): HTMLEle
 }
 
 /**
+ * 現在地の要素。
+ *
+ * ★ 見た目が未取得のときは点で描く。キャラクターを待って現在地が出ないほうが困る。
+ */
+function createMeElement(avatar: Avatar | undefined): HTMLElement {
+  const el = document.createElement('div')
+  el.setAttribute('aria-label', '現在地')
+
+  if (!avatar) {
+    el.className = 'me'
+    return el
+  }
+
+  el.className = 'me me--avatar'
+  const canvas = document.createElement('canvas')
+  const scale = 1
+  canvas.width = SPRITE_WIDTH * scale
+  canvas.height = SPRITE_HEIGHT * scale
+  drawSprite(canvas, { avatar, frame: 0, moving: false, direction: 'down' }, scale)
+  el.appendChild(canvas)
+  return el
+}
+
+/**
  * 地図（FR-02-1）。
  *
  * ★ 帰属表示（`attributionControl`）を消さない。Mapbox の利用規約で必須であり、
@@ -84,6 +112,7 @@ export function MapView({
   exploredTiles,
   unlockedAreas,
   revealRadiusM,
+  avatar,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -174,6 +203,20 @@ export function MapView({
     }
   }, [spots, selectedSpotId, onSelectSpot])
 
+  /**
+   * 現在地の見た目（FR-02-8）。
+   *
+   * ★ キャラクターはキャンバスに描く。見た目が変わったら作り直す必要があるので、
+   * 要素の再利用は座標更新だけに限る。
+   */
+  useEffect(() => {
+    const marker = meMarkerRef.current
+    if (!marker) return
+    marker.remove()
+    meMarkerRef.current = null
+    // 次の描画で作り直される（下の効果が position を見て作る）
+  }, [avatar])
+
   /** 現在地のマーカーと追従 */
   useEffect(() => {
     const map = mapRef.current
@@ -186,10 +229,7 @@ export function MapView({
     }
 
     if (!meMarkerRef.current) {
-      const el = document.createElement('div')
-      el.className = 'me'
-      el.setAttribute('aria-label', '現在地')
-      meMarkerRef.current = new mapboxgl.Marker({ element: el })
+      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar) })
         .setLngLat([position.lng, position.lat])
         .addTo(map)
     } else {
@@ -204,7 +244,7 @@ export function MapView({
       map.jumpTo({ center: [position.lng, position.lat] })
       centeredRef.current = true
     }
-  }, [position, following])
+  }, [position, following, avatar])
 
   /**
    * 霧を描く（フォグ・オブ・ウォー）。

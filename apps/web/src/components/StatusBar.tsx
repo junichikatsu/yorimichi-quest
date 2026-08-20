@@ -1,11 +1,14 @@
 import type { GeolocationStatus } from '../hooks/useGeolocation.js'
 import type { UserView } from '@imanouchi/shared'
+import { AvatarCanvas } from './AvatarCanvas.js'
 
 interface StatusBarProps {
   user: UserView | undefined
   areaName: string
   geoStatus: GeolocationStatus
   spotCount: number
+  /** キャラクターメイキングを開く（FR-01-6） */
+  onOpenCreator: () => void
 }
 
 const GEO_LABELS: Record<GeolocationStatus, string> = {
@@ -18,12 +21,30 @@ const GEO_LABELS: Record<GeolocationStatus, string> = {
   simulated: 'デモ位置を使用中',
 }
 
-export function StatusBar({ user, areaName, geoStatus, spotCount }: StatusBarProps): React.JSX.Element {
+export function StatusBar({
+  user,
+  areaName,
+  geoStatus,
+  spotCount,
+  onOpenCreator,
+}: StatusBarProps): React.JSX.Element {
   return (
     <header className="statusbar">
       <div className="statusbar__brand">
-        {user?.pictureUrl !== undefined && user.pictureUrl !== '' ? (
-          <img className="statusbar__avatar" src={user.pictureUrl} alt="" width={32} height={32} />
+        {/*
+          ★ ここに出すのは LINE のアイコンではなくゲーム内のキャラクター。
+          押すと作り直せる（FR-01-6）。LINE のアイコンは本人の写真でありうるため、
+          常時表示するものとしては重い。
+        */}
+        {user ? (
+          <button
+            type="button"
+            className="statusbar__avatar statusbar__avatar--button"
+            onClick={onOpenCreator}
+            aria-label="キャラクターをつくる"
+          >
+            <AvatarCanvas avatar={user.avatar} scale={1} />
+          </button>
         ) : (
           <span className="statusbar__avatar statusbar__avatar--blank" aria-hidden="true" />
         )}

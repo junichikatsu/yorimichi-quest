@@ -1,4 +1,11 @@
-import { asAreaId, asSpotId, asUserId, type Spot, type UserProfile } from '@imanouchi/shared'
+import {
+  DEFAULT_AVATAR,
+  asAreaId,
+  asSpotId,
+  asUserId,
+  type Spot,
+  type UserProfile,
+} from '@imanouchi/shared'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeDataStore, FAKE_TABLE_IDS } from './fake.js'
 import { getSpot, listSpotsByArea, putSpot } from './repositories/spots.js'
@@ -39,6 +46,7 @@ function profile(userId = USER, overrides: Partial<UserProfile> = {}): UserProfi
     userId,
     displayName: '山田 太郎',
     pictureUrl: 'https://example.com/a.png',
+    avatar: DEFAULT_AVATAR,
     totalPoints: 10,
     titles: ['はじめの一歩'],
     locationConsentAt: '2026-08-20T00:00:00.000Z',
@@ -108,6 +116,34 @@ describe('users', () => {
   it('★ 他人のプロフィールは引けない', async () => {
     await putUser(ctx, profile())
     expect(await getUser(ctx, OTHER_USER)).toBeUndefined()
+  })
+
+  it('★ 見た目が壊れていても既定値へ落ちる（描画側を落とさない）', async () => {
+    await putUser(ctx, profile())
+    // JSON として壊れた値を直接書き込む
+    await ctx.client.putItem({
+      tableId: 'fake-users',
+      item: {
+        userKey: 'user#U0123456789abcdef0123456789abcdef',
+        recordKey: 'profile',
+        userId: USER,
+        displayName: '山田 太郎',
+        avatar: 'これは JSON ではない',
+        titles: '[]',
+        locationConsentAt: '',
+        createdAt: '',
+        lastActiveAt: '',
+      },
+    })
+
+    const found = await getUser(ctx, USER)
+    expect(found?.avatar).toEqual(DEFAULT_AVATAR)
+  })
+
+  it('見た目を保存して読み戻せる', async () => {
+    const custom = { ...DEFAULT_AVATAR, hair: 3, cloth: 5 }
+    await putUser(ctx, profile(USER, { avatar: custom }))
+    expect((await getUser(ctx, USER))?.avatar).toEqual(custom)
   })
 
   it('未同意は undefined として戻る（空文字を同意扱いにしない）', async () => {
