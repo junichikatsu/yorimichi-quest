@@ -46,13 +46,21 @@ export interface AppConfig {
   useFakeDataStore: boolean
   seedDataset: SeedDataset
   area: AreaSummary
-  /** LIFF アプリの ID。フロントへ配る（FR-01-1） */
+  /**
+   * LIFF ID。フロントへ配る（FR-01-1）。
+   *
+   * ★ 形式は `<チャネルID>-<ランダム文字列>`。ミニアプリは内部チャネル
+   * （開発用・審査用・本番用）ごとに**別の LIFF ID と別のチャネルID**を持つ。
+   */
   liffId: string
   /**
-   * LINE ログインチャネルの ID。
+   * チャネル ID。
    *
    * ★ IDトークン検証で **aud の照合**に使う。これが無いと、別のチャネル向けに
    * 発行されたトークンを受け入れてしまう。検証の要になる値である。
+   *
+   * ★ 内部チャネルごとに別の値である。LIFF ID の接頭辞と一致していなければ
+   * 組み合わせが間違っている（下の checkConfigConsistency で検出する）。
    */
   lineChannelId: string
   /**
@@ -123,6 +131,31 @@ export function loadConfig(): AppConfig {
 }
 
 /**
+ * LIFF ID とチャネルIDの組み合わせの検査。
+ *
+ * ★ ミニアプリは内部チャネルが3つあり、**LIFF ID もチャネルIDも内部チャネル
+ * ごとに別**である。取り違えると IDトークンの aud が一致せず 401 になるが、
+ * 期限切れトークンと区別がつかず原因が分かりにくい。
+ *
+ * LIFF ID は `<チャネルID>-<ランダム文字列>` という形なので、**接頭辞を見れば
+ * 組み合わせの誤りを起動時に見つけられる**。実機で 401 を踏む前に気づける。
+ *
+ * 返り値は問題の識別子。**レスポンスには出さない**（キー名も値も出さない）。
+ */
+export function checkConfigConsistency(config: AppConfig): string[] {
+  const issues: string[] = []
+
+  if (config.liffId !== '' && config.lineChannelId !== '') {
+    if (!config.liffId.startsWith(`${config.lineChannelId}-`)) {
+      // 開発用の LIFF ID に本番用のチャネルIDを組み合わせた、などの取り違え
+      issues.push('LIFF_ID_CHANNEL_MISMATCH')
+    }
+  }
+
+  return issues
+}
+
+/**
  * 不足している設定キー。
  *
  * ★ 動作モードで必須項目が変わるのでコードで持つ。手作業のチェックリストにしない。
@@ -142,6 +175,10 @@ export function missingConfigKeys(config: AppConfig): string[] {
       if (readString(envKey) === '') missing.push(envKey)
     }
   }
+
+  // 組み合わせの誤りも「設定が正しくない」として同じ列に並べる。
+  // health では件数だけを返すので、ここに混ぜても外へは漏れない。
+  missing.push(...checkConfigConsistency(config))
 
   return missing
 }

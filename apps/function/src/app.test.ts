@@ -72,7 +72,8 @@ function auth(token: string): Record<string, string> {
 beforeEach(() => {
   process.env['USE_FAKE_DATASTORE'] = 'true'
   process.env['SEED_DATASET'] = 'sample'
-  process.env['LIFF_ID'] = '1234567890-abcdefgh'
+  // LIFF ID の接頭辞はチャネルIDと一致させる（実際のコンソールの形式）
+  process.env['LIFF_ID'] = `${CHANNEL_ID}-abcdefgh`
   process.env['LINE_CHANNEL_ID'] = CHANNEL_ID
   process.env['SESSION_SECRET'] = 'test-session-secret'
   process.env['MAPBOX_ACCESS_TOKEN'] = 'pk.test-token'
@@ -108,6 +109,34 @@ describe('GET /v1/health', () => {
     expect(JSON.parse(text).configMissing).toBe(1)
   })
 
+  it('★ LIFF ID とチャネルIDの組み合わせ違いを検出する', async () => {
+    // ミニアプリは内部チャネル（開発用・審査用・本番用）ごとに両方が別。
+    // 開発用の LIFF ID に別の内部チャネルのIDを組み合わせた状態を作る
+    process.env['LIFF_ID'] = '2011183531-CoJerXk1'
+    process.env['LINE_CHANNEL_ID'] = '2011183533'
+
+    const body = await json<HealthResponse>(await app.request('/v1/health'))
+    expect(body.configOk).toBe(false)
+    expect(body.configMissing).toBe(1)
+  })
+
+  it('組み合わせが合っていれば configOk のまま', async () => {
+    process.env['LIFF_ID'] = '2011183531-CoJerXk1'
+    process.env['LINE_CHANNEL_ID'] = '2011183531'
+
+    const body = await json<HealthResponse>(await app.request('/v1/health'))
+    expect(body.configOk).toBe(true)
+  })
+
+  it('★ 組み合わせ違いでもキー名を漏らさない', async () => {
+    process.env['LIFF_ID'] = '2011183531-CoJerXk1'
+    process.env['LINE_CHANNEL_ID'] = '2011183533'
+
+    const text = await (await app.request('/v1/health')).text()
+    expect(text).not.toContain('LIFF')
+    expect(text).not.toContain('MISMATCH')
+  })
+
   it('トリガーのパスが前置されても届く', async () => {
     const response = await app.request(`${TRIGGER_PATH}/v1/health`)
     expect(response.status).toBe(200)
@@ -117,7 +146,7 @@ describe('GET /v1/health', () => {
 describe('GET /v1/client-config', () => {
   it('LIFF ID と地図トークンを配る（FE は環境変数を持たない）', async () => {
     const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
-    expect(body.liffId).toBe('1234567890-abcdefgh')
+    expect(body.liffId).toBe(`${CHANNEL_ID}-abcdefgh`)
     expect(body.mapboxToken).toBe('pk.test-token')
     expect(body.area.areaId).toBe('chiyoda-minato')
   })
