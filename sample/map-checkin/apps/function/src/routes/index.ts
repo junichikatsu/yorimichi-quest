@@ -121,8 +121,8 @@ export function createRoutes(): Hono<AppEnv> {
         revealRadiusM: config.exploreRevealRadiusM,
         areaRadiusM: config.areaRadiusM,
         maxPointsPerRequest: MAX_EXPLORATION_POINTS,
-        blockTiles: config.exploreBlockTiles,
         unlockRatio: config.exploreUnlockRatio,
+        unlockMaxTiles: config.exploreUnlockMaxTiles,
         latitude: config.area.center.lat,
       },
       assetVersion: assetVersion(),
@@ -216,8 +216,8 @@ export function createRoutes(): Hono<AppEnv> {
       latitude: config.area.center.lat,
       areaRadiusM: config.areaRadiusM,
       maxTiles: config.maxExploredTilesPerRequest,
-      blockTiles: config.exploreBlockTiles,
       unlockRatio: config.exploreUnlockRatio,
+      unlockMaxTiles: config.exploreUnlockMaxTiles,
     })
     return c.json(response)
   })
@@ -238,8 +238,8 @@ export function createRoutes(): Hono<AppEnv> {
       latitude: config.area.center.lat,
       areaRadiusM: config.areaRadiusM,
       maxTiles: config.maxExploredTilesPerRequest,
-      blockTiles: config.exploreBlockTiles,
       unlockRatio: config.exploreUnlockRatio,
+      unlockMaxTiles: config.exploreUnlockMaxTiles,
     })
     return c.json(response)
   })

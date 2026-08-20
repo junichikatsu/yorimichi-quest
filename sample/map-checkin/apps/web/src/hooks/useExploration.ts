@@ -90,7 +90,7 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
 
       const unlockConfig: AreaUnlockConfig = {
         tileSizeM: config.tileSizeM,
-        blockTiles: config.blockTiles,
+        unlockMaxTiles: config.unlockMaxTiles,
         unlockRatio: config.unlockRatio,
       }
       const keys = nextTiles.map((tile) => tile.tileKey)

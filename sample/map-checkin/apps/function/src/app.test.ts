@@ -14,7 +14,7 @@ import type {
   QuizResponse,
   SpotsResponse,
 } from '@map-checkin/shared'
-import { tileOf } from '@map-checkin/core'
+import { chomeOfTile, tileOf, tilesNeededToUnlock, tilesPerArea } from '@map-checkin/core'
 import { FakeDataStoreClient, setDataStoreClient } from '@map-checkin/datastore'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app.js'
@@ -165,8 +165,8 @@ describe('GET /v1/client-config', () => {
       areaRadiusM: 1500,
       maxPointsPerRequest: 200,
       // 開放の判定は FE でも先読みするため、閾値と緯度も渡す
-      blockTiles: 6,
       unlockRatio: 0.25,
+      unlockMaxTiles: 12,
       latitude: 35.6785,
     })
   })
@@ -273,18 +273,37 @@ describe('探索済みエリア（歩いたところ）', () => {
   })
 })
 
-describe('エリア開放（一定割合を歩くと区画全体が開く）', () => {
+describe('区画開放（一定割合を歩くと町丁目全体が開く）', () => {
   /**
-   * 既定は 6×6 タイル＝36 枚の区画で、25%（9 枚）歩けば全面が開く。
-   * タイルは 50m 四方なので、東西へ 6 枚進むと隣の区画に入る。行方向へ折り返して埋める。
+   * 区画は町丁目（#27）。面積が区画ごとに違うので、必要枚数は定数で書けない。
+   * **境界データから計算した必要枚数**を使う。
    */
-  function pointsInBlock(count: number): { lat: number; lng: number }[] {
+  const BASE = { lat: 35.6785, lng: 139.7594 }
+  const TILE_SIZE_M = 50
+  const UNLOCK = { tileSizeM: TILE_SIZE_M, unlockRatio: 0.25, unlockMaxTiles: 12 }
+
+  const baseChome = chomeOfTile(tileOf(BASE, TILE_SIZE_M).key, TILE_SIZE_M)
+  const needed = baseChome ? tilesNeededToUnlock(baseChome, UNLOCK) : 0
+  const fullTiles = baseChome ? tilesPerArea(baseChome, TILE_SIZE_M) : 0
+
+  /**
+   * BASE と**同じ町丁目に入る**座標を集める。
+   *
+   * ★ 一列に並べてはいけない。50m タイルを東へ 12 枚進むと 600m あり、途中で
+   * 隣の町丁目へ抜けて開放が起きない。周囲を走査して同じ区画のものだけ拾う。
+   */
+  function pointsInChome(count: number): { lat: number; lng: number }[] {
     const step = 50 / 111_320
-    const base = { lat: 35.6785, lng: 139.7594 }
-    return Array.from({ length: count }, (_, i) => ({
-      lat: base.lat + Math.floor(i / 6) * step,
-      lng: base.lng + (i % 6) * step,
-    }))
+    const points: { lat: number; lng: number }[] = []
+    for (let row = -20; row <= 20 && points.length < count; row += 1) {
+      for (let col = -20; col <= 20 && points.length < count; col += 1) {
+        const point = { lat: BASE.lat + row * step, lng: BASE.lng + col * step }
+        if (chomeOfTile(tileOf(point, TILE_SIZE_M).key, TILE_SIZE_M)?.code === baseChome?.code) {
+          points.push(point)
+        }
+      }
+    }
+    return points
   }
 
   async function record(points: { lat: number; lng: number }[]): Promise<ExplorationUpdateResponse> {
@@ -297,35 +316,47 @@ describe('エリア開放（一定割合を歩くと区画全体が開く）', (
     )
   }
 
-  it('閾値に届かないうちは区画が開かない', async () => {
-    const result = await record(pointsInBlock(8))
-
-    expect(result.unlockedAreas).toHaveLength(0)
-    expect(result.summary.tileCount).toBe(8)
+  it('境界データから必要枚数が決まる（前提の確認）', () => {
+    // ここが崩れると以下のテストが意味を失う
+    expect(baseChome).toBeDefined()
+    expect(needed).toBeGreaterThan(1)
+    expect(needed).toBeLessThanOrEqual(UNLOCK.unlockMaxTiles)
+    expect(fullTiles).toBeGreaterThan(needed)
   })
 
-  it('25%（9枚）歩くと区画全体が開き、探索率も全面ぶんになる', async () => {
-    const result = await record(pointsInBlock(9))
+  it('閾値に届かないうちは区画が開かない', async () => {
+    const points = pointsInChome(needed - 1)
+    const result = await record(points)
+
+    expect(result.unlockedAreas).toHaveLength(0)
+    expect(result.summary.tileCount).toBe(points.length)
+  })
+
+  it('必要枚数を歩くと町丁目全体が開き、探索率も全面ぶんになる', async () => {
+    const result = await record(pointsInChome(needed))
 
     expect(result.unlockedAreas).toHaveLength(1)
-    // 歩いたのは 9 枚でも、開放されたので 36 枚ぶんとして数える
-    expect(result.summary.tileCount).toBe(36)
+    // 町丁目名が返る。「300m四方の区画」ではなく地名で言える（#27）
+    expect(result.unlockedAreas[0]?.areaKey).toBe(baseChome?.code)
+    expect(result.unlockedAreas[0]?.name).toBe(baseChome?.name)
+    // 歩いたのは needed 枚でも、開放されたので全面ぶんとして数える
+    expect(result.summary.tileCount).toBe(fullTiles)
   })
 
   it('開放後に GET で取り直しても同じ結果になる（FE と BE で判定がずれない）', async () => {
-    await record(pointsInBlock(9))
+    await record(pointsInChome(needed))
 
     const fetched = await json<ExplorationResponse>(
       await app.request('/v1/exploration', { headers: headers() }),
     )
     expect(fetched.unlockedAreas).toHaveLength(1)
-    expect(fetched.summary.tileCount).toBe(36)
+    expect(fetched.summary.tileCount).toBe(fullTiles)
     // 保存しているのは実際に歩いた分だけ。開放は都度計算する
-    expect(fetched.tiles).toHaveLength(9)
+    expect(fetched.tiles).toHaveLength(needed)
   })
 
   it('開放は他ユーザーに影響しない', async () => {
-    await record(pointsInBlock(9))
+    await record(pointsInChome(needed))
 
     const other = await json<ExplorationResponse>(
       await app.request('/v1/exploration', { headers: headers(OTHER_USER_ID) }),

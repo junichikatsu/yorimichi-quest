@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   areaKeyOf,
+  chomeOfTile,
   effectiveTileCount,
   interpolatePath,
   summarizeExploration,
+  tilesNeededToUnlock,
   tilesPerArea,
   unlockedAreas,
   tileAreaM2,
@@ -183,93 +185,187 @@ describe('formatArea', () => {
 })
 
 /**
- * エリア単位の開放。
+ * 区画（町丁目）単位の開放（#27）。
  *
  * タイルを 1 枚ずつ塗るだけでは区画全体を晴らすのに歩きすぎるため、
  * 一定割合で全面を開放する。判定は FE と BE の両方から同じ関数を呼ぶので、
  * ここがずれると「見た目は晴れているのに探索率が上がらない」ことになる。
+ *
+ * ★ 区画は格子ではなく実在の町丁目なので、**実座標でしかテストできない**。
+ * 原点付近の合成キーはギニア湾の海上になり、どの町丁目にも入らない。
  */
-const UNLOCK = { tileSizeM: 50, blockTiles: 6, unlockRatio: 0.25 }
+const UNLOCK = { tileSizeM: 50, unlockRatio: 0.25, unlockMaxTiles: 12 }
+
+/** 日比谷公園（千代田区）。サンプルの導線がここを通る */
+const HIBIYA = { lat: 35.6739, lng: 139.7568 }
+/** 東京タワー付近（港区） */
+const TOKYO_TOWER = { lat: 35.6586, lng: 139.7454 }
 
 /**
- * 1 区画の中を埋めるタイルキーを作る。
+ * ある地点と**同じ町丁目に入るタイル**だけを集める。
  *
- * ★ 1 行に並べてはいけない。区画は 6×6 なので、横一列では 6 枚で隣の区画へはみ出す。
- * 行方向へ折り返して同じ区画に収める。
+ * ★ 東へ一列に並べてはいけない。50m タイル 12 枚は 600m あり、途中で隣の町丁目へ
+ * 抜けてしまう（実際にそれで開放が起きなかった）。町丁目は格子ではないので、
+ * 周囲を走査して同じ区画のものだけを拾う。
  */
-function tileKeys(count: number, blockRow = 0, blockCol = 0): string[] {
-  return Array.from({ length: count }, (_, i) => {
-    const row = blockRow * 6 + Math.floor(i / 6)
-    const col = blockCol * 6 + (i % 6)
-    return `${row}:${col}`
-  })
+function tilesOfChome(origin: { lat: number; lng: number }, count: number): string[] {
+  const step = 50 / 111_320
+  const target = chomeOfTile(tileOf(origin, 50).key, 50)
+  expect(target).toBeDefined()
+
+  const keys: string[] = []
+  for (let row = -20; row <= 20 && keys.length < count; row += 1) {
+    for (let col = -20; col <= 20 && keys.length < count; col += 1) {
+      const key = tileOf({ lat: origin.lat + row * step, lng: origin.lng + col * step }, 50).key
+      if (chomeOfTile(key, 50)?.code === target!.code) keys.push(key)
+    }
+  }
+  return keys
 }
 
-describe('areaKeyOf', () => {
-  it('同じ区画のタイルは同じキーになる', () => {
-    expect(areaKeyOf('0:0', 6)).toBe(areaKeyOf('5:5', 6))
-    expect(areaKeyOf('0:0', 6)).not.toBe(areaKeyOf('6:0', 6))
+/** その地点の町丁目 */
+function chomeAt(position: { lat: number; lng: number }) {
+  const chome = chomeOfTile(tileOf(position, 50).key, 50)
+  expect(chome).toBeDefined()
+  return chome!
+}
+
+describe('areaKeyOf（タイル → 町丁目）', () => {
+  it('同じ町丁目のタイルは同じキーになる', () => {
+    const keys = tilesOfChome(HIBIYA, 2)
+    expect(keys).toHaveLength(2)
+    expect(areaKeyOf(keys[0]!, 50)).toBe(areaKeyOf(keys[1]!, 50))
   })
 
-  it('負の座標でも区画が分かれる（南半球・西経でも破綻しない）', () => {
-    expect(areaKeyOf('-1:-1', 6)).toBe('-1:-1')
-    expect(areaKeyOf('-6:-6', 6)).toBe('-1:-1')
-    expect(areaKeyOf('-7:-7', 6)).toBe('-2:-2')
+  it('別の区の町丁目は別のキーになる', () => {
+    const chiyoda = areaKeyOf(tileOf(HIBIYA, 50).key, 50)
+    const minato = areaKeyOf(tileOf(TOKYO_TOWER, 50).key, 50)
+    expect(chiyoda).toBeDefined()
+    expect(minato).toBeDefined()
+    expect(chiyoda).not.toBe(minato)
+  })
+
+  it('小地域コードを返す（丁目のない町字は9桁、丁目ありは11桁）', () => {
+    expect(areaKeyOf(tileOf(HIBIYA, 50).key, 50)).toMatch(/^\d{9,11}$/)
+    expect(areaKeyOf(tileOf(TOKYO_TOWER, 50).key, 50)).toMatch(/^\d{9,11}$/)
+  })
+
+  it('境界データの外は undefined（区画開放が起きない）', () => {
+    // 新宿区。両区の境界データを持っていないので区画にならない
+    expect(areaKeyOf(tileOf({ lat: 35.6938, lng: 139.7034 }, 50).key, 50)).toBeUndefined()
   })
 
   it('壊れたキーは undefined', () => {
-    expect(areaKeyOf('abc', 6)).toBeUndefined()
-    expect(areaKeyOf('1', 6)).toBeUndefined()
+    expect(areaKeyOf('abc', 50)).toBeUndefined()
+    expect(areaKeyOf('1', 50)).toBeUndefined()
+  })
+})
+
+describe('tilesNeededToUnlock', () => {
+  it('割合で決まるが、上限を超えない', () => {
+    for (const position of [HIBIYA, TOKYO_TOWER]) {
+      const needed = tilesNeededToUnlock(chomeAt(position), UNLOCK)
+      expect(needed).toBeLessThanOrEqual(UNLOCK.unlockMaxTiles)
+      expect(needed).toBeGreaterThan(0)
+    }
+  })
+
+  it('上限を下げれば必要枚数も下がる', () => {
+    const chome = chomeAt(TOKYO_TOWER)
+    const strict = tilesNeededToUnlock(chome, UNLOCK)
+    const loose = tilesNeededToUnlock(chome, { ...UNLOCK, unlockMaxTiles: 3 })
+    expect(loose).toBeLessThanOrEqual(strict)
+    expect(loose).toBe(3)
+  })
+
+  it('区画のタイル数そのものを超えて要求しない', () => {
+    const chome = chomeAt(HIBIYA)
+    const total = tilesPerArea(chome, 50)
+    expect(tilesNeededToUnlock(chome, { ...UNLOCK, unlockMaxTiles: 10_000 })).toBeLessThanOrEqual(total)
   })
 })
 
 describe('unlockedAreas', () => {
-  it('閾値に届いた区画だけを返す', () => {
-    // 6×6=36 タイルの 25% は 9 タイル
-    expect(unlockedAreas(tileKeys(8), UNLOCK)).toHaveLength(0)
-    expect(unlockedAreas(tileKeys(9), UNLOCK)).toHaveLength(1)
+  it('必要枚数に1枚足りなければ開かない', () => {
+    const needed = tilesNeededToUnlock(chomeAt(HIBIYA), UNLOCK)
+    expect(unlockedAreas(tilesOfChome(HIBIYA, needed - 1), UNLOCK)).toHaveLength(0)
   })
 
-  it('区画の範囲はタイル 6 枚ぶんの矩形になる', () => {
-    const [area] = unlockedAreas(tileKeys(9), UNLOCK)
-    expect(area).toBeDefined()
-    if (!area) return
+  it('必要枚数を歩けば開き、町丁目名が返る', () => {
+    const chome = chomeAt(HIBIYA)
+    const needed = tilesNeededToUnlock(chome, UNLOCK)
+    const areas = unlockedAreas(tilesOfChome(HIBIYA, needed), UNLOCK)
 
+    expect(areas).toHaveLength(1)
+    expect(areas[0]?.areaKey).toBe(chome.code)
+    expect(areas[0]?.name).toBe(chome.name)
+    expect(areas[0]?.ward).toBe('千代田区')
+  })
+
+  it('境界データの外を歩いても区画は開かない', () => {
     const step = 50 / 111_320
-    expect(area.south).toBeCloseTo(0, 10)
-    expect(area.north).toBeCloseTo(step * 6, 10)
-    expect(area.east - area.west).toBeCloseTo(step * 6, 10)
+    const outside = Array.from(
+      { length: 30 },
+      (_, i) => tileOf({ lat: 35.6938 + i * step, lng: 139.7034 }, 50).key,
+    )
+    expect(unlockedAreas(outside, UNLOCK)).toHaveLength(0)
   })
 
-  it('別々の区画は個別に判定される', () => {
-    // 区画 0:0 は 9 枚（開放）、区画 0:1 は 3 枚（未開放）
-    const keys = [...tileKeys(9, 0, 0), ...tileKeys(3, 0, 1)]
+  it('別々の町丁目は個別に判定される', () => {
+    const hibiya = chomeAt(HIBIYA)
+    const tower = chomeAt(TOKYO_TOWER)
+    const keys = [
+      ...tilesOfChome(HIBIYA, tilesNeededToUnlock(hibiya, UNLOCK)),
+      // 港区側は1枚だけ（開かない）
+      ...tilesOfChome(TOKYO_TOWER, 1),
+    ]
     const areas = unlockedAreas(keys, UNLOCK)
 
     expect(areas).toHaveLength(1)
-    expect(areas[0]?.areaKey).toBe('0:0')
+    expect(areas[0]?.areaKey).toBe(hibiya.code)
+    expect(areas[0]?.areaKey).not.toBe(tower.code)
   })
 
-  it('区画あたりのタイル数は一辺の 2 乗', () => {
-    expect(tilesPerArea(6)).toBe(36)
+  it('返り順はコード順で安定する', () => {
+    const keys = [
+      ...tilesOfChome(HIBIYA, tilesNeededToUnlock(chomeAt(HIBIYA), UNLOCK)),
+      ...tilesOfChome(TOKYO_TOWER, tilesNeededToUnlock(chomeAt(TOKYO_TOWER), UNLOCK)),
+    ]
+    const codes = unlockedAreas(keys, UNLOCK).map((a) => a.areaKey)
+    expect(codes.length).toBeGreaterThanOrEqual(2)
+    expect([...codes].sort()).toEqual(codes)
   })
 })
 
 describe('effectiveTileCount', () => {
   it('未開放なら歩いたタイル数のまま', () => {
-    expect(effectiveTileCount(tileKeys(8), UNLOCK)).toBe(8)
+    const needed = tilesNeededToUnlock(chomeAt(HIBIYA), UNLOCK)
+    const keys = tilesOfChome(HIBIYA, needed - 1)
+    expect(effectiveTileCount(keys, UNLOCK)).toBe(keys.length)
   })
 
-  it('開放された区画は全面（36枚）として数える', () => {
-    expect(effectiveTileCount(tileKeys(9), UNLOCK)).toBe(36)
+  it('開放された町丁目は全面として数える', () => {
+    const chome = chomeAt(HIBIYA)
+    const needed = tilesNeededToUnlock(chome, UNLOCK)
+    expect(effectiveTileCount(tilesOfChome(HIBIYA, needed), UNLOCK)).toBe(
+      tilesPerArea(chome, 50),
+    )
   })
 
   it('開放済みの区画の中を歩き足しても二重に数えない', () => {
-    expect(effectiveTileCount(tileKeys(20), UNLOCK)).toBe(36)
+    const chome = chomeAt(HIBIYA)
+    const needed = tilesNeededToUnlock(chome, UNLOCK)
+    const full = tilesPerArea(chome, 50)
+    expect(effectiveTileCount(tilesOfChome(HIBIYA, needed), UNLOCK)).toBe(full)
+    expect(effectiveTileCount(tilesOfChome(HIBIYA, needed + 5), UNLOCK)).toBe(full)
   })
 
-  it('開放区画の外のタイルは別に足される', () => {
-    const keys = [...tileKeys(9, 0, 0), ...tileKeys(2, 0, 1)]
-    expect(effectiveTileCount(keys, UNLOCK)).toBe(38)
+  it('境界データの外のタイルは 1 枚ずつ数える', () => {
+    const step = 50 / 111_320
+    const outside = Array.from(
+      { length: 5 },
+      (_, i) => tileOf({ lat: 35.6938 + i * step, lng: 139.7034 }, 50).key,
+    )
+    expect(effectiveTileCount(outside, UNLOCK)).toBe(5)
   })
 })

@@ -1,4 +1,4 @@
-import type { ExplorationSummary } from '@map-checkin/shared'
+import { findChomeAt, tilesInChome, type Chome, type ExplorationSummary } from '@map-checkin/shared'
 import { distanceMeters, toRadians, type LatLng } from './geo.js'
 
 /**
@@ -94,34 +94,61 @@ export function summarizeExploration(input: SummarizeExplorationInput): Explorat
  * ------------------------------------------------------------------ */
 
 /**
- * タイルより大きい「エリア」の単位でまとめて開放する仕組み。
+ * タイルより大きい「区画」の単位でまとめて開放する仕組み。
  *
  * タイルを 1 枚ずつ塗るだけだと、区画全体を晴らすのに道という道を歩く必要があり、
  * 現実的な散歩では白い部分が延々と残る。**一定割合を歩いたらその区画は全部開放**する。
  *
- * ★ 区画の決め方はこの `areaKeyOf` に閉じ込めてある。
- * いまはタイルを格子状に束ねているが、本来は**町丁目の境界**を区画にしたい。
- * 町丁目のポリゴンを用意できたら、この関数を「座標 → 町丁目コード」に差し替えれば、
- * 開放の判定も面積の集計もそのまま動く（呼び出し側は区画キーの中身を見ていない）。
+ * ★ 区画は**町丁目**である（#27）。格子を捨てて行政の境界に合わせた。
+ * 「300m四方の区画が3つ開いた」ではなく「麻布十番一丁目が開いた」と言えるようになり、
+ * 集計もそのまま自治体の単位で返せる。境界データは shared（e-Stat 由来）にある。
+ *
+ * **境界データが無い場所では区画開放は起きない。** 千代田区・港区の外を歩いた場合は
+ * タイル単位の霧だけが晴れる。無い境界を格子で代用すると、単位が場所によって変わって
+ * しまうため、そうはしていない。
  */
 export interface AreaUnlockConfig {
   tileSizeM: number
-  /** 1 区画の一辺のタイル数。6 なら 50m タイルで 300m 四方 */
-  blockTiles: number
   /** 区画全体が開放される割合（0〜1） */
   unlockRatio: number
+  /**
+   * 開放に必要なタイル数の上限。
+   *
+   * ★ 町丁目の面積差が大きいため必須である。実測で最小 1 枚・中央 35 枚に対して
+   * 最大 1433 枚（50m タイル換算）あり、割合だけで決めると広い町丁目が一生開かない。
+   * 上限を置くと 256 区画のうち 95 区画がここに当たる。
+   */
+  unlockMaxTiles: number
 }
+
+/** 開放に必要なタイル数の下限。狭すぎる町丁目が 1 歩で開くのを防ぐ */
+const MIN_TILES_TO_UNLOCK = 3
 
 export interface UnlockedArea {
+  /** 町丁目コード（11桁）。形と名前は境界データから引ける */
   areaKey: string
-  /** 区画の範囲。地図上でこの矩形ぶんの霧を晴らす */
-  north: number
-  south: number
-  east: number
-  west: number
+  /** 町丁目名。表示に使う */
+  name: string
+  ward: string
 }
 
-function parseTileKey(tileKey: string): { row: number; col: number } | undefined {
+/**
+ * タイルが属する区画（町丁目）。
+ *
+ * タイルの中心座標で判定する。区画の決め方を変えるならここだけを差し替える。
+ */
+export function areaKeyOf(tileKey: string, tileSizeM: number): string | undefined {
+  return chomeOfTile(tileKey, tileSizeM)?.code
+}
+
+/** タイルが属する町丁目。undefined は境界データの外（両区の外） */
+export function chomeOfTile(tileKey: string, tileSizeM: number): Chome | undefined {
+  const center = tileCenterOf(tileKey, tileSizeM)
+  if (!center) return undefined
+  return findChomeAt(center.lat, center.lng)
+}
+
+function tileCenterOf(tileKey: string, tileSizeM: number): LatLng | undefined {
   const [rowRaw, colRaw] = tileKey.split(':')
   if (rowRaw === undefined || colRaw === undefined) return undefined
 
@@ -129,67 +156,67 @@ function parseTileKey(tileKey: string): { row: number; col: number } | undefined
   const col = Number(colRaw)
   if (!Number.isFinite(row) || !Number.isFinite(col)) return undefined
 
-  return { row, col }
+  const step = stepOf(tileSizeM)
+  return { lat: (row + 0.5) * step, lng: (col + 0.5) * step }
 }
 
-/** タイルが属する区画のキー。区画の決め方を変えるならここだけを差し替える */
-export function areaKeyOf(tileKey: string, blockTiles: number): string | undefined {
-  const parsed = parseTileKey(tileKey)
-  if (!parsed || blockTiles < 1) return undefined
-
-  return `${Math.floor(parsed.row / blockTiles)}:${Math.floor(parsed.col / blockTiles)}`
+/** 町丁目に含まれるタイル数（面積から求めた目安） */
+export function tilesPerArea(chome: Chome, tileSizeM: number): number {
+  return tilesInChome(chome, tileSizeM)
 }
 
-/** 1 区画に含まれるタイル数 */
-export function tilesPerArea(blockTiles: number): number {
-  return blockTiles * blockTiles
+/** その町丁目を開放するのに必要なタイル数 */
+export function tilesNeededToUnlock(chome: Chome, config: AreaUnlockConfig): number {
+  const total = tilesPerArea(chome, config.tileSizeM)
+  const byRatio = Math.ceil(total * config.unlockRatio)
+  const capped = Math.min(byRatio, config.unlockMaxTiles)
+  // 区画のタイル数そのものを超えて要求してはいけない（1枚しかない町丁目がある）
+  const floor = Math.min(MIN_TILES_TO_UNLOCK, total)
+  return Math.max(floor, Math.min(capped, total))
 }
 
 /**
- * 歩いたタイルから、開放された区画の一覧を返す。
+ * 歩いたタイルを町丁目ごとに数える。
  *
- * 判定は区画ごとの「歩いたタイル数 ÷ 区画のタイル数」。
- * 閾値に届いた区画だけを返すので、届いていない区画は従来どおりタイル単位で晴れる。
+ * 判定にも表示にも使うので、数えるところを1箇所にまとめてある。
+ */
+export function walkedByChome(
+  tileKeys: Iterable<string>,
+  tileSizeM: number,
+): Map<string, { chome: Chome; walked: number }> {
+  const counts = new Map<string, { chome: Chome; walked: number }>()
+  for (const tileKey of tileKeys) {
+    const chome = chomeOfTile(tileKey, tileSizeM)
+    if (!chome) continue
+    const entry = counts.get(chome.code)
+    if (entry) entry.walked += 1
+    else counts.set(chome.code, { chome, walked: 1 })
+  }
+  return counts
+}
+
+/**
+ * 歩いたタイルから、開放された町丁目の一覧を返す。
+ *
+ * 閾値に届いていない町丁目は従来どおりタイル単位で晴れる。
  */
 export function unlockedAreas(
   tileKeys: Iterable<string>,
   config: AreaUnlockConfig,
 ): UnlockedArea[] {
-  const counts = new Map<string, number>()
-  for (const tileKey of tileKeys) {
-    const areaKey = areaKeyOf(tileKey, config.blockTiles)
-    if (areaKey === undefined) continue
-    counts.set(areaKey, (counts.get(areaKey) ?? 0) + 1)
-  }
-
-  const needed = Math.max(1, Math.ceil(tilesPerArea(config.blockTiles) * config.unlockRatio))
-  const step = stepOf(config.tileSizeM)
   const areas: UnlockedArea[] = []
-
-  for (const [areaKey, count] of counts) {
-    if (count < needed) continue
-
-    const parsed = parseTileKey(areaKey)
-    if (!parsed) continue
-
-    const south = parsed.row * config.blockTiles * step
-    const west = parsed.col * config.blockTiles * step
-    areas.push({
-      areaKey,
-      south,
-      west,
-      north: south + config.blockTiles * step,
-      east: west + config.blockTiles * step,
-    })
+  for (const { chome, walked } of walkedByChome(tileKeys, config.tileSizeM).values()) {
+    if (walked < tilesNeededToUnlock(chome, config)) continue
+    areas.push({ areaKey: chome.code, name: chome.name, ward: chome.ward })
   }
-
-  return areas
+  // 表示順を安定させる（コード順＝地番順に近い）
+  return areas.sort((a, b) => a.areaKey.localeCompare(b.areaKey))
 }
 
 /**
  * 集計に使う実効タイル数。
  *
- * 開放済みの区画は、実際に歩いていないタイルも含めて全面を数える。
+ * 開放済みの町丁目は、実際に歩いていないタイルも含めて全面を数える。
  * 見えている範囲と数値がずれると「晴れているのに探索率が上がらない」ことになるため、
  * 表示と同じ基準で数える。
  */
@@ -197,15 +224,21 @@ export function effectiveTileCount(
   tileKeys: Iterable<string>,
   config: AreaUnlockConfig,
 ): number {
-  const keys = [...tileKeys]
-  const unlocked = new Set(unlockedAreas(keys, config).map((area) => area.areaKey))
+  const counts = walkedByChome(tileKeys, config.tileSizeM)
 
-  const outside = keys.filter((tileKey) => {
-    const areaKey = areaKeyOf(tileKey, config.blockTiles)
-    return areaKey === undefined || !unlocked.has(areaKey)
-  }).length
+  let total = 0
+  let inChome = 0
+  for (const { chome, walked } of counts.values()) {
+    inChome += walked
+    total +=
+      walked >= tilesNeededToUnlock(chome, config)
+        ? tilesPerArea(chome, config.tileSizeM)
+        : walked
+  }
 
-  return unlocked.size * tilesPerArea(config.blockTiles) + outside
+  // 境界データの外のタイルは 1 枚ずつ数える
+  const all = [...tileKeys].length
+  return total + (all - inChome)
 }
 
 /**

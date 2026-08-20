@@ -1,10 +1,11 @@
-import type {
-  AreaSummary,
-  Avatar,
-  Equipment,
-  ExploredTile,
-  SpotWithDistance,
-  UnlockedAreaBounds,
+import {
+  chomeByCode,
+  type AreaSummary,
+  type Avatar,
+  type Equipment,
+  type ExploredTile,
+  type SpotWithDistance,
+  type UnlockedAreaBounds,
 } from '@map-checkin/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -234,24 +235,49 @@ export function MapView({
     const zoom = map.getZoom()
 
     /*
-     * 先に開放済みの区画を矩形でくり抜く。
+     * 先に開放済みの区画（町丁目）をくり抜く。
      *
      * 円だけで晴らすと、道に沿った筋しか消えず区画の内側が白いまま残る。
-     * 区画は隣と接しているので、境界に隙間が出ないよう 1px ぶん広げて塗る。
+     *
+     * ★ 形は API から来ない。**コードから境界データを引く**（#27）。
+     * 256 区画ぶんの座標を毎回送る必要がないためである。
+     *
+     * 隣の町丁目と辺を共有しているので、塗るだけだと境界に髪の毛のような
+     * 隙間が残る。同じ経路を太い線でなぞって塗り足す。
      */
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+    ctx.strokeStyle = 'rgba(0, 0, 0, 1)'
+    ctx.lineWidth = 2
+    ctx.lineJoin = 'round'
+
     for (const area of areasRef.current) {
-      const topLeft = map.project([area.west, area.north])
-      const bottomRight = map.project([area.east, area.south])
+      const chome = chomeByCode(area.areaKey)
+      if (!chome) continue
 
-      const left = Math.min(topLeft.x, bottomRight.x)
-      const top = Math.min(topLeft.y, bottomRight.y)
-      const right = Math.max(topLeft.x, bottomRight.x)
-      const bottom = Math.max(topLeft.y, bottomRight.y)
+      // 画面外の区画は描かない。外接矩形で弾く
+      const [minLng, minLat, maxLng, maxLat] = chome.bbox
+      const topLeft = map.project([minLng, maxLat])
+      const bottomRight = map.project([maxLng, minLat])
+      if (
+        Math.max(topLeft.x, bottomRight.x) < 0 ||
+        Math.max(topLeft.y, bottomRight.y) < 0 ||
+        Math.min(topLeft.x, bottomRight.x) > width ||
+        Math.min(topLeft.y, bottomRight.y) > height
+      ) {
+        continue
+      }
 
-      if (right < 0 || bottom < 0 || left > width || top > height) continue
-
-      ctx.fillStyle = 'rgba(0, 0, 0, 1)'
-      ctx.fillRect(left - 1, top - 1, right - left + 2, bottom - top + 2)
+      ctx.beginPath()
+      for (const ring of chome.rings) {
+        ring.forEach(([lng, lat], index) => {
+          const point = map.project([lng, lat])
+          if (index === 0) ctx.moveTo(point.x, point.y)
+          else ctx.lineTo(point.x, point.y)
+        })
+        ctx.closePath()
+      }
+      ctx.fill()
+      ctx.stroke()
     }
 
     for (const tile of tilesRef.current) {
