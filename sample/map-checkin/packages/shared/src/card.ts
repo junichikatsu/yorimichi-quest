@@ -68,6 +68,14 @@ export interface CardView {
   body: string | undefined
   achieved: boolean
   achievedAt: string | undefined
+  /**
+   * 絵と色分けに使うカテゴリ。
+   * 場所カードはそのスポット、行動カードは対応する出題のカテゴリ。道具とミッションは undefined。
+   * いずれも地図で見える情報なので、未達成でも伏せる必要はない。
+   */
+  category: SpotCategory | undefined
+  /** ミッションカードの進捗（達成した枚数／必要枚数）。他の種類では undefined */
+  progress: { current: number; total: number } | undefined
 }
 
 export interface CardKindProgress {

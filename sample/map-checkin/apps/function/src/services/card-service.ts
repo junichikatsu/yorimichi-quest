@@ -43,7 +43,7 @@ interface CardSource {
   condition: string
   /** 達成後にだけ見せる中身 */
   body: string
-  /** 場所カードのカテゴリ。ミッションの絞り込みに使う */
+  /** 場所カードのカテゴリ。ミッションの絞り込みと、カードの色分けに使う */
   category?: SpotCategory
 }
 
@@ -60,6 +60,7 @@ function actionCards(): CardSource[] {
     title: entry.card.scene,
     condition: 'このスポットのクイズに正解する',
     body: entry.card.action,
+    category: entry.category,
   }))
 }
 
@@ -95,11 +96,11 @@ function missionCards(): CardSource[] {
  * **他のカードの達成枚数を数えるだけで済ませている。** 専用のカウンタを持たないので、
  * データが増えず、表示している枚数と判定が食い違うこともない。
  */
-function isMissionAchieved(
+function missionProgress(
   def: MissionDef,
   achievedIds: ReadonlySet<string>,
   categoryOfPlace: ReadonlyMap<string, SpotCategory>,
-): boolean {
+): { current: number; total: number } {
   const { kind, category, count } = def.requirement
 
   let matched = 0
@@ -110,7 +111,8 @@ function isMissionAchieved(
     matched += 1
   }
 
-  return matched >= count
+  // 進捗の表示に使うので必要枚数で頭打ちにする（3/3 を超えて 5/3 とは出さない）
+  return { current: Math.min(matched, count), total: count }
 }
 
 function emptyProgress(): Record<CardKind, CardKindProgress> {
@@ -157,16 +159,20 @@ export async function buildCards(
   const byKind = emptyProgress()
   const cards: CardView[] = sources.map((source) => {
     const record = achievedById.get(source.cardId)
-    const isAchieved =
-      source.kind === 'mission'
-        ? isMissionAchieved(
-            // missionKey から定義を引き直す（並びに依存しない）
-            MISSION_DEFS.find((def) => toCardId('mission', def.missionKey) === source.cardId) ??
-              MISSION_DEFS[0]!,
-            achievedIds,
-            categoryOfPlace,
-          )
-        : record !== undefined
+
+    let progress: { current: number; total: number } | undefined
+    let isAchieved: boolean
+
+    if (source.kind === 'mission') {
+      // missionKey から定義を引き直す（並びに依存しない）
+      const def = MISSION_DEFS.find(
+        (candidate) => toCardId('mission', candidate.missionKey) === source.cardId,
+      )
+      progress = def ? missionProgress(def, achievedIds, categoryOfPlace) : undefined
+      isAchieved = progress !== undefined && progress.current >= progress.total
+    } else {
+      isAchieved = record !== undefined
+    }
 
     byKind[source.kind].total += 1
     if (isAchieved) byKind[source.kind].achieved += 1
@@ -180,6 +186,8 @@ export async function buildCards(
       body: isAchieved ? source.body : undefined,
       achieved: isAchieved,
       achievedAt: record?.achievedAt,
+      category: source.category,
+      progress,
     }
   })
 
