@@ -4,6 +4,15 @@ interface JoystickControlProps {
   /** 1 フレームぶんの移動量（m）。east は東、north は北が正 */
   onMove: (eastM: number, northM: number) => void
   onClose: () => void
+  /**
+   * 実測へ戻す。
+   *
+   * ★ これが無いと、一度動かしたら再読み込みするまで模擬位置から戻れない。
+   * 「デモ位置を使用中」のまま実機確認を続けてしまう事故を防ぐ。
+   */
+  onReset: () => void
+  /** すでに模擬位置になっているか。戻すボタンの出し分けに使う */
+  simulating: boolean
 }
 
 /** 中心からの最大引き出し距離（px）。これで倒し具合を正規化する */
@@ -34,7 +43,12 @@ const ZERO: Vector = { x: 0, y: 0 }
  * ★ 本番の機能ではない。**LINE アプリ内では表示しない**（`debug-move.ts` で判定）。
  * 実利用者が触れる経路に、位置を偽装できる操作を置いてはいけない。
  */
-export function JoystickControl({ onMove, onClose }: JoystickControlProps): React.JSX.Element {
+export function JoystickControl({
+  onMove,
+  onClose,
+  onReset,
+  simulating,
+}: JoystickControlProps): React.JSX.Element {
   const baseRef = useRef<HTMLDivElement>(null)
   const [knob, setKnob] = useState<Vector>(ZERO)
 
@@ -105,6 +119,16 @@ export function JoystickControl({ onMove, onClose }: JoystickControlProps): Reac
     <div className="joystick" role="group" aria-label="デモ用の移動操作">
       <div className="joystick__head">
         <span className="joystick__label">デモ移動</span>
+        {simulating && (
+          <button
+            type="button"
+            className="joystick__reset"
+            onClick={onReset}
+            aria-label="実際の位置に戻す"
+          >
+            実測へ
+          </button>
+        )}
         <button
           type="button"
           className="joystick__close"

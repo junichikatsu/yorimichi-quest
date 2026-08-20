@@ -291,6 +291,8 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | **ジョイスティックが出ない** | LINE アプリ内で開いている（仕様）／スマートフォンで測位できている／`ENABLE_DEBUG_MOVE=false` | `/v1/client-config` の `debugMoveEnabled` を確認 |
+| **動かしたらジョイスティックが消えた** | 状態が `simulated` へ変わり、出す条件から外れていた（修正済み） | 模擬位置の間は出し続ける。`debug-move.ts` のテストで固定 |
+| 模擬位置から戻れない | 一度動かすと実測に戻らない | ジョイスティックの「実測へ」を押す |
 | ジョイスティックが画面の外に出る | `.app__main` の `position: relative` が外れている | 基準が無いとページ全体を基準に配置される |
 | 地図が出ず一覧になる | `MAPBOX_ACCESS_TOKEN` 未設定 | `/v1/client-config` の `mapboxToken` を確認 |
 | ログインで 401 | IDトークンの検証に失敗 | ログの `[auth] line verify failed: <理由>` を見る |
@@ -335,6 +337,9 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | 現在地が取れない（拒否・非対応）**または** PC（ホバーでき精密に指せる） |
 
 初期位置は `AREA_CENTER`。**撮影ルートが確定して中心を動かせば、ここも追従する。**
+
+動かすと状態表示が「**デモ位置を使用中**」に変わる。実測に戻すにはジョイスティックの
+「**実測へ**」を押す。**戻す手段が無いと、模擬位置のまま実機確認を続けてしまう。**
 
 URL が漏れたときは `ENABLE_DEBUG_MOVE=false` で止められる（デプロイ不要）。
 
