@@ -163,7 +163,13 @@ export interface SpotResponse {
  */
 export const seedQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
-  count: z.coerce.number().int().min(1).max(500).optional(),
+  /**
+   * 1回で入れる件数。
+   *
+   * ★ 上限は控えめにしてある。既定の間隔（100ms）だと 200 件で 20 秒かかり、
+   * それ以上は実行環境のタイムアウトに当たる。**大きな値を許すと必ず踏む。**
+   */
+  count: z.coerce.number().int().min(1).max(200).optional(),
   /**
    * 1件ごとの間隔（ミリ秒）。
    *
@@ -189,6 +195,30 @@ export interface SeedResponse {
   retries: number
   /** 最終的に使っていた間隔（ミリ秒）。詰まると自動で広がる */
   delayMs: number
+}
+
+/**
+ * スポットの削除（やり直しのため）。
+ *
+ * ★ 総数は数えられない（データストアに集計が無い）ので、`hasMore` が false に
+ * なるまで繰り返す形にしている。
+ */
+export const purgeQuerySchema = z.object({
+  count: z.coerce.number().int().min(1).max(200).optional(),
+  delayMs: z.coerce.number().int().min(0).max(1000).optional(),
+})
+
+export type PurgeQuery = z.infer<typeof purgeQuerySchema>
+
+export interface PurgeResponse {
+  area: AreaSummary
+  deleted: number
+  /** まだ残っている可能性があるか。true の間は繰り返す */
+  hasMore: boolean
+  retries: number
+  delayMs: number
+  /** 途中で止まったか */
+  stopped: boolean
 }
 
 /* ------------------------------------------------------------------ *

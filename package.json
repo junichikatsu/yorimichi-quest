@@ -15,7 +15,8 @@
     "test": "turbo run test",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build:zip",
     "ingest": "node tools/ingest/ingest.mjs",
-    "ingest:boundaries": "node tools/ingest/boundaries.mjs"
+    "ingest:boundaries": "node tools/ingest/boundaries.mjs",
+    "seed": "node tools/seed/seed.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
