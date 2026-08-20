@@ -352,6 +352,22 @@ describe('GET /v1/spots（FR-02）', () => {
     expect([...distances].sort((a, b) => a - b)).toEqual(distances)
   })
 
+  it('★ 上限以内なら truncated は false', async () => {
+    const { token } = await loginOk()
+    const body = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    expect(body.truncated).toBe(false)
+  })
+
+  it('★ 上限で切れたら truncated が true になる（黙って切らない）', async () => {
+    const { token } = await loginOk()
+    // サンプルは4件。上限2件にすれば切れる
+    const body = await json<SpotsResponse>(
+      await app.request('/v1/spots?limit=2', { headers: auth(token) }),
+    )
+    expect(body.spots).toHaveLength(2)
+    expect(body.truncated).toBe(true)
+  })
+
   it('現在地が無ければ距離は null', async () => {
     const { token } = await loginOk()
     const body = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
@@ -390,10 +406,21 @@ describe('GET /v1/spots（FR-02）', () => {
 })
 
 describe('POST /v1/admin/seed', () => {
-  it('★ 管理キーが違えば 403', async () => {
+  it('★ 管理キーだけで投入できる（LINE ログインを要求しない）', async () => {
+    // 運用者が端末や CI から叩く。セッショントークンを要求すると、
+    // 取るために LINE アプリを開く必要が出てしまう
     const response = await app.request('/v1/admin/seed', {
       method: 'POST',
-      headers: { ...auth((await loginOk()).token), 'x-admin-key': 'wrong' },
+      headers: { 'x-admin-key': 'test-admin-key' },
+    })
+    expect(response.status).toBe(200)
+    expect((await json<{ inserted: number }>(response)).inserted).toBeGreaterThan(0)
+  })
+
+  it('★ 管理キーが違えば 403（401 ではない）', async () => {
+    const response = await app.request('/v1/admin/seed', {
+      method: 'POST',
+      headers: { 'x-admin-key': 'wrong' },
     })
     expect(response.status).toBe(403)
   })
@@ -401,26 +428,22 @@ describe('POST /v1/admin/seed', () => {
   it('★ 管理キーの前方一致では通らない（長さ違いを弾く）', async () => {
     const response = await app.request('/v1/admin/seed', {
       method: 'POST',
-      headers: { ...auth((await loginOk()).token), 'x-admin-key': 'test-admin' },
+      headers: { 'x-admin-key': 'test-admin' },
     })
     expect(response.status).toBe(403)
   })
 
   it('★ 管理キーが無ければ 403', async () => {
-    const response = await app.request('/v1/admin/seed', {
-      method: 'POST',
-      headers: auth((await loginOk()).token),
-    })
+    const response = await app.request('/v1/admin/seed', { method: 'POST' })
     expect(response.status).toBe(403)
   })
 
-  it('管理キーが合えば投入する', async () => {
+  it('セッショントークンを一緒に送っても通る（従来の呼び方を壊さない）', async () => {
     const { token } = await loginOk()
     const response = await app.request('/v1/admin/seed', {
       method: 'POST',
       headers: { ...auth(token), 'x-admin-key': 'test-admin-key' },
     })
     expect(response.status).toBe(200)
-    expect((await json<{ inserted: number }>(response)).inserted).toBeGreaterThan(0)
   })
 })

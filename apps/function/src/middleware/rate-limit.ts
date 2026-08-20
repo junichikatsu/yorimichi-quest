@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono'
 import { loadConfig } from '../config.js'
 import { AppError } from '../errors.js'
-import { isPublicPath } from './auth.js'
+import { skipsSessionGate } from './auth.js'
 import type { AppEnv } from '../types.js'
 
 /**
@@ -20,7 +20,9 @@ export function resetRateLimit(): void {
 
 export function rateLimit(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (isPublicPath(c.req.path)) return next()
+    // セッションを要求しないパスは利用者を特定できないため、ここでは数えない。
+    // 'anonymous' でまとめて数えると、1人の連打で全員のログインが止まる。
+    if (skipsSessionGate(c.req.path)) return next()
 
     const limit = loadConfig().rateLimitPerMinute
     const key = c.get('userId') ?? 'anonymous'

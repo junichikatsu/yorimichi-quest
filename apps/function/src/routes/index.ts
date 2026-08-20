@@ -182,13 +182,18 @@ export function createRoutes(): Hono<AppEnv> {
         : undefined
 
     const ctx = await contextFor()
-    const spots = await listSpots(ctx, {
+    const { spots, truncated } = await listSpots(ctx, {
       areaId: config.area.areaId,
       position,
       limit: Math.min(query.limit ?? config.maxSpotsPerRequest, config.maxSpotsPerRequest),
     })
 
-    const response: SpotsResponse = { area: config.area, spots }
+    if (truncated) {
+      // 運用時に気づけるようにログへも出す。カテゴリが丸ごと消える形で影響が出る
+      console.warn(`[spots] truncated at ${spots.length} (MAX_SPOTS_PER_REQUEST)`)
+    }
+
+    const response: SpotsResponse = { area: config.area, spots, truncated }
     return c.json(response)
   })
 

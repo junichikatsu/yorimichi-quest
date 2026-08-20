@@ -21,11 +21,28 @@ export interface ListSpotsInput {
   limit: number
 }
 
+export interface ListSpotsResult {
+  spots: SpotWithDistance[]
+  truncated: boolean
+}
+
 export async function listSpots(
   ctx: DataStoreContext,
   input: ListSpotsInput,
-): Promise<SpotWithDistance[]> {
-  const spots = await listSpotsByArea(ctx, input.areaId, input.limit)
+): Promise<ListSpotsResult> {
+  /*
+   * ★ 上限より1件多く引く。
+   *
+   * ちょうど上限件数が返ったとき、「たまたま上限と同数だった」のか
+   * 「切り詰められた」のかを区別できない。1件多く要求して超えたかどうかで判定する。
+   *
+   * 切り詰めを黙って通すと、カテゴリが丸ごと消えていても気づけない
+   * （query はサブキーの昇順なので、辞書順で先のカテゴリだけが残る）。
+   */
+  const fetched = await listSpotsByArea(ctx, input.areaId, input.limit + 1)
+  const truncated = fetched.length > input.limit
+  const spots = truncated ? fetched.slice(0, input.limit) : fetched
+
   const decorated = spots.map((spot) => withDistance(spot, input.position))
 
   if (input.position) {
@@ -35,7 +52,7 @@ export async function listSpots(
     decorated.sort((a, b) => a.name.localeCompare(b.name, 'ja'))
   }
 
-  return decorated
+  return { spots: decorated, truncated }
 }
 
 export async function findSpot(

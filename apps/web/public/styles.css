@@ -481,3 +481,14 @@ button {
 .credits__date {
   margin-left: 0.4rem;
 }
+
+/* 上限で切り詰めた警告。黙って切らないための表示 */
+.panel__warn {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: #fdf3e7;
+  border: 1px solid #e0b783;
+  color: #6b4a1e;
+  font-size: 0.78rem;
+}
