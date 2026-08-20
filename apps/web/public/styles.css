@@ -219,6 +219,30 @@ button {
   .app__main {
     grid-template-columns: 1fr 22rem;
   }
+
+  /*
+   * ★ PC では画面内に収める。
+   *
+   * これをやらないとサイドバーの高さぶんページが伸び、
+   * ・絶対配置の要素が画面外へ出る
+   * ・画面に固定した要素がフッタを覆う
+   * のどちらかが必ず起きる。**伸びるのを止めるのが根本の対処。**
+   *
+   * min-height: 0 が無いとフレックス／グリッドの子が縮まず、overflow が効かない。
+   */
+  .app {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app__main {
+    min-height: 0;
+  }
+
+  .sidebar {
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
 /* ---------------- 地図（FR-02-1） ---------------- */
@@ -718,10 +742,17 @@ button {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
-/* 広い画面ではボトムシートが無いぶん、下端に寄せてよい */
+/*
+ * 広い画面では、地図の領域（.app__main）の内側に収める。
+ *
+ * ★ fixed のままだと画面の下端に居座り、**フッタ（出典表示）を覆う。**
+ * 実測でジョイスティックは約145px、フッタは約80pxなので完全に隠れる。
+ * 上の指定でレイアウトが画面内に収まるため、絶対配置でも画面外へ出ない。
+ */
 @media (min-width: 901px) {
   .joystick,
   .joystick-reopen {
+    position: absolute;
     bottom: 16px;
   }
 }
