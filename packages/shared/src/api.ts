@@ -116,6 +116,13 @@ export interface ClientConfigResponse {
   assetVersion: string
   /** 探索の寸法。FE は環境変数を持たないのでここから配る（FR-02-7） */
   exploration: ExplorationConfig
+  /**
+   * デモ用の移動操作を許すか。
+   *
+   * ★ これが true でも、LINE アプリ内では画面側が出さない。
+   * URL が漏れたときにサーバー側から止められるようにするためのスイッチ。
+   */
+  debugMoveEnabled: boolean
 }
 
 /* ------------------------------------------------------------------ *

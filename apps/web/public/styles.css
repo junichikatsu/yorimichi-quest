@@ -212,6 +212,11 @@ button {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr;
+  /*
+   * ★ ジョイスティック（position: absolute）の基準にする。
+   * 無いとページ全体を基準に配置され、地図の外に出る。
+   */
+  position: relative;
 }
 
 @media (min-width: 900px) {
@@ -609,4 +614,108 @@ button {
   background: var(--chip);
   font-size: 0.74rem;
   font-weight: 600;
+}
+
+/* ---------------- デモ移動（ジョイスティック） ---------------- */
+/*
+ * ★ 本番の機能ではない。LINE アプリ内では表示しない（debug-move.ts で判定）。
+ * 見た目でもデモだと分かるようにしておく。
+ */
+
+.joystick {
+  position: absolute;
+  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: 64px;
+  z-index: 4;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.joystick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.joystick__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.joystick__close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.joystick__base {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    color-mix(in srgb, var(--line) 45%, transparent)
+  );
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+
+.joystick__base:active {
+  cursor: grabbing;
+}
+
+.joystick__knob {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  /* transform は JS が毎フレーム書き換えるので、遷移は付けない */
+  pointer-events: none;
+}
+
+.joystick-reopen {
+  position: absolute;
+  left: 12px;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: 64px;
+  z-index: 4;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* 広い画面ではボトムシートが無いぶん、下端に寄せてよい */
+@media (min-width: 901px) {
+  .joystick,
+  .joystick-reopen {
+    bottom: 16px;
+  }
 }

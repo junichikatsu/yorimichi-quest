@@ -290,6 +290,8 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | **デプロイは成功するがスモークテストで `configOk が false`** | 必須の環境変数が足りない（テーブル追加後に起きやすい） | `/v1/admin/config` で名前を確認する。**コードは既に稼働しているので再デプロイは不要** |
 | 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
+| **ジョイスティックが出ない** | LINE アプリ内で開いている（仕様）／スマートフォンで測位できている／`ENABLE_DEBUG_MOVE=false` | `/v1/client-config` の `debugMoveEnabled` を確認 |
+| ジョイスティックが画面の外に出る | `.app__main` の `position: relative` が外れている | 基準が無いとページ全体を基準に配置される |
 | 地図が出ず一覧になる | `MAPBOX_ACCESS_TOKEN` 未設定 | `/v1/client-config` の `mapboxToken` を確認 |
 | ログインで 401 | IDトークンの検証に失敗 | ログの `[auth] line verify failed: <理由>` を見る |
 | **しばらく経って開くと「ログインに失敗しました」** | IDトークンの期限切れ。LIFF はセッションが残っている間 `isLoggedIn()` が true を返すため、期限切れのトークンを送り続ける | 自動で取り直す（一度だけ）。直らなければ LINE アプリからミニアプリを開く |
@@ -316,6 +318,25 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 
 開発用の内部チャネルは、**コンソールで登録・承認したテスターだけ**が開ける。
 デモに参加する人は先に登録しておく。
+
+### デモ用の移動操作（ジョイスティック）
+
+位置情報が取れない環境で、実際に歩かずに導線を確認するための操作。
+
+**★ LINE アプリ内では表示しない。** 実利用者が触れる経路に、位置を偽装できる操作を
+置いてはいけない。判定は `apps/web/src/debug-move.ts` にあり、テストで固定してある。
+
+出る条件は次のすべてを満たすとき。
+
+| 条件 |
+| :--- |
+| **LINE アプリ内ではない** |
+| サーバー側で `ENABLE_DEBUG_MOVE=false` にしていない |
+| 現在地が取れない（拒否・非対応）**または** PC（ホバーでき精密に指せる） |
+
+初期位置は `AREA_CENTER`。**撮影ルートが確定して中心を動かせば、ここも追従する。**
+
+URL が漏れたときは `ENABLE_DEBUG_MOVE=false` で止められる（デプロイ不要）。
 
 `LIFF_ID` と `LINE_CHANNEL_ID` は内部チャネル（開発用・審査用・本番用）ごとに
 別の値で、**LIFF ID は `<チャネルID>-<ランダム文字列>` という形**になっている。

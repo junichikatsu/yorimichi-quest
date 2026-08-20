@@ -13,6 +13,9 @@ const GEO_LABELS: Record<GeolocationStatus, string> = {
   watching: '位置情報 ON',
   denied: '位置情報 OFF',
   unavailable: '位置情報を利用できません',
+  // ★ 模擬位置であることを隠さない。実測と同じ見た目にすると、
+  //   デモの記録を実際に歩いた記録と取り違える
+  simulated: 'デモ位置を使用中',
 }
 
 export function StatusBar({ user, areaName, geoStatus, spotCount }: StatusBarProps): React.JSX.Element {
