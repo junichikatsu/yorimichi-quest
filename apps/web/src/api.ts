@@ -49,9 +49,15 @@ export class ApiError extends Error {
   }
 }
 
-/** 期限切れは呼び出し側が再ログインで復帰できるので、判定を1か所に置く */
+/**
+ * 取り直せば復帰できる失敗か。
+ *
+ * ★ `TOKEN_EXPIRED` だけを対象にする。`UNAUTHORIZED` を含めてはいけない。
+ * 含めると、チャネルIDの設定違いなど**取り直しても直らない失敗でも取り直しに走り**、
+ * リダイレクトが繰り返される。
+ */
 export function isAuthExpired(err: unknown): boolean {
-  return err instanceof ApiError && (err.code === 'TOKEN_EXPIRED' || err.code === 'UNAUTHORIZED')
+  return err instanceof ApiError && err.code === 'TOKEN_EXPIRED'
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

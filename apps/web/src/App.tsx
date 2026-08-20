@@ -19,7 +19,13 @@ import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
-import { LiffError, loginAndGetIdToken } from './liff.js'
+import {
+  LiffError,
+  clearReloginMark,
+  forceRelogin,
+  hasTriedRelogin,
+  loginAndGetIdToken,
+} from './liff.js'
 
 type Phase = 'booting' | 'logging-in' | 'consent' | 'ready' | 'failed'
 
@@ -80,12 +86,39 @@ export function App(): React.JSX.Element {
 
         setToken(result.token)
         setUser(result.user)
+        // ここまで来たら取り直しは成功している。次回のために印を消す
+        clearReloginMark()
         setPhase(result.user.locationConsentGiven ? 'ready' : 'consent')
       } catch (err) {
         if (cancelled) return
+
+        /*
+         * ★ IDトークンの期限切れは取り直せば直る。
+         *
+         * LIFF は**セッションが残っている間 isLoggedIn() が true を返す**ので、
+         * 期限切れのIDトークンを送り続ける。ここで行き止まりにすると、
+         * 「しばらく経つと開けなくなる」という形で詰まる（実際にそうなった）。
+         *
+         * ただし取り直すのは**一度だけ**。設定が壊れている場合は取り直しても
+         * 直らず、リダイレクトが無限に続く。
+         */
+        if (isAuthExpired(err) && !hasTriedRelogin()) {
+          setMessage('ログインを取り直しています…')
+          try {
+            forceRelogin()
+            return
+          } catch {
+            // 取り直せない環境（sessionStorage が使えない等）はそのまま下へ
+          }
+        }
+
         setPhase('failed')
         if (err instanceof LiffError) {
           setMessage(LIFF_MESSAGES[err.reason] ?? 'ログインに失敗しました。')
+        } else if (isAuthExpired(err)) {
+          setMessage(
+            'ログインの有効期限が切れました。取り直しても直らない場合は、LINE アプリからミニアプリを開いてください。',
+          )
         } else if (err instanceof ApiError) {
           setMessage(err.message)
         } else {

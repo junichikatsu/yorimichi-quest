@@ -292,6 +292,8 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | 地図が出ず一覧になる | `MAPBOX_ACCESS_TOKEN` 未設定 | `/v1/client-config` の `mapboxToken` を確認 |
 | ログインで 401 | IDトークンの検証に失敗 | ログの `[auth] line verify failed: <理由>` を見る |
+| **しばらく経って開くと「ログインに失敗しました」** | IDトークンの期限切れ。LIFF はセッションが残っている間 `isLoggedIn()` が true を返すため、期限切れのトークンを送り続ける | 自動で取り直す（一度だけ）。直らなければ LINE アプリからミニアプリを開く |
+| 取り直しても直らない | 設定違い（`aud` 不一致など）。取り直しでは直らない | ログの理由を見る。`TOKEN_EXPIRED` ではなく `UNAUTHORIZED` が返っている |
 | 「LINE からユーザー情報を取得できませんでした」 | LIFF に `openid` スコープが無い | LINE Developers 側で付与 |
 | スモークテストで commit 不一致 | ZIP の差し替え漏れ | ファイルアセットの版が上がっているか確認 |
 | **投入が `putItem` の `failed` で落ちる** | テーブル不在・キー不正・上限のいずれか | ログの `[datastore] putItem failed: ...` を見る。`?count=1` で切り分け |
@@ -303,6 +305,14 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 **素のブラウザでは完走しない。** LIFF アプリのエンドポイントURLに
 `$HTTP_TRIGGER_URL/` を登録し、**LINE アプリから LIFF URL
 （`https://miniapp.line.me/<LIFF ID>`）で開く**必要がある。
+
+エンドポイントURL（`$HTTP_TRIGGER_URL/`）を直接ブラウザで開いてもログインは通るが、
+**IDトークンの期限が切れたあとに開くと失敗する。** LIFF はセッションが残っている間
+`isLoggedIn()` が true を返すため、期限切れのトークンを送り続ける。
+
+サーバーは期限切れを `TOKEN_EXPIRED` で返し、クライアントは**一度だけ**ログインを
+取り直す（ログアウト → ログイン）。**一度だけにしているのは、設定違いの場合に
+リダイレクトが無限に続くのを防ぐため。**
 
 開発用の内部チャネルは、**コンソールで登録・承認したテスターだけ**が開ける。
 デモに参加する人は先に登録しておく。
