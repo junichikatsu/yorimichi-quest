@@ -398,6 +398,22 @@ describe('POST /v1/admin/seed', () => {
     expect(response.status).toBe(403)
   })
 
+  it('★ 管理キーの前方一致では通らない（長さ違いを弾く）', async () => {
+    const response = await app.request('/v1/admin/seed', {
+      method: 'POST',
+      headers: { ...auth((await loginOk()).token), 'x-admin-key': 'test-admin' },
+    })
+    expect(response.status).toBe(403)
+  })
+
+  it('★ 管理キーが無ければ 403', async () => {
+    const response = await app.request('/v1/admin/seed', {
+      method: 'POST',
+      headers: auth((await loginOk()).token),
+    })
+    expect(response.status).toBe(403)
+  })
+
   it('管理キーが合えば投入する', async () => {
     const { token } = await loginOk()
     const response = await app.request('/v1/admin/seed', {

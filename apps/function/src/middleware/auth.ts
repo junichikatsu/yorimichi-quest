@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import type { MiddlewareHandler } from 'hono'
 import { AppError, unauthorized } from '../errors.js'
 import { loadConfig } from '../config.js'
@@ -24,6 +25,25 @@ export function isPublicPath(path: string): boolean {
 }
 
 export const ADMIN_KEY_HEADER = 'x-admin-key'
+
+/**
+ * 管理キーの照合。
+ *
+ * ★ `===` を使わない。文字列比較は先頭から突き合わせて一致した長さで所要時間が
+ * 変わるため、繰り返せば1文字ずつ当てられる（タイミング攻撃）。
+ * セッショントークンの検証と同じ扱いにしておく。
+ *
+ * 長さが違う場合に timingSafeEqual は例外を投げるので、先に弾く。
+ * ここで長さが漏れるが、鍵の長さは秘密ではない。
+ */
+export function matchesAdminKey(provided: string | undefined, expected: string): boolean {
+  if (expected === '' || provided === undefined) return false
+
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
 
 export function userGate(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {

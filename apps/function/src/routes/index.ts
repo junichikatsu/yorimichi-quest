@@ -17,7 +17,7 @@ import { Hono } from 'hono'
 import { buildInfo, loadConfig, missingConfigKeys } from '../config.js'
 import { dataSourceCredits, datasetSpots } from '../data/spot-dataset.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from '../errors.js'
-import { ADMIN_KEY_HEADER, userGate } from '../middleware/auth.js'
+import { ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
@@ -223,7 +223,7 @@ export function createRoutes(): Hono<AppEnv> {
     if (config.adminKey === '') {
       throw new AppError('CONFIG_ERROR', 500, 'ADMIN_KEY が設定されていません')
     }
-    if (c.req.header(ADMIN_KEY_HEADER) !== config.adminKey) {
+    if (!matchesAdminKey(c.req.header(ADMIN_KEY_HEADER), config.adminKey)) {
       throw forbidden('管理キーが一致しません')
     }
 
