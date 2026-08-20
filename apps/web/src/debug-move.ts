@@ -20,6 +20,18 @@ export interface DebugMoveContext {
   hasFinePointer: boolean
   /** サーバー側で無効化されていないか */
   enabledByServer: boolean
+  /**
+   * この画面で一度でも出したか。
+   *
+   * ★ 一度出したら出し続ける。出すきっかけ（測位の状況）は**途中で変わる**。
+   * `watchPosition` は最初にエラーを返してから後で成功することがあり、
+   * `denied`（出す）→ `watching`（出さない）と動くと、**操作していないのに
+   * 消える**。実際にそうなった。
+   *
+   * 一方で「LINE アプリ内か」と「サーバーが許しているか」は変わらないので、
+   * そちらは毎回評価する。**閂は理由ではなく門にかける。**
+   */
+  alreadyOffered: boolean
 }
 
 /**
@@ -40,10 +52,14 @@ export interface DebugMoveContext {
  * 「出した理由」が「操作の結果」で消えてしまう形の抜けである。
  */
 export function shouldOfferDebugMove(context: DebugMoveContext): boolean {
+  // ★ 門は毎回評価する。ここは途中で変わらない値なので、閂にかけない
   if (context.inLineClient) return false
   if (!context.enabledByServer) return false
 
-  // 動かし始めたら出し続ける。ここが最初に来る
+  // ★ 一度出したら出し続ける。出すきっかけは途中で変わる（上の説明を参照）
+  if (context.alreadyOffered) return true
+
+  // 動かし始めたら出し続ける
   if (context.geoStatus === 'simulated') return true
 
   const cannotLocate = context.geoStatus === 'denied' || context.geoStatus === 'unavailable'
@@ -54,9 +70,14 @@ export function shouldOfferDebugMove(context: DebugMoveContext): boolean {
  * PC かどうかの判定。
  *
  * ★ ユーザーエージェントを見ない。機種の増減で崩れるため、
- * **入力装置の性質**で判断する（ホバーでき、かつ精密に指せる）。
+ * **入力装置の性質**で判断する。
+ *
+ * ★ `pointer` ではなく `any-pointer` を使う。`pointer` は**主たる入力装置**を
+ * 指すため、**タッチ対応の PC ではマウスがあっても `coarse` と報告される**。
+ * それで PC を PC と判定できず、ジョイスティックが出なかった。
+ * 「いずれかの入力装置がホバーでき、精密に指せる」で見る。
  */
 export function hasFinePointer(): boolean {
   if (typeof window.matchMedia !== 'function') return false
-  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  return window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches
 }
