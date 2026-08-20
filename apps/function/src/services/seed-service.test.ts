@@ -104,9 +104,30 @@ describe('seedSpots', () => {
     expect(result.nextOffset).toBe(2)
   })
 
-  it('★ 1件目から失敗したら例外を投げる（0件で 200 を返さない）', async () => {
+  it('★ offset 0 の1件目から失敗したら例外を投げる（0件で 200 を返さない）', async () => {
     const { ctx } = throttlingCtx([1, 2, 3, 4, 5], 99)
     await expect(seedSpots(ctx, spots(5), { offset: 0, count: 5, delayMs: 0 })).rejects.toBeDefined()
+  })
+
+  it('★ 再開（offset > 0）の1件目の失敗は例外にしない', async () => {
+    // 前回まで入っている＝設定は正しい。スロットリングが続いているだけなので、
+    // 503 にすると呼び出し側が「設定ミス」と受け取って諦めてしまう
+    const { ctx } = throttlingCtx([1, 2, 3, 4, 5], 99)
+    const result = await seedSpots(ctx, spots(10), { offset: 5, count: 5, delayMs: 0 })
+
+    expect(result.inserted).toBe(0)
+    expect(result.stoppedAt).toBe(5)
+    // 同じ位置から再開できる
+    expect(result.nextOffset).toBe(5)
+  })
+
+  it('★ 諦める前に間隔を広げて返す（緩めるべきことが伝わる）', async () => {
+    const { ctx } = throttlingCtx([3, 4, 5, 6, 7], 99)
+    const result = await seedSpots(ctx, spots(10), { offset: 0, count: 10, delayMs: 0 })
+
+    expect(result.stoppedAt).toBe(2)
+    // 100ms のまま返すと、呼び出し側が同じ速さで再開してまた詰まる
+    expect(result.delayMs).toBeGreaterThan(0)
   })
 
   it('範囲を指定できる', async () => {
@@ -128,7 +149,7 @@ describe('seedSpots', () => {
     expect(result.nextOffset).toBeNull()
   })
 
-  it('既定の間隔は 0 ではない（速く書くと弾かれるため）', () => {
-    expect(DEFAULT_SEED_DELAY_MS).toBeGreaterThan(0)
+  it('既定の間隔は 100ms より大きい（100ms でも詰まったため）', () => {
+    expect(DEFAULT_SEED_DELAY_MS).toBeGreaterThan(100)
   })
 })
