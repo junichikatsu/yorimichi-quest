@@ -29,6 +29,7 @@ const NO_SESSION_SUFFIXES = [
   '/v1/auth/login',
   '/v1/admin/seed',
   '/v1/admin/purge',
+  '/v1/admin/config',
 ]
 
 export function skipsSessionGate(path: string): boolean {

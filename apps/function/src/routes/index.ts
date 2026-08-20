@@ -9,6 +9,7 @@ import {
   seedQuerySchema,
   spotsQuerySchema,
   toUserView,
+  type AdminConfigResponse,
   type ClientConfigResponse,
   type ExplorationResponse,
   type ExplorationUpdateResponse,
@@ -231,6 +232,34 @@ export function createRoutes(): Hono<AppEnv> {
     if (!spot) throw notFound('スポットが見つかりません')
 
     const response: SpotResponse = { spot }
+    return c.json(response)
+  })
+
+  /* ---------------- 管理：設定の確認 ---------------- */
+
+  /**
+   * 不足している設定キーの**名前**を返す（運用用）。
+   *
+   * ★ `/v1/health` は認証不要なので件数しか出せない。「1件足りない」と分かっても
+   * 何が足りないか分からず、実行環境のログを見に行くしかなかった。
+   * 管理キーで守った上で名前だけを返す。**値は返さない。**
+   */
+  routes.get('/v1/admin/config', (c) => {
+    const config = loadConfig()
+    if (config.adminKey === '') {
+      throw new AppError('CONFIG_ERROR', 500, 'ADMIN_KEY が設定されていません')
+    }
+    if (!matchesAdminKey(c.req.header(ADMIN_KEY_HEADER), config.adminKey)) {
+      throw forbidden('管理キーが一致しません')
+    }
+
+    const missing = missingConfigKeys(config)
+    const response: AdminConfigResponse = {
+      configOk: missing.length === 0,
+      missing,
+      area: config.area,
+      seedDataset: config.seedDataset,
+    }
     return c.json(response)
   })
 
