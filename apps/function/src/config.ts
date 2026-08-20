@@ -76,6 +76,13 @@ export interface AppConfig {
   adminKey: string
   maxSpotsPerRequest: number
   rateLimitPerMinute: number
+  /**
+   * デモ用の移動操作を許すか。
+   *
+   * ★ LINE アプリ内では画面側が必ず出さないが、**URL が漏れたときに
+   * 止められる手段**を1つ持っておく。デプロイなしで切れる。
+   */
+  debugMoveEnabled: boolean
 
   /* ---- 探索（FR-02-7） ---- */
   /** 記録の粒度（m 四方）。小さくすると軌跡は滑らかになるが書き込みが面積比で増える */
@@ -140,6 +147,7 @@ export function loadConfig(): AppConfig {
     adminKey: readString('ADMIN_KEY'),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
+    debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),
 
     exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
     // タイルより大きくする。同じ大きさだと隣り合うタイルの間に霧が残って軌跡が途切れる

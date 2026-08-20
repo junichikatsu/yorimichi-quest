@@ -1,16 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export interface Position {
   lat: number
   lng: number
 }
 
-export type GeolocationStatus = 'idle' | 'watching' | 'denied' | 'unavailable'
+export type GeolocationStatus = 'idle' | 'watching' | 'denied' | 'unavailable' | 'simulated'
 
 export interface GeolocationState {
   position: Position | undefined
   status: GeolocationStatus
   accuracyM: number | undefined
+  /**
+   * 現在地を模擬位置で上書きする（デモ用）。
+   *
+   * ★ undefined を渡すと実際の測位へ戻る。模擬中は測位の結果を無視するので、
+   * 位置情報が有効な PC でもジョイスティックで動かせる。
+   */
+  simulate: (position: Position | undefined) => void
 }
 
 /**
@@ -24,6 +31,7 @@ export function useGeolocation(enabled: boolean): GeolocationState {
   const [position, setPosition] = useState<Position | undefined>(undefined)
   const [accuracyM, setAccuracyM] = useState<number | undefined>(undefined)
   const [status, setStatus] = useState<GeolocationStatus>('idle')
+  const [simulated, setSimulated] = useState<Position | undefined>(undefined)
 
   useEffect(() => {
     if (!enabled) {
@@ -51,5 +59,13 @@ export function useGeolocation(enabled: boolean): GeolocationState {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [enabled])
 
-  return { position, status, accuracyM }
+  const simulate = useCallback((next: Position | undefined) => {
+    setSimulated(next)
+  }, [])
+
+  // 模擬位置があればそれを優先する。実測は裏で続くが表には出さない
+  if (simulated) {
+    return { position: simulated, status: 'simulated', accuracyM: 0, simulate }
+  }
+  return { position, status, accuracyM, simulate }
 }

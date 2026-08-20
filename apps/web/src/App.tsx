@@ -1,4 +1,4 @@
-import { distanceMeters } from '@imanouchi/core'
+import { distanceMeters, offsetByMeters } from '@imanouchi/core'
 import type { ClientConfigResponse, SpotId, SpotWithDistance, UserView } from '@imanouchi/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -12,11 +12,13 @@ import {
 } from './api.js'
 import { ConsentGate } from './components/ConsentGate.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
+import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
 import { MapView } from './components/MapView.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
+import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import {
@@ -24,6 +26,7 @@ import {
   clearReloginMark,
   forceRelogin,
   hasTriedRelogin,
+  isInLineClient,
   loginAndGetIdToken,
 } from './liff.js'
 
@@ -46,6 +49,7 @@ export function App(): React.JSX.Element {
   const [spotsTruncated, setSpotsTruncated] = useState(false)
   const [selectedSpotId, setSelectedSpotId] = useState<SpotId | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [joystickClosed, setJoystickClosed] = useState(false)
 
   /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
@@ -177,6 +181,36 @@ export function App(): React.JSX.Element {
 
   const selectedSpot = sortedSpots.find((spot) => spot.spotId === selectedSpotId)
 
+  /**
+   * デモ用の移動操作を出すか（判定は debug-move.ts）。
+   *
+   * ★ LINE アプリ内では出さない。実利用者が触れる経路に位置を偽装できる操作を
+   * 置いてはいけない。
+   */
+  const offerDebugMove =
+    phase === 'ready' &&
+    shouldOfferDebugMove({
+      inLineClient: isInLineClient(),
+      geoStatus: geo.status,
+      hasFinePointer: hasFinePointer(),
+      enabledByServer: config?.debugMoveEnabled ?? false,
+    })
+
+  /**
+   * ジョイスティックで現在地を動かす。
+   *
+   * ★ 初期位置はエリアの中心（`AREA_CENTER`）にする。デモを想定している場所なので、
+   * 撮影ルートが確定して中心を動かせば、ここも自動で追従する。
+   */
+  const handleJoystickMove = useCallback(
+    (eastM: number, northM: number) => {
+      const origin = geo.position ?? config?.area.center
+      if (!origin) return
+      geo.simulate(offsetByMeters(origin, eastM, northM))
+    },
+    [geo, config?.area.center],
+  )
+
   const handleAgree = async (): Promise<void> => {
     setBusy(true)
     try {
@@ -244,6 +278,19 @@ export function App(): React.JSX.Element {
             </p>
           </div>
         )}
+
+        {offerDebugMove &&
+          (joystickClosed ? (
+            <button
+              type="button"
+              className="joystick-reopen"
+              onClick={() => setJoystickClosed(false)}
+            >
+              デモ移動
+            </button>
+          ) : (
+            <JoystickControl onMove={handleJoystickMove} onClose={() => setJoystickClosed(true)} />
+          ))}
 
         <aside className="sidebar">
           {selectedSpot && (
