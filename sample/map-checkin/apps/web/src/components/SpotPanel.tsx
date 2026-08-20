@@ -1,5 +1,5 @@
 import { formatDistance } from '@map-checkin/core'
-import { SPOT_CATEGORY_LABELS, type SpotWithDistance } from '@map-checkin/shared'
+import { SPOT_CATEGORY_LABELS, findChomeAt, type SpotWithDistance } from '@map-checkin/shared'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface SpotPanelProps {
@@ -25,6 +25,8 @@ export function SpotPanel({
 }: SpotPanelProps): React.JSX.Element {
   const distance = spot.distanceM
   const inRange = distance !== null && distance <= checkinRadiusM
+  // 町丁目は座標から引く（保存していない）。行政の単位で場所を言えるようにする
+  const chome = findChomeAt(spot.lat, spot.lng)
 
   return (
     <section className="panel" aria-label="スポット詳細">
@@ -39,6 +41,13 @@ export function SpotPanel({
       </div>
 
       <p className="panel__address">{spot.address}</p>
+
+      {chome && (
+        <p className="panel__chome">
+          {chome.ward} {chome.name}
+          {chome.population > 0 && <span className="panel__chome-sub">人口 {chome.population.toLocaleString('ja-JP')}人</span>}
+        </p>
+      )}
 
       {spot.attributes.length > 0 && (
         <ul className="tags">

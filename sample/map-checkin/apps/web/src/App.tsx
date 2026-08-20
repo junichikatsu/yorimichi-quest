@@ -26,6 +26,7 @@ import {
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
+import { CoveragePanel } from './components/CoveragePanel.js'
 import { DataCredits } from './components/DataCredits.js'
 import { CardPanel } from './components/CardPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
@@ -440,10 +441,13 @@ export function App(): React.JSX.Element {
 
           <CardPanel cards={cards} busy={busy} onEquip={(equipment) => void handleEquip(equipment)} />
 
+          <CoveragePanel spots={spots} />
+
           <ExplorationPanel
             summary={exploration.summary}
             areaRadiusM={config.exploration.areaRadiusM}
             mapEnabled={canUseMap}
+            position={geo.position}
           />
 
             <HistoryPanel me={me} />

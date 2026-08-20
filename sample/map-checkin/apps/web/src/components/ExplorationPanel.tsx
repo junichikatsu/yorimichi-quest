@@ -1,23 +1,35 @@
 import { formatArea } from '@map-checkin/core'
-import type { ExplorationSummary } from '@map-checkin/shared'
+import { findChomeAt, type ExplorationSummary } from '@map-checkin/shared'
+import type { Position } from '../hooks/useGeolocation.js'
 
 interface ExplorationPanelProps {
   summary: ExplorationSummary | undefined
   areaRadiusM: number
   mapEnabled: boolean
+  /** 現在地。いまいる町丁目を出すために使う */
+  position: Position | undefined
 }
 
 export function ExplorationPanel({
   summary,
   areaRadiusM,
   mapEnabled,
+  position,
 }: ExplorationPanelProps): React.JSX.Element {
   const coverage = summary?.coveragePercent ?? 0
   const tileCount = summary?.tileCount ?? 0
+  // 「300m四方の区画」ではなく町丁目で言えるようにする（#27）
+  const chome = position ? findChomeAt(position.lat, position.lng) : undefined
 
   return (
     <section className="exploration" aria-label="探索状況">
       <h2 className="exploration__title">探索状況</h2>
+
+      {chome && (
+        <p className="exploration__chome">
+          いま <strong>{chome.ward}{chome.name}</strong>
+        </p>
+      )}
 
       <p className="exploration__value">
         {coverage.toFixed(2)}

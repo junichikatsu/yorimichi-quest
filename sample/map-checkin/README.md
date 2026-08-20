@@ -49,6 +49,7 @@ Mapbox のトークンが無くても起動します（地図の代わりに一�
 | `pnpm test` | Vitest（core / datastore / function の統合テスト） |
 | `pnpm build:zip` | デプロイ用 ZIP を生成（web ビルド → バンドル → handler 検証 → ZIP） |
 | `pnpm ingest` | 千代田区・港区のオープンデータを取り込み、スポットデータを生成（[tools/ingest](tools/ingest/)） |
+| `pnpm ingest:boundaries` | 町丁目境界256区画を取り込み（e-Stat 国勢調査 小地域境界） |
 | `pnpm verify` | typecheck → lint → test → ZIP ビルドを通しで実行 |
 
 ## 構成

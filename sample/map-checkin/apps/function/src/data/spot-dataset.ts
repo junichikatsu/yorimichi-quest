@@ -1,4 +1,4 @@
-import type { AreaId, DataSourceCredit, Spot } from '@map-checkin/shared'
+import { CHOME_SOURCE, type AreaId, type DataSourceCredit, type Spot } from '@map-checkin/shared'
 import { loadConfig } from '../config.js'
 import { OPENDATA_SOURCES, opendataSpots } from './opendata-spots.js'
 import { sampleSpots } from './sample-spots.js'
@@ -27,7 +27,14 @@ export function datasetSpots(areaId: AreaId, updatedAt: string): Spot[] {
  */
 export function dataSourceCredits(): DataSourceCredit[] {
   if (loadConfig().seedDataset === 'sample') {
-    return [{ title: 'サンプルデータ（架空・実在のオープンデータではありません）', url: '', fetchedAt: '' }]
+    return [
+      { title: 'サンプルデータ（架空・実在のオープンデータではありません）', url: '', fetchedAt: '' },
+      { title: CHOME_SOURCE.title, url: CHOME_SOURCE.url, fetchedAt: CHOME_SOURCE.fetchedAt },
+    ]
   }
-  return OPENDATA_SOURCES.map((s) => ({ title: s.title, url: s.url, fetchedAt: s.fetchedAt }))
+  return [
+    ...OPENDATA_SOURCES.map((s) => ({ title: s.title, url: s.url, fetchedAt: s.fetchedAt })),
+    // 町丁目の境界。e-Stat は出典明記が利用の条件なので、サンプルデータでも実データでも出す
+    { title: CHOME_SOURCE.title, url: CHOME_SOURCE.url, fetchedAt: CHOME_SOURCE.fetchedAt },
+  ]
 }
