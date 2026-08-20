@@ -36,6 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ★ pnpm のバージョンはここだけで指定する。
+      #   ルートの package.json に packageManager を書くと
+      #   「Multiple versions of pnpm specified」で失敗する。
+      #   action-setup は既定でリポジトリ直下の package.json を読むため、
+      #   sample/ 側のワークフローまで同時に壊れる。
       - uses: pnpm/action-setup@v4
         with:
           version: 11
