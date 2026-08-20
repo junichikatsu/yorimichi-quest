@@ -109,7 +109,16 @@ export function createRoutes(): Hono<AppEnv> {
       identity = await verifyLineIdToken(body.idToken, config.lineChannelId)
     } catch (err) {
       if (err instanceof LineVerifyError) {
-        // ★ 401 は「トークンが不正」、502 は「LINE 側に届かない」。混ぜると切り分けできない
+        /*
+         * ★ 理由をサーバーログに出す。**レスポンスには出さない。**
+         *
+         * これが無いと、チャネルIDの設定ミス（audience mismatch）と
+         * 期限切れトークンが同じ 401 に見え、設定を直せない。
+         * reason は 'audience mismatch' のような固定文で、トークンの中身は含まない。
+         */
+        console.warn(`[auth] line verify failed: ${err.reason}`)
+
+        // 401 は「トークンが不正」、502 は「LINE 側に届かない」。混ぜると切り分けできない
         if (err.status === 401) throw unauthorized('ログインに失敗しました')
         if (err.status === 500) throw new AppError('CONFIG_ERROR', 500, 'サーバー設定が不足しています')
         throw new AppError('UPSTREAM_ERROR', 502, 'LINE の認証サーバーに接続できませんでした')
