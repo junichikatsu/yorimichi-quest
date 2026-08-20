@@ -13,9 +13,23 @@ import type { AreaId, UserId } from '@imanouchi/shared'
  * | users          | user#<userId> | 'profile'   | 文字列 |
  * | explored_tiles | user#<userId> | <row>:<col> | 文字列 |
  *
- * FR-03 以降で checkins・user_spot_state・explored_tiles などが増える。
- * **時系列のサブキーは必ず数値型にすること。** 文字列にすると範囲クエリが辞書順になり、
- * 桁上がりで並びが壊れる。
+ * ★ 以降の FR で増えるテーブルも、**名前と型をここで先に決めておく。**
+ * 実装者が違っても同じキーになるようにするため。列名を後から変えると、
+ * すでに入っているデータが読めなくなる。
+ *
+ * | テーブル        | メインキー    | サブキー      | 型     | 使う FR |
+ * | --------------- | ------------- | ------------- | ------ | ------- |
+ * | checkins        | user#<userId> | <epochMs>     | **数値** | FR-03 |
+ * | user_spot_state | user#<userId> | spot#<spotId> | 文字列 | FR-03・FR-04 |
+ * | user_cards      | user#<userId> | <種類>:<キー> | 文字列 | FR-07・FR-14 |
+ *
+ * **時系列のサブキーは必ず数値型にすること（`checkins` の `checkinAt`）。**
+ * 文字列にすると範囲クエリが辞書順になり、桁が上がった時点で並びが壊れる。
+ * 「新しい順に10件」が正しく取れなくなる。**作り直すしか直せない。**
+ *
+ * `user_spot_state` は FR-03 と FR-04 の両方が使う。1スポットにつき1レコードで、
+ * 最終チェックイン時刻・訪問回数・クイズ正解時刻をまとめて持つ。
+ * **クイズ用に別テーブルを作らない。** アイテム数を増やさないため（制約 E4）。
  */
 
 export const SPOTS_MAIN_KEY = 'areaKey'
