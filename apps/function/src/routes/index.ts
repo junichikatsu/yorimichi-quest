@@ -23,7 +23,7 @@ import { ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.
 import { rateLimit } from '../middleware/rate-limit.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
-import { seedSpots } from '../services/seed-service.js'
+import { DEFAULT_SEED_DELAY_MS, seedSpots } from '../services/seed-service.js'
 import { issueSession } from '../services/session.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { ensureUser, setLocationConsent } from '../services/user-service.js'
@@ -246,11 +246,16 @@ export function createRoutes(): Hono<AppEnv> {
     const result = await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()), {
       offset: query.offset ?? 0,
       count: query.count ?? 50,
-      delayMs: query.delayMs ?? 0,
+      // ★ 既定を 0 にしない。速く書くと弾かれると実測で分かっている
+      delayMs: query.delayMs ?? DEFAULT_SEED_DELAY_MS,
     })
 
     if (result.stoppedAt !== undefined) {
       console.warn(`[seed] stopped at ${result.stoppedAt} after ${result.inserted} inserted`)
+    }
+    if (result.retries > 0) {
+      // 間隔が足りていない。次の呼び出しで delayMs を上げる判断に使う
+      console.warn(`[seed] throttled: ${result.retries} retries, delay now ${result.delayMs}ms`)
     }
 
     const response: SeedResponse = { area: config.area, ...result }

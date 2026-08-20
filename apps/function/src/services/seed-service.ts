@@ -5,22 +5,36 @@ import type { Spot } from '@imanouchi/shared'
  * スポットの投入（FR-10-2）。
  *
  * ★ データストアに一括投入が無いため、件数ぶん `putItem` を順に呼ぶしかない。
- * 370件を一息に書くと2つの理由で問題になる。
+ * そして**連続して速く書くとスロットリングされる**（実測：間隔なしで約280件目で失敗）。
  *
- * 1. 実行環境のタイムアウトに当たる（1件20〜50msでも7〜18秒）
- * 2. **アクセス数に月次上限がある**（プラットフォーム制約 E4）。失敗して
- *    やり直すたびに件数ぶん消費するので、一息に書く形は上限に対して高くつく
+ * 一息に全件書く形は2つの理由で採らない。
  *
- * そのため**範囲を指定して少しずつ**入れられるようにし、途中で失敗しても
- * どこまで入ったかを返す。次はその位置から再開できる。
+ * 1. 実行環境のタイムアウトに当たる
+ * 2. **アクセス数に月次上限がある**（プラットフォーム制約 E4）。失敗してやり直すたびに
+ *    件数ぶん消費するので、一息に書く形は上限に対して高くつく
+ *
+ * そのため範囲を指定して少しずつ入れ、**詰まったら自動で間隔を広げて再試行**する。
+ * 運用者が毎回 `delayMs` を思い出す前提にはしない。忘れられる対策は対策ではない。
  */
+
+/** 1件ごとの既定の間隔。0 にしないのは、速く書くと弾かれると実測で分かっているため */
+export const DEFAULT_SEED_DELAY_MS = 100
+
+/** 1件あたりの再試行回数の上限。★ 再試行もアクセス数を消費するので伸ばさない */
+const MAX_RETRIES = 3
+
+/** 再試行前に待つ時間。回を追うごとに倍にする */
+const RETRY_BASE_MS = 300
+
+/** 詰まったあとに引き上げる間隔の上限。ここまで緩めても駄目なら諦める */
+const MAX_ADAPTIVE_DELAY_MS = 1000
 
 export interface SeedRange {
   /** 何件目から入れるか（0 起点） */
   offset: number
   /** 何件入れるか */
   count: number
-  /** 1件ごとの間隔（ミリ秒）。書き込みが速すぎて弾かれる場合に効かせる */
+  /** 1件ごとの間隔（ミリ秒） */
   delayMs: number
 }
 
@@ -38,9 +52,38 @@ export interface SeedResult {
   stoppedAt: number | undefined
   /** 次に指定する offset。null なら全件終わっている */
   nextOffset: number | null
+  /** スロットリングで再試行した回数。0 でなければ間隔が足りていない */
+  retries: number
+  /** 最終的に使っていた間隔（ミリ秒）。自動で広げた結果が出る */
+  delayMs: number
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 1件を書く。スロットリングされたら間隔を置いて数回だけやり直す。
+ *
+ * ★ 何が失敗だったかはここでは判別しない。データストアは理由を文字列で返し、
+ * 分類はすべて `failed` に落ちる（`packages/datastore/src/errors.ts`）。
+ * 設定の誤りなら再試行しても同じく失敗するので、**回数を絞ることで区別の代わりにする。**
+ */
+async function putWithRetry(
+  ctx: DataStoreContext,
+  spot: Spot,
+): Promise<{ ok: true; retries: number } | { ok: false; retries: number; error: unknown }> {
+  let retries = 0
+
+  for (;;) {
+    try {
+      await putSpot(ctx, spot)
+      return { ok: true, retries }
+    } catch (err) {
+      if (retries >= MAX_RETRIES) return { ok: false, retries, error: err }
+      retries += 1
+      await sleep(RETRY_BASE_MS * 2 ** (retries - 1))
+    }
+  }
+}
 
 /**
  * 指定範囲のスポットを投入する。
@@ -60,23 +103,31 @@ export async function seedSpots(
   const to = Math.min(from + range.count, spots.length)
 
   let inserted = 0
+  let retries = 0
   let stoppedAt: number | undefined
+  let delayMs = range.delayMs
 
   for (let i = from; i < to; i += 1) {
     const spot = spots[i]
     if (!spot) break
 
-    try {
-      await putSpot(ctx, spot)
-    } catch (err) {
+    const result = await putWithRetry(ctx, spot)
+    retries += result.retries
+
+    if (!result.ok) {
       // 1件も入っていないなら設定の誤りとして扱い、素の例外を上へ返す
-      if (inserted === 0) throw err
+      if (inserted === 0) throw result.error
       stoppedAt = i
       break
     }
 
+    // ★ 一度詰まったら、残りは間隔を広げて進む。同じ速さで続けても再び詰まる
+    if (result.retries > 0) {
+      delayMs = Math.min(Math.max(delayMs * 2, RETRY_BASE_MS), MAX_ADAPTIVE_DELAY_MS)
+    }
+
     inserted += 1
-    if (range.delayMs > 0 && i + 1 < to) await sleep(range.delayMs)
+    if (delayMs > 0 && i + 1 < to) await sleep(delayMs)
   }
 
   const reached = stoppedAt ?? to
@@ -87,5 +138,7 @@ export async function seedSpots(
     inserted,
     stoppedAt,
     nextOffset: reached < spots.length ? reached : null,
+    retries,
+    delayMs,
   }
 }

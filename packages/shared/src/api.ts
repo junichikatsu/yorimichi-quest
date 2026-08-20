@@ -164,7 +164,12 @@ export interface SpotResponse {
 export const seedQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
   count: z.coerce.number().int().min(1).max(500).optional(),
-  /** 1件ごとの間隔（ミリ秒）。書き込みが速すぎて弾かれる場合に効かせる */
+  /**
+   * 1件ごとの間隔（ミリ秒）。
+   *
+   * ★ 省略時は 0 ではない。**連続して速く書くとスロットリングされる**ため
+   * （実測：間隔なしで約280件目で失敗）、既定で間隔を入れている。
+   */
   delayMs: z.coerce.number().int().min(0).max(1000).optional(),
 })
 
@@ -180,6 +185,10 @@ export interface SeedResponse {
   stoppedAt: number | undefined
   /** 次に指定する offset。null なら全件終わっている */
   nextOffset: number | null
+  /** スロットリングで再試行した回数。0 でなければ間隔が足りていない */
+  retries: number
+  /** 最終的に使っていた間隔（ミリ秒）。詰まると自動で広がる */
+  delayMs: number
 }
 
 /* ------------------------------------------------------------------ *
