@@ -4,6 +4,7 @@ import {
   consentRequestSchema,
   isSpotId,
   loginRequestSchema,
+  purgeQuerySchema,
   seedQuerySchema,
   spotsQuerySchema,
   toUserView,
@@ -11,6 +12,7 @@ import {
   type HealthResponse,
   type LoginResponse,
   type MeResponse,
+  type PurgeResponse,
   type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
@@ -23,7 +25,7 @@ import { ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.
 import { rateLimit } from '../middleware/rate-limit.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
-import { DEFAULT_SEED_DELAY_MS, seedSpots } from '../services/seed-service.js'
+import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
 import { issueSession } from '../services/session.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { ensureUser, setLocationConsent } from '../services/user-service.js'
@@ -259,6 +261,41 @@ export function createRoutes(): Hono<AppEnv> {
     }
 
     const response: SeedResponse = { area: config.area, ...result }
+    return c.json(response)
+  })
+
+  /**
+   * スポットの削除（やり直しのため）。
+   *
+   * ★ 総数が数えられないので、`hasMore` が false になるまで繰り返す。
+   * ★ 入れ直しのたびに全消しするなら、`AREA_ID` を変えてパーティションを分ける方が
+   *   アクセス数（制約 E4）を消費しない。こちらは後戻りの手段として置いている。
+   */
+  routes.post('/v1/admin/purge', async (c) => {
+    const config = loadConfig()
+    if (config.adminKey === '') {
+      throw new AppError('CONFIG_ERROR', 500, 'ADMIN_KEY が設定されていません')
+    }
+    if (!matchesAdminKey(c.req.header(ADMIN_KEY_HEADER), config.adminKey)) {
+      throw forbidden('管理キーが一致しません')
+    }
+
+    const query = purgeQuerySchema.parse({
+      count: c.req.query('count'),
+      delayMs: c.req.query('delayMs'),
+    })
+
+    const ctx = await contextFor()
+    const result = await purgeSpots(ctx, config.area.areaId, {
+      count: query.count ?? 50,
+      delayMs: query.delayMs ?? DEFAULT_SEED_DELAY_MS,
+    })
+
+    if (result.retries > 0) {
+      console.warn(`[purge] throttled: ${result.retries} retries, delay now ${result.delayMs}ms`)
+    }
+
+    const response: PurgeResponse = { area: config.area, ...result }
     return c.json(response)
   })
 

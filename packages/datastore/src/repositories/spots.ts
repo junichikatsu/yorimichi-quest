@@ -114,3 +114,24 @@ export async function putSpot(ctx: DataStoreContext, spot: Spot): Promise<void> 
   const tableId = ctx.tableId('spots')
   await runOp('putItem', () => ctx.client.putItem({ tableId, item: toItem(spot) }))
 }
+
+/**
+ * スポットを1件消す（管理用）。
+ *
+ * ★ 一括削除は無いので1件ずつになる。**削除もアクセス数を消費する**（制約 E4）ため、
+ * 入れ直しのたびに全消しするより、`areaId` を変えてパーティションを分ける方が安い。
+ * それでも「消す」経路が無いと後戻りできないので用意しておく。
+ */
+export async function deleteSpot(
+  ctx: DataStoreContext,
+  areaId: AreaId,
+  spotId: SpotId,
+): Promise<void> {
+  const tableId = ctx.tableId('spots')
+  await runOp('deleteItem', () =>
+    ctx.client.deleteItem({
+      tableId,
+      key: { [SPOTS_MAIN_KEY]: areaKey(areaId), [SPOTS_SUB_KEY]: spotId },
+    }),
+  )
+}

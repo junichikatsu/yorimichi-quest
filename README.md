@@ -58,6 +58,7 @@ LIFF アプリのエンドポイントに公開URLを登録した状態で LINE 
 | `pnpm ingest` | スポットを取り込む（FR-10） |
 | `pnpm ingest:boundaries` | 町丁目境界256区画を取り込む（FR-02-7 で使う） |
 | `pnpm build:zip` | デプロイ用 ZIP を生成 |
+| `pnpm seed` | デプロイ先へスポットを投入（終わるまで繰り返す。`--reset` で消してから） |
 
 ## 環境変数
 

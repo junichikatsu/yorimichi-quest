@@ -1,5 +1,10 @@
-import { putSpot, type DataStoreContext } from '@imanouchi/datastore'
-import type { Spot } from '@imanouchi/shared'
+import {
+  deleteSpot,
+  listSpotsByArea,
+  putSpot,
+  type DataStoreContext,
+} from '@imanouchi/datastore'
+import type { AreaId, Spot } from '@imanouchi/shared'
 
 /**
  * スポットの投入（FR-10-2）。
@@ -60,22 +65,25 @@ export interface SeedResult {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+type Attempt =
+  | { ok: true; retries: number }
+  | { ok: false; retries: number; error: unknown }
+
 /**
- * 1件を書く。スロットリングされたら間隔を置いて数回だけやり直す。
+ * 1件ぶんの操作。スロットリングされたら間隔を置いて数回だけやり直す。
  *
  * ★ 何が失敗だったかはここでは判別しない。データストアは理由を文字列で返し、
  * 分類はすべて `failed` に落ちる（`packages/datastore/src/errors.ts`）。
  * 設定の誤りなら再試行しても同じく失敗するので、**回数を絞ることで区別の代わりにする。**
+ *
+ * 書き込みと削除の両方で使う。どちらも同じ理由で弾かれる。
  */
-async function putWithRetry(
-  ctx: DataStoreContext,
-  spot: Spot,
-): Promise<{ ok: true; retries: number } | { ok: false; retries: number; error: unknown }> {
+async function withRetry(operation: () => Promise<void>): Promise<Attempt> {
   let retries = 0
 
   for (;;) {
     try {
-      await putSpot(ctx, spot)
+      await operation()
       return { ok: true, retries }
     } catch (err) {
       if (retries >= MAX_RETRIES) return { ok: false, retries, error: err }
@@ -83,6 +91,11 @@ async function putWithRetry(
       await sleep(RETRY_BASE_MS * 2 ** (retries - 1))
     }
   }
+}
+
+/** 詰まったあとに引き上げる間隔 */
+function widen(delayMs: number): number {
+  return Math.min(Math.max(delayMs * 2, RETRY_BASE_MS), MAX_ADAPTIVE_DELAY_MS)
 }
 
 /**
@@ -111,7 +124,7 @@ export async function seedSpots(
     const spot = spots[i]
     if (!spot) break
 
-    const result = await putWithRetry(ctx, spot)
+    const result = await withRetry(() => putSpot(ctx, spot))
     retries += result.retries
 
     if (!result.ok) {
@@ -122,9 +135,7 @@ export async function seedSpots(
     }
 
     // ★ 一度詰まったら、残りは間隔を広げて進む。同じ速さで続けても再び詰まる
-    if (result.retries > 0) {
-      delayMs = Math.min(Math.max(delayMs * 2, RETRY_BASE_MS), MAX_ADAPTIVE_DELAY_MS)
-    }
+    if (result.retries > 0) delayMs = widen(delayMs)
 
     inserted += 1
     if (delayMs > 0 && i + 1 < to) await sleep(delayMs)
@@ -140,5 +151,77 @@ export async function seedSpots(
     nextOffset: reached < spots.length ? reached : null,
     retries,
     delayMs,
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 削除（やり直しのため）
+ * ------------------------------------------------------------------ */
+
+export interface PurgeRange {
+  /** 1回で消す上限 */
+  count: number
+  delayMs: number
+}
+
+export interface PurgeResult {
+  deleted: number
+  /**
+   * まだ残っている可能性があるか。
+   *
+   * ★ 総数は数えられない（データストアに集計が無い）。上限まで消えたなら
+   * 「まだあるかもしれない」として true を返し、呼び出し側が繰り返す。
+   */
+  hasMore: boolean
+  retries: number
+  delayMs: number
+  /** 途中で止まったか。true なら残りは次の呼び出しで消す */
+  stopped: boolean
+}
+
+/**
+ * エリア内のスポットを消す（管理用）。
+ *
+ * ★ 消す前に query で引くので、**削除1件につきアクセスは2回**（query は
+ * まとめて1回だが、削除は1件ずつ）。入れ直しのたびに全消しするなら、
+ * `AREA_ID` を変えてパーティションを分ける方が**アクセス数を消費しない**。
+ *
+ * それでも「消す」経路が無いと後戻りできないので用意している。
+ */
+export async function purgeSpots(
+  ctx: DataStoreContext,
+  areaId: AreaId,
+  range: PurgeRange,
+): Promise<PurgeResult> {
+  const spots = await listSpotsByArea(ctx, areaId, range.count)
+
+  let deleted = 0
+  let retries = 0
+  let stopped = false
+  let delayMs = range.delayMs
+
+  for (const spot of spots) {
+    const result = await withRetry(() => deleteSpot(ctx, areaId, spot.spotId))
+    retries += result.retries
+
+    if (!result.ok) {
+      // 1件も消えていないなら設定の誤りとして扱い、素の例外を上へ返す
+      if (deleted === 0) throw result.error
+      stopped = true
+      break
+    }
+
+    if (result.retries > 0) delayMs = widen(delayMs)
+    deleted += 1
+    if (delayMs > 0) await sleep(delayMs)
+  }
+
+  return {
+    deleted,
+    // 上限まで消えたなら、まだ残っているかもしれない
+    hasMore: !stopped && spots.length >= range.count,
+    retries,
+    delayMs,
+    stopped,
   }
 }

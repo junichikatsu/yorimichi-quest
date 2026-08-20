@@ -5,6 +5,7 @@ import type {
   HealthResponse,
   LoginResponse,
   MeResponse,
+  PurgeResponse,
   SeedResponse,
   SpotsResponse,
 } from '@imanouchi/shared'
@@ -470,6 +471,44 @@ describe('POST /v1/admin/seed', () => {
       }),
     )
     expect(body.inserted).toBe(2)
+  })
+
+  it('★ 消してから入れ直せる（やり直しの経路）', async () => {
+    // まず全件入れる
+    await app.request('/v1/admin/seed?count=200', {
+      method: 'POST',
+      headers: { 'x-admin-key': 'test-admin-key' },
+    })
+
+    const purged = await json<PurgeResponse>(
+      await app.request('/v1/admin/purge?count=200', {
+        method: 'POST',
+        headers: { 'x-admin-key': 'test-admin-key' },
+      }),
+    )
+    expect(purged.deleted).toBeGreaterThan(0)
+    expect(purged.stopped).toBe(false)
+
+    // 消えていること
+    const { token } = await loginOk()
+    const after = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    expect(after.spots).toHaveLength(0)
+
+    // 入れ直せること
+    await app.request('/v1/admin/seed?count=200', {
+      method: 'POST',
+      headers: { 'x-admin-key': 'test-admin-key' },
+    })
+    const again = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    expect(again.spots.length).toBeGreaterThan(0)
+  })
+
+  it('★ 削除も管理キーだけで通り、鍵が違えば 403', async () => {
+    expect(
+      (await app.request('/v1/admin/purge', { method: 'POST', headers: { 'x-admin-key': 'wrong' } }))
+        .status,
+    ).toBe(403)
+    expect((await app.request('/v1/admin/purge', { method: 'POST' })).status).toBe(403)
   })
 
   it('★ 管理キーが違えば 403（401 ではない）', async () => {
