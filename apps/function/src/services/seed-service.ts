@@ -22,8 +22,13 @@ import type { AreaId, Spot } from '@imanouchi/shared'
  * 運用者が毎回 `delayMs` を思い出す前提にはしない。忘れられる対策は対策ではない。
  */
 
-/** 1件ごとの既定の間隔。0 にしないのは、速く書くと弾かれると実測で分かっているため */
-export const DEFAULT_SEED_DELAY_MS = 100
+/**
+ * 1件ごとの既定の間隔。
+ *
+ * ★ 実測で 100ms（10件/秒）でも約 198 件目で詰まった。控えめに倒している。
+ * それでも詰まるので、呼び出し側（`tools/seed/seed.mjs`）が待って緩める仕組みを持つ。
+ */
+export const DEFAULT_SEED_DELAY_MS = 200
 
 /** 1件あたりの再試行回数の上限。★ 再試行もアクセス数を消費するので伸ばさない */
 const MAX_RETRIES = 3
@@ -101,10 +106,14 @@ function widen(delayMs: number): number {
 /**
  * 指定範囲のスポットを投入する。
  *
- * ★ 1件目から失敗した場合は例外をそのまま投げる。設定の誤り（テーブルID・キー名）
- * である可能性が高く、200 で「0件入れました」と返すと**気づけない**。
+ * ★ 「1件目から失敗」の扱いを offset で分ける。
  *
- * 2件目以降で止まった場合は、入った件数と止まった位置を返す。
+ * - `offset === 0` で1件目が失敗 → **例外を投げる。** 設定の誤り（テーブルID・キー名）
+ *   である可能性が高く、200 で「0件入れました」と返すと気づけない
+ * - `offset > 0` で1件目が失敗 → **止まったとして返す。** これは再開の呼び出しであり、
+ *   前回まで入っているのだから設定は正しい。**スロットリングが続いているだけ**なので、
+ *   503 にすると呼び出し側が「設定ミス」と受け取って諦めてしまう
+ *
  * `putItem` はキー指定の上書きなので、同じ位置から再実行すれば続きから埋まる。
  */
 export async function seedSpots(
@@ -128,8 +137,12 @@ export async function seedSpots(
     retries += result.retries
 
     if (!result.ok) {
-      // 1件も入っていないなら設定の誤りとして扱い、素の例外を上へ返す
-      if (inserted === 0) throw result.error
+      // ★ 最初の呼び出しの1件目だけを設定の誤りとして扱う（上のコメント参照）
+      if (inserted === 0 && from === 0) throw result.error
+
+      // ★ 諦める前に間隔を広げる。この値を返して呼び出し側に次の目安を渡す。
+      // これをやらないと「再試行3回・間隔100ms」のまま返り、緩めるべきことが伝わらない
+      delayMs = widen(delayMs)
       stoppedAt = i
       break
     }
@@ -205,8 +218,10 @@ export async function purgeSpots(
     retries += result.retries
 
     if (!result.ok) {
-      // 1件も消えていないなら設定の誤りとして扱い、素の例外を上へ返す
+      // 1件も消えていないなら設定の誤りとして扱い、素の例外を上へ返す。
+      // 削除は毎回「残っているものの先頭」から始めるので、offset のような区別が要らない
       if (deleted === 0) throw result.error
+      delayMs = widen(delayMs)
       stopped = true
       break
     }
