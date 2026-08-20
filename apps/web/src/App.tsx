@@ -50,6 +50,14 @@ export function App(): React.JSX.Element {
   const [selectedSpotId, setSelectedSpotId] = useState<SpotId | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [joystickClosed, setJoystickClosed] = useState(false)
+  /**
+   * デモ用の移動操作を一度でも出したか。
+   *
+   * ★ 出すきっかけ（測位の状況）は途中で変わる。`watchPosition` は最初に
+   * エラーを返してから後で成功することがあり、**操作していないのに消える**。
+   * 一度出したら出し続けるために覚えておく。
+   */
+  const [debugMoveOffered, setDebugMoveOffered] = useState(false)
 
   /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
@@ -194,7 +202,13 @@ export function App(): React.JSX.Element {
       geoStatus: geo.status,
       hasFinePointer: hasFinePointer(),
       enabledByServer: config?.debugMoveEnabled ?? false,
+      alreadyOffered: debugMoveOffered,
     })
+
+  // 出したことを覚える。以降はきっかけが消えても出し続ける
+  useEffect(() => {
+    if (offerDebugMove) setDebugMoveOffered(true)
+  }, [offerDebugMove])
 
   /**
    * ジョイスティックで現在地を動かす。
