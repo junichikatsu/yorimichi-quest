@@ -2,6 +2,9 @@ import type {
   ClientConfigResponse,
   ConsentRequest,
   ErrorResponse,
+  ExplorationRequest,
+  ExplorationResponse,
+  ExplorationUpdateResponse,
   LoginResponse,
   MeResponse,
   SpotsResponse,
@@ -100,4 +103,22 @@ export function setLocationConsent(granted: boolean): Promise<MeResponse> {
 export function fetchSpots(position: { lat: number; lng: number } | undefined): Promise<SpotsResponse> {
   const query = position ? `?lat=${position.lat}&lng=${position.lng}` : ''
   return request<SpotsResponse>(`/v1/spots${query}`)
+}
+
+export function fetchExploration(): Promise<ExplorationResponse> {
+  return request<ExplorationResponse>('/v1/exploration')
+}
+
+/**
+ * 歩いた座標を送る（FR-02-7）。
+ *
+ * ★ 呼ぶ回数を抑えること。書き込みはタイル単位に量子化されるので点をいくら
+ * 送っても件数は増えないが、**リクエストの回数はそのまま増える**。
+ * 呼び出し側（`useExploration`）が間隔をまとめている。
+ */
+export function postExploration(points: ExplorationRequest['points']): Promise<ExplorationUpdateResponse> {
+  return request<ExplorationUpdateResponse>('/v1/exploration', {
+    method: 'POST',
+    body: JSON.stringify({ points }),
+  })
 }

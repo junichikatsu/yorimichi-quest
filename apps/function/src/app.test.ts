@@ -4,6 +4,8 @@ import type {
   ErrorResponse,
   HealthResponse,
   LoginResponse,
+  ExplorationResponse,
+  ExplorationUpdateResponse,
   MeResponse,
   PurgeResponse,
   SeedResponse,
@@ -404,6 +406,128 @@ describe('GET /v1/spots（FR-02）', () => {
     const { token } = await loginOk()
     const response = await app.request('/v1/spots/NOT_VALID', { headers: auth(token) })
     expect(response.status).toBe(400)
+  })
+})
+
+describe('探索（FR-02-7）', () => {
+  /** 日比谷公園。千代田区の町丁目に入る座標 */
+  const HIBIYA = { lat: 35.6739, lng: 139.7568 }
+  const TILE_STEP = 50 / 111_320
+
+  async function record(points: { lat: number; lng: number }[], token: string) {
+    return app.request('/v1/exploration', {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ points }),
+    })
+  }
+
+  it('最初は何も塗られていない', async () => {
+    const { token } = await loginOk()
+    const body = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: auth(token) }),
+    )
+    expect(body.tiles).toHaveLength(0)
+    expect(body.unlockedAreas).toHaveLength(0)
+    expect(body.summary.tileCount).toBe(0)
+  })
+
+  it('歩いた座標がタイルとして記録される', async () => {
+    const { token } = await loginOk()
+    const body = await json<ExplorationUpdateResponse>(await record([HIBIYA], token))
+
+    expect(body.newTileCount).toBe(1)
+    expect(body.tiles).toHaveLength(1)
+    expect(body.summary.tileCount).toBe(1)
+  })
+
+  it('★ 同じタイル内で動いても増えない（書き込みが利用量に比例しない）', async () => {
+    const { token } = await loginOk()
+    await record([HIBIYA], token)
+
+    // 同じタイルの中を少しずれた3点
+    const body = await json<ExplorationUpdateResponse>(
+      await record(
+        [
+          { lat: HIBIYA.lat + TILE_STEP * 0.1, lng: HIBIYA.lng },
+          { lat: HIBIYA.lat, lng: HIBIYA.lng + TILE_STEP * 0.1 },
+          HIBIYA,
+        ],
+        token,
+      ),
+    )
+    expect(body.newTileCount).toBe(0)
+    expect(body.tiles).toHaveLength(1)
+  })
+
+  it('★ 他ユーザーの記録は見えない', async () => {
+    const { token } = await loginOk()
+    await record([HIBIYA], token)
+
+    // 別ユーザーとしてログインし直す
+    mockLineVerify(validPayload({ sub: 'Uffffffffffffffffffffffffffffffff' }))
+    const other = await json<LoginResponse>(
+      await app.request('/v1/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ idToken: 'dummy' }),
+      }),
+    )
+
+    const body = await json<ExplorationResponse>(
+      await app.request('/v1/exploration', { headers: auth(other.token) }),
+    )
+    expect(body.tiles).toHaveLength(0)
+  })
+
+  it('★ 一定割合を歩くと町丁目が開放され、探索率も全面ぶんになる', async () => {
+    const { token } = await loginOk()
+
+    // 同じ町丁目に収まる範囲を格子で埋める（東へ一列だと隣の町丁目へ抜ける）
+    const points: { lat: number; lng: number }[] = []
+    for (let row = 0; row < 4; row += 1) {
+      for (let col = 0; col < 4; col += 1) {
+        points.push({ lat: HIBIYA.lat + row * TILE_STEP, lng: HIBIYA.lng + col * TILE_STEP })
+      }
+    }
+
+    const body = await json<ExplorationUpdateResponse>(await record(points, token))
+
+    expect(body.unlockedAreas.length).toBeGreaterThanOrEqual(1)
+    // 町丁目名が返る。「300m四方の区画」ではなく地名で言える
+    expect(body.unlockedAreas[0]?.name).not.toBe('')
+    expect(body.unlockedAreas[0]?.ward).toBe('千代田区')
+    // 歩いた枚数より多く数えられる（開放された区画は全面ぶん）
+    expect(body.summary.tileCount).toBeGreaterThan(body.tiles.length)
+  })
+
+  it('★ 境界データの外を歩いても区画は開かない', async () => {
+    const { token } = await loginOk()
+
+    // 新宿区。両区の境界データを持っていないので区画にならない
+    const points = Array.from({ length: 30 }, (_, i) => ({
+      lat: 35.6938 + i * TILE_STEP,
+      lng: 139.7034,
+    }))
+    const body = await json<ExplorationUpdateResponse>(await record(points, token))
+
+    expect(body.tiles.length).toBeGreaterThan(0)
+    expect(body.unlockedAreas).toHaveLength(0)
+  })
+
+  it('点が無い・多すぎるリクエストは 400', async () => {
+    const { token } = await loginOk()
+    expect((await record([], token)).status).toBe(400)
+
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({
+      lat: HIBIYA.lat + i * TILE_STEP,
+      lng: HIBIYA.lng,
+    }))
+    expect((await record(tooMany, token)).status).toBe(400)
+  })
+
+  it('認証なしは 401', async () => {
+    expect((await app.request('/v1/exploration')).status).toBe(401)
   })
 })
 

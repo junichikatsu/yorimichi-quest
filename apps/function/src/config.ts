@@ -76,6 +76,19 @@ export interface AppConfig {
   adminKey: string
   maxSpotsPerRequest: number
   rateLimitPerMinute: number
+
+  /* ---- 探索（FR-02-7） ---- */
+  /** 記録の粒度（m 四方）。小さくすると軌跡は滑らかになるが書き込みが面積比で増える */
+  exploreTileSizeM: number
+  /** 地図上で霧を晴らす半径（m）。タイルより大きくしないと軌跡が途切れて見える */
+  exploreRevealRadiusM: number
+  /** 町丁目が開放される割合（0〜1）。暫定値、確定は Issue #7 */
+  exploreUnlockRatio: number
+  /** 開放に必要なタイル数の上限。町丁目の面積差が大きいため必要 */
+  exploreUnlockMaxTiles: number
+  /** 探索率の分母になる対象エリアの半径（m） */
+  areaRadiusM: number
+  maxExploredTilesPerRequest: number
 }
 
 /**
@@ -127,6 +140,16 @@ export function loadConfig(): AppConfig {
     adminKey: readString('ADMIN_KEY'),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
+
+    exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
+    // タイルより大きくする。同じ大きさだと隣り合うタイルの間に霧が残って軌跡が途切れる
+    exploreRevealRadiusM: readNumber('EXPLORE_REVEAL_RADIUS_M', 40),
+    // 中央値の町丁目は 35 タイルなので、25% は 9 枚。従来の 300m 区画と同じ体感になる
+    exploreUnlockRatio: readNumber('EXPLORE_UNLOCK_RATIO', 0.25),
+    // 町丁目は最大 1433 タイルあり、割合だけだと広い区画が一生開かない
+    exploreUnlockMaxTiles: readNumber('EXPLORE_UNLOCK_MAX_TILES', 12),
+    areaRadiusM: readNumber('AREA_RADIUS_M', 1500),
+    maxExploredTilesPerRequest: readNumber('MAX_EXPLORED_TILES_PER_REQUEST', 2000),
   }
 }
 

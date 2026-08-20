@@ -1,4 +1,7 @@
 export * from './ids.js'
 export * from './user.js'
 export * from './spot.js'
+export * from './exploration.js'
+export * from './chome-data.js'
+export * from './chome.js'
 export * from './api.js'
