@@ -1550,3 +1550,123 @@ body {
   font-weight: 700;
   text-anchor: middle;
 }
+
+/* ---------------- 出典表示（FR-10-2） ---------------- */
+/* ライセンスが出典明記を求めるため置いている。畳めるが消せない */
+
+.credits {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.credits__summary {
+  cursor: pointer;
+  color: var(--muted, #5b5560);
+}
+
+.credits__list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.credits__item {
+  overflow-wrap: anywhere;
+}
+
+.credits__date {
+  margin-left: 0.4rem;
+  color: var(--muted, #5b5560);
+}
+
+/* ---------------- 町丁目（#27） ---------------- */
+
+.panel__chome {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted, #5b5560);
+}
+
+.panel__chome-sub {
+  margin-left: 0.5rem;
+}
+
+.exploration__chome {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* 町丁目ごとの記録。★ 少ない側を強調しない（G-2） */
+
+.coverage__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.78rem;
+}
+
+.coverage__stats dt {
+  color: var(--muted, #5b5560);
+}
+
+.coverage__stats dd {
+  margin: 0.1rem 0 0;
+  font-weight: 700;
+}
+
+.coverage__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.coverage__item {
+  border-top: 1px solid var(--line, #e2dbe4);
+  padding-top: 0.4rem;
+}
+
+.coverage__name {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.coverage__pop {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--muted, #5b5560);
+}
+
+.coverage__cats {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.coverage__cat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--chip, #f2eef3);
+  font-size: 0.72rem;
+}
+
+.coverage__count {
+  font-weight: 700;
+}
+
+.coverage__catname {
+  color: var(--muted, #5b5560);
+}

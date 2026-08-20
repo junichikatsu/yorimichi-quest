@@ -26,6 +26,8 @@ import {
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { HistoryPanel } from './components/HistoryPanel.js'
+import { CoveragePanel } from './components/CoveragePanel.js'
+import { DataCredits } from './components/DataCredits.js'
 import { CardPanel } from './components/CardPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { MapView } from './components/MapView.js'
@@ -439,10 +441,13 @@ export function App(): React.JSX.Element {
 
           <CardPanel cards={cards} busy={busy} onEquip={(equipment) => void handleEquip(equipment)} />
 
+          <CoveragePanel spots={spots} />
+
           <ExplorationPanel
             summary={exploration.summary}
             areaRadiusM={config.exploration.areaRadiusM}
             mapEnabled={canUseMap}
+            position={geo.position}
           />
 
             <HistoryPanel me={me} />
@@ -457,9 +462,16 @@ export function App(): React.JSX.Element {
       )}
 
       <footer className="app__footer">
-        <p>
-          サンプル実装です。表示しているスポットはデモ用の架空データで、実在の避難所指定や設備状況を表すものではありません。
-        </p>
+        {config.usesSampleData ? (
+          <p>
+            サンプル実装です。表示しているスポットはデモ用の架空データで、実在の避難所指定や設備状況を表すものではありません。
+          </p>
+        ) : (
+          <p>
+            サンプル実装です。スポットは千代田区・港区の公開オープンデータを取り込んだものです。属性の空欄は「設備が無い」ではなく「未記入」で、そこがクエストの対象になります。
+          </p>
+        )}
+        <DataCredits sources={config.dataSources} />
       </footer>
     </div>
   )

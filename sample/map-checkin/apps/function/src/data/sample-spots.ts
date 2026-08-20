@@ -1,4 +1,4 @@
-import { asAreaId, asSpotId, type Spot } from '@map-checkin/shared'
+import { asSpotId, type AreaId, type Spot } from '@map-checkin/shared'
 
 /**
  * ★ サンプルデータです。実在のオープンデータではありません。
@@ -8,7 +8,6 @@ import { asAreaId, asSpotId, type Spot } from '@map-checkin/shared'
  * 本番では FR-10-1 のオープンデータ（東京都防災マップ避難所一覧、自治体標準オープンデータセット等）を
  * 取込・正規化して置き換えます。
  */
-const AREA_ID = asAreaId('chiyoda')
 const SOURCE = 'sample-fixture'
 const FETCHED_AT = '2026-08-16'
 
@@ -133,10 +132,11 @@ const SEEDS: SampleSpotSeed[] = [
   },
 ]
 
-export function sampleSpots(updatedAt: string): Spot[] {
+/** areaId は設定（AREA_ID）に従わせる。固定するとエリアを変えた瞬間に 1 件も引けなくなる */
+export function sampleSpots(areaId: AreaId, updatedAt: string): Spot[] {
   return SEEDS.map((seed) => ({
     spotId: asSpotId(seed.id),
-    areaId: AREA_ID,
+    areaId,
     name: seed.name,
     category: seed.category,
     lat: seed.lat,

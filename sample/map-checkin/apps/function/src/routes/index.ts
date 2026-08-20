@@ -32,7 +32,7 @@ import {
 } from '@map-checkin/shared'
 import { Hono } from 'hono'
 import { buildInfo, loadConfig, missingConfigKeys } from '../config.js'
-import { sampleSpots } from '../data/sample-spots.js'
+import { dataSourceCredits, datasetSpots } from '../data/spot-dataset.js'
 import { AppError, badRequest, forbidden, notFound } from '../errors.js'
 import { ADMIN_KEY_HEADER } from '../middleware/auth.js'
 import { userGate } from '../middleware/auth.js'
@@ -112,6 +112,8 @@ export function createRoutes(): Hono<AppEnv> {
     const response: ClientConfigResponse = {
       mapboxToken: config.mapboxToken,
       area: config.area,
+      dataSources: dataSourceCredits(),
+      usesSampleData: config.seedDataset === 'sample',
       checkinRadiusM: config.checkinRadiusM,
       checkinCooldownHours: config.checkinCooldownHours,
       exploration: {
@@ -368,7 +370,7 @@ export function createRoutes(): Hono<AppEnv> {
     }
 
     const ctx = await contextFor()
-    const result = await seedSpots(ctx, sampleSpots(new Date().toISOString()))
+    const result = await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()))
 
     const response: SeedResponse = { area: config.area, ...result }
     return c.json(response)

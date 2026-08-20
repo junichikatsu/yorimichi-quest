@@ -33,11 +33,20 @@ function readBoolean(key: string, fallback: boolean): boolean {
   return raw === 'true' || raw === '1' || raw === 'yes'
 }
 
+/**
+ * 投入するスポットの出どころ。
+ *
+ * `opendata` は取込スクリプトが生成した実データ（FR-10）。`sample` は架空の固定データで、
+ * テストと、実データを持ち込みたくない検証用に残している。
+ */
+export type SeedDataset = 'opendata' | 'sample'
+
 export interface AppConfig {
   version: string
   mockMode: boolean
   useFakeDataStore: boolean
   logLevel: string
+  seedDataset: SeedDataset
   area: AreaSummary
   checkinRadiusM: number
   checkinCooldownHours: number
@@ -56,7 +65,11 @@ export interface AppConfig {
   adminKey: string
 }
 
-const DEFAULT_AREA_ID = 'chiyoda'
+/**
+ * 千代田区・港区を1つのパーティションにまとめる（#6 決着、要件定義書 6.2）。
+ * 区ごとに分けると /spots が2クエリになり、探索率の分母も区ごとに割れる。
+ */
+const DEFAULT_AREA_ID = 'chiyoda-minato'
 
 export function loadConfig(): AppConfig {
   const areaIdRaw = readString('AREA_ID') || DEFAULT_AREA_ID
@@ -72,12 +85,14 @@ export function loadConfig(): AppConfig {
     mockMode: readBoolean('MOCK_MODE', false),
     useFakeDataStore: readBoolean('USE_FAKE_DATASTORE', false),
     logLevel: readString('LOG_LEVEL') || 'INFO',
+    seedDataset: readString('SEED_DATASET') === 'sample' ? 'sample' : 'opendata',
     area: {
       areaId,
-      name: readString('AREA_NAME') || '千代田区周辺（サンプルエリア）',
+      name: readString('AREA_NAME') || '千代田区・港区',
       center: {
-        lat: readNumber('AREA_CENTER_LAT', 35.6785),
-        lng: readNumber('AREA_CENTER_LNG', 139.7594),
+        // 両区の境界（新橋〜虎ノ門〜霞ヶ関）付近。撮影ルート確定後に合わせる（FR-10-5）
+        lat: readNumber('AREA_CENTER_LAT', 35.6690),
+        lng: readNumber('AREA_CENTER_LNG', 139.7530),
       },
       zoom: readNumber('AREA_ZOOM', 14),
     },

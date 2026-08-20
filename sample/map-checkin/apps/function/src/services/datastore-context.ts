@@ -4,7 +4,7 @@ import {
   type DataStoreContext,
 } from '@map-checkin/datastore'
 import { loadConfig } from '../config.js'
-import { sampleSpots } from '../data/sample-spots.js'
+import { datasetSpots } from '../data/spot-dataset.js'
 import { seedSpots } from './seed-service.js'
 
 /**
@@ -29,9 +29,10 @@ export function getDataStoreContext(): DataStoreContext {
   return fake
 }
 
-/** fake 利用時のみ、初回アクセスでサンプルスポットを流し込む */
+/** fake 利用時のみ、初回アクセスでスポットを流し込む（SEED_DATASET で実データ／サンプルを選ぶ） */
 export async function ensureFakeSeeded(ctx: DataStoreContext): Promise<void> {
-  if (!loadConfig().useFakeDataStore || fakeSeeded) return
+  const config = loadConfig()
+  if (!config.useFakeDataStore || fakeSeeded) return
   fakeSeeded = true
-  await seedSpots(ctx, sampleSpots(new Date().toISOString()))
+  await seedSpots(ctx, datasetSpots(config.area.areaId, new Date().toISOString()))
 }
