@@ -348,6 +348,57 @@ describe('認証が要るエンドポイント', () => {
   })
 })
 
+describe('キャラクター（FR-01-5・FR-01-6）', () => {
+  it('初回は既定の見た目が入る（作成画面を通らなくても地図に出せる）', async () => {
+    const body = await loginOk()
+    expect(body.user.avatar).toBeDefined()
+    expect(typeof body.user.avatar.hair).toBe('number')
+  })
+
+  it('見た目を変更して保存できる', async () => {
+    const { token, user } = await loginOk()
+    const next = { ...user.avatar, hair: 3, cloth: 5 }
+
+    const saved = await json<MeResponse>(
+      await app.request('/v1/me/avatar', {
+        method: 'PUT',
+        headers: auth(token),
+        body: JSON.stringify(next),
+      }),
+    )
+    expect(saved.user.avatar.hair).toBe(3)
+    expect(saved.user.avatar.cloth).toBe(5)
+  })
+
+  it('★ ログインし直しても見た目が保たれる（初期化されない）', async () => {
+    const { token, user } = await loginOk()
+    await app.request('/v1/me/avatar', {
+      method: 'PUT',
+      headers: auth(token),
+      body: JSON.stringify({ ...user.avatar, hair: 7 }),
+    })
+
+    const again = await loginOk()
+    expect(again.user.avatar.hair).toBe(7)
+  })
+
+  it('★ 範囲外の番号は 400（描画側で存在しない髪型を引かせない）', async () => {
+    const { token, user } = await loginOk()
+    const response = await app.request('/v1/me/avatar', {
+      method: 'PUT',
+      headers: auth(token),
+      body: JSON.stringify({ ...user.avatar, hair: 999 }),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('認証なしは 401', async () => {
+    expect(
+      (await app.request('/v1/me/avatar', { method: 'PUT', body: JSON.stringify({}) })).status,
+    ).toBe(401)
+  })
+})
+
 describe('位置情報の同意（FR-01-4）', () => {
   it('初回ログイン直後は未同意', async () => {
     const body = await loginOk()

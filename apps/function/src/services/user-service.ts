@@ -1,5 +1,5 @@
 import { getUser, putUser, type DataStoreContext } from '@imanouchi/datastore'
-import type { UserId, UserProfile } from '@imanouchi/shared'
+import { DEFAULT_AVATAR, type Avatar, type UserId, type UserProfile } from '@imanouchi/shared'
 import type { LineIdentity } from './line.js'
 
 /**
@@ -36,6 +36,8 @@ export async function ensureUser(
       userId: identity.userId,
       displayName: identity.displayName,
       pictureUrl: identity.pictureUrl,
+      // 未設定は既定の見た目。作成画面を通らなくても地図に出せる（FR-01-5）
+      avatar: DEFAULT_AVATAR,
       totalPoints: 0,
       titles: [],
       locationConsentAt: undefined,
@@ -76,6 +78,25 @@ export async function setLocationConsent(
     locationConsentAt: granted ? now.toISOString() : undefined,
     lastActiveAt: now.toISOString(),
   }
+  await putUser(ctx, profile)
+  return profile
+}
+
+/**
+ * キャラクターの見た目を保存する（FR-01-6）。
+ *
+ * ★ やり直せることが要件。上書きするだけで、履歴は持たない。
+ */
+export async function setAvatar(
+  ctx: DataStoreContext,
+  userId: UserId,
+  avatar: Avatar,
+  now: Date,
+): Promise<UserProfile | undefined> {
+  const existing = await getUser(ctx, userId)
+  if (!existing) return undefined
+
+  const profile: UserProfile = { ...existing, avatar, lastActiveAt: now.toISOString() }
   await putUser(ctx, profile)
   return profile
 }

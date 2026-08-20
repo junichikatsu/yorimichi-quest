@@ -738,3 +738,92 @@ button {
   font-size: 10px;
   cursor: pointer;
 }
+
+/* ---------------- キャラクター（FR-01-5・FR-01-6・FR-02-8） ---------------- */
+
+/* 状態バーのキャラクター。押すと作り直せる */
+.statusbar__avatar--button {
+  border: 1px solid var(--line);
+  background: var(--chip);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* 地図上の現在地。キャラクターのときは点の装飾を外す */
+.me--avatar {
+  width: auto;
+  height: auto;
+  background: none;
+  border: none;
+  box-shadow: none;
+  /* 足元が座標に来るようにする。中心合わせだと立ち位置がずれて見える */
+  transform: translateY(-40%);
+}
+
+.avatar-canvas {
+  display: block;
+}
+
+.creator__preview {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+
+.creator__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.creator__name span {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__name input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.creator__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.creator__label {
+  min-width: 5em;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.creator__stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.creator__value {
+  min-width: 8em;
+  font-size: 0.9rem;
+}
+
+.creator__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

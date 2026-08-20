@@ -1,4 +1,5 @@
 import type {
+  Avatar,
   ClientConfigResponse,
   ConsentRequest,
   ErrorResponse,
@@ -126,5 +127,13 @@ export function postExploration(points: ExplorationRequest['points']): Promise<E
   return request<ExplorationUpdateResponse>('/v1/exploration', {
     method: 'POST',
     body: JSON.stringify({ points }),
+  })
+}
+
+/** キャラクターの見た目を保存する（FR-01-6） */
+export function saveAvatar(avatar: Avatar): Promise<MeResponse> {
+  return request<MeResponse>('/v1/me/avatar', {
+    method: 'PUT',
+    body: JSON.stringify(avatar),
   })
 }

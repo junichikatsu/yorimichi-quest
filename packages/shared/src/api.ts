@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { avatarSchema } from './avatar.js'
 import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
 import type { UserView } from './user.js'
@@ -85,6 +86,16 @@ export const consentRequestSchema = z.object({
 })
 
 export type ConsentRequest = z.infer<typeof consentRequestSchema>
+
+/**
+ * キャラクターの見た目の更新（FR-01-6）。
+ *
+ * ★ 検証は `avatarSchema` に任せる。範囲外の番号を弾かないと、
+ * 描画側で存在しない髪型を引いて落ちる。
+ */
+export const avatarUpdateRequestSchema = avatarSchema
+
+export type AvatarUpdateRequest = z.infer<typeof avatarUpdateRequestSchema>
 
 /* ------------------------------------------------------------------ *
  * 設定

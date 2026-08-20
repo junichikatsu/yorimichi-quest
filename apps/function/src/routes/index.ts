@@ -1,6 +1,7 @@
 import { getUser, type DataStoreContext } from '@imanouchi/datastore'
 import {
   asSpotId,
+  avatarUpdateRequestSchema,
   consentRequestSchema,
   explorationRequestSchema,
   isSpotId,
@@ -34,7 +35,7 @@ import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-s
 import { issueSession } from '../services/session.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
-import { ensureUser, setLocationConsent } from '../services/user-service.js'
+import { ensureUser, setAvatar, setLocationConsent } from '../services/user-service.js'
 import { assetVersion, sendAsset } from '../static.js'
 import type { AppEnv } from '../types.js'
 
@@ -192,6 +193,22 @@ export function createRoutes(): Hono<AppEnv> {
 
     const ctx = await contextFor()
     const profile = await setLocationConsent(ctx, c.get('userId'), body.granted, new Date())
+    if (!profile) throw notFound('ユーザーが見つかりません')
+
+    const response: MeResponse = { user: toUserView(profile) }
+    return c.json(response)
+  })
+
+  /** キャラクターの見た目（FR-01-6） */
+  routes.put('/v1/me/avatar', async (c) => {
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    // ★ 範囲外の番号を弾く。通すと描画側で存在しない髪型を引いて落ちる
+    const avatar = avatarUpdateRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const profile = await setAvatar(ctx, c.get('userId'), avatar, new Date())
     if (!profile) throw notFound('ユーザーが見つかりません')
 
     const response: MeResponse = { user: toUserView(profile) }

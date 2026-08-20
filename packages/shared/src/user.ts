@@ -1,3 +1,4 @@
+import { DEFAULT_AVATAR, type Avatar } from './avatar.js'
 import type { UserId } from './ids.js'
 
 /**
@@ -15,6 +16,13 @@ export interface UserProfile {
   pictureUrl: string
   /** 累計ポイント（FR-01-3） */
   totalPoints: number
+  /**
+   * キャラクターの見た目（FR-01-5）。
+   *
+   * ★ LINE のアイコンとは別物。LINE のアイコンは本人の写真でありうるため、
+   * 地図上に出し続けるものとしては重い。ゲーム内の姿はこちらで持つ。
+   */
+  avatar: Avatar
   /**
    * 獲得した称号（FR-01-3）。
    *
@@ -38,6 +46,8 @@ export interface UserView {
   userId: UserId
   displayName: string
   pictureUrl: string
+  /** キャラクターの見た目（FR-01-5） */
+  avatar: Avatar
   totalPoints: number
   titles: string[]
   /** 同意済みかどうか。日時そのものは画面で使わないので真偽値に落とす */
@@ -45,11 +55,15 @@ export interface UserView {
   createdAt: string
 }
 
+/** 未設定のユーザーには既定の見た目を使う（FR-01-5） */
+export const FALLBACK_AVATAR = DEFAULT_AVATAR
+
 export function toUserView(profile: UserProfile): UserView {
   return {
     userId: profile.userId,
     displayName: profile.displayName,
     pictureUrl: profile.pictureUrl,
+    avatar: profile.avatar,
     totalPoints: profile.totalPoints,
     titles: profile.titles,
     locationConsentGiven: profile.locationConsentAt !== undefined,
