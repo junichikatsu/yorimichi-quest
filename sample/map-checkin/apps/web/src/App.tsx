@@ -448,6 +448,7 @@ export function App(): React.JSX.Element {
             areaRadiusM={config.exploration.areaRadiusM}
             mapEnabled={canUseMap}
             position={geo.position}
+            unlockedAreas={exploration.unlockedAreas}
           />
 
             <HistoryPanel me={me} />

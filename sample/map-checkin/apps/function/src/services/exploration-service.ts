@@ -26,10 +26,10 @@ export interface ExplorationParams {
   latitude: number
   areaRadiusM: number
   maxTiles: number
-  /** エリア開放の区画サイズ（タイル数） */
-  blockTiles: number
-  /** 区画全体が開放される割合（0〜1） */
+  /** 区画（町丁目）全体が開放される割合（0〜1） */
   unlockRatio: number
+  /** 開放に必要なタイル数の上限（#27） */
+  unlockMaxTiles: number
 }
 
 function toApiTile(record: ExploredTileRecord): ExploredTile {
@@ -44,8 +44,8 @@ function toApiTile(record: ExploredTileRecord): ExploredTile {
 function toResponse(records: ExploredTileRecord[], params: ExplorationParams): ExplorationResponse {
   const unlockConfig: AreaUnlockConfig = {
     tileSizeM: params.tileSizeM,
-    blockTiles: params.blockTiles,
     unlockRatio: params.unlockRatio,
+    unlockMaxTiles: params.unlockMaxTiles,
   }
   const tileKeys = records.map((record) => record.tileKey)
 

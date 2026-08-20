@@ -1670,3 +1670,32 @@ body {
 .coverage__catname {
   color: var(--muted, #5b5560);
 }
+
+/* 歩ききった町丁目（#27） */
+
+.exploration__unlocked {
+  margin: 0.5rem 0 0.3rem;
+}
+
+.exploration__unlocked-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.76rem;
+  color: var(--muted, #5b5560);
+}
+
+.exploration__chomes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.exploration__chome-item {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--chip, #f2eef3);
+  font-size: 0.74rem;
+  font-weight: 600;
+}

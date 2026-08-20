@@ -1,5 +1,5 @@
 import { formatArea } from '@map-checkin/core'
-import { findChomeAt, type ExplorationSummary } from '@map-checkin/shared'
+import { findChomeAt, type ExplorationSummary, type UnlockedAreaBounds } from '@map-checkin/shared'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface ExplorationPanelProps {
@@ -8,6 +8,8 @@ interface ExplorationPanelProps {
   mapEnabled: boolean
   /** 現在地。いまいる町丁目を出すために使う */
   position: Position | undefined
+  /** 全面が開放された町丁目（#27） */
+  unlockedAreas: UnlockedAreaBounds[]
 }
 
 export function ExplorationPanel({
@@ -15,6 +17,7 @@ export function ExplorationPanel({
   areaRadiusM,
   mapEnabled,
   position,
+  unlockedAreas,
 }: ExplorationPanelProps): React.JSX.Element {
   const coverage = summary?.coveragePercent ?? 0
   const tileCount = summary?.tileCount ?? 0
@@ -64,6 +67,24 @@ export function ExplorationPanel({
           : mapEnabled
             ? '霧が晴れているところが、あなたの歩いた場所です。'
             : '地図を表示すると、歩いた場所の霧が晴れて見えます。'}
+      </p>
+
+      {unlockedAreas.length > 0 && (
+        <div className="exploration__unlocked">
+          <p className="exploration__unlocked-title">歩ききった町丁目（{unlockedAreas.length}）</p>
+          <ul className="exploration__chomes">
+            {unlockedAreas.map((area) => (
+              <li key={area.areaKey} className="exploration__chome-item">
+                {area.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="exploration__note">
+        区画は国勢調査の町丁目です。一定割合を歩くとその町丁目の霧が全面で晴れます。
+        千代田区・港区の外では境界データが無いため、歩いた跡だけが残ります。
       </p>
 
       <p className="exploration__note">
