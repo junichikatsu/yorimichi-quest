@@ -129,4 +129,36 @@ describe('styles.css', () => {
   it('★ 歩行中の覆いは下の操作を通さない', () => {
     expect(ruleBlock(css, '.walkguard')).toContain('touch-action: none')
   })
+
+  /*
+   * 有事モード（FR-08-7）。
+   *
+   * ★ 「平時のプレイ経験だけで有事モードを操作できる」ことが要件である。
+   * 配色以外を触ると、覚えた操作が通じなくなる。**変えていいのは色だけ**という
+   * 制約を CSS の側で固定する。
+   */
+  it('★ 有事モードは配色だけを変える（レイアウトを変えない）', () => {
+    const block = ruleBlock(css, '.app--emergency')
+
+    for (const property of [
+      'display',
+      'grid-template',
+      'flex-direction',
+      'position',
+      'order',
+      'padding',
+      'margin',
+    ]) {
+      expect(block, `${property} を変えている（配色以外は触らない）`).not.toContain(
+        `${property}:`,
+      )
+    }
+  })
+
+  it('有事モードでも文字色と背景を明示する（親の配色が透ける事故を防ぐ）', () => {
+    const block = ruleBlock(css, '.app--emergency')
+
+    expect(block).toContain('background:')
+    expect(block).toContain('color:')
+  })
 })

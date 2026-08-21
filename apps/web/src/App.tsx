@@ -19,6 +19,8 @@ import {
 } from './api.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { ConsentGate } from './components/ConsentGate.js'
+import { EmergencyBanner } from './components/EmergencyBanner.js'
+import { EmergencyPanel } from './components/EmergencyPanel.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
@@ -83,6 +85,16 @@ export function App(): React.JSX.Element {
   const [walk, setWalk] = useState(initialWalkTracker)
   /** 歩行中の覆いを本人が閉じたか。立ち止まるまで出し直さない */
   const [guardDismissed, setGuardDismissed] = useState(false)
+
+  /**
+   * 有事モード（FR-08）。
+   *
+   * ★ 画面遷移ではなく状態にする（FR-08-8）。地図を作り直さないので、
+   * 切り替えても中心と縮尺が保たれる。
+   */
+  const [emergency, setEmergency] = useState(false)
+  /** バリアフリーの記載があるものだけに絞るか（FR-08-4） */
+  const [accessibleOnly, setAccessibleOnly] = useState(false)
 
   /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
@@ -193,6 +205,20 @@ export function App(): React.JSX.Element {
     setGuardDismissed(false)
     setWalk(initialWalkTracker())
   }, [])
+
+  /**
+   * 有事モードの切替（FR-08-1）。
+   *
+   * ★ 有事へ入るときは散歩（歩行中モード）を必ず終える。
+   * 有事に画面を覆って地図を見せないのは**それ自体が危険**であり、
+   * 探索の進捗も非表示になる（FR-08-2）ので、続ける意味が無い。
+   */
+  const handleToggleEmergency = useCallback(() => {
+    setEmergency((current) => {
+      if (!current) handleStopWalk()
+      return !current
+    })
+  }, [handleStopWalk])
 
   /* ---------------- 起動 → 設定取得 → LINE ログイン ---------------- */
 
@@ -394,14 +420,20 @@ export function App(): React.JSX.Element {
   const canUseMap = config !== undefined && config.mapboxToken !== ''
 
   return (
-    <div className="app">
+    /* ★ 配色は差分だけを変える。要素の並びは平時と同じに保つ（FR-08-7） */
+    <div className={emergency ? 'app app--emergency' : 'app'}>
       <StatusBar
         user={user}
         areaName={config?.area.name ?? ''}
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
         onOpenCreator={() => setCreatorOpen((open) => !open)}
+        emergencyAvailable={config?.emergencyDemoEnabled ?? false}
+        emergency={emergency}
+        onToggleEmergency={handleToggleEmergency}
       />
+
+      {emergency && <EmergencyBanner onExit={handleToggleEmergency} />}
 
       <main className="app__main">
         {canUseMap && config ? (
@@ -416,6 +448,7 @@ export function App(): React.JSX.Element {
             unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
             avatar={user?.avatar}
+            emergency={emergency}
           />
         ) : (
           <div className="map map--fallback">
@@ -457,33 +490,50 @@ export function App(): React.JSX.Element {
             <SpotPanel spot={selectedSpot} onClose={() => setSelectedSpotId(undefined)} />
           )}
 
-          <ExplorationPanel
-            summary={exploration.summary}
-            areaRadiusM={config?.exploration.areaRadiusM ?? 0}
-            mapEnabled={canUseMap}
-            position={geo.position}
-            unlockedAreas={exploration.unlockedAreas}
-            walkStarted={walkStarted}
-            soundReady={soundReady}
-            wakeLockHeld={wakeLock.held}
-            wakeLockSupported={wakeLock.supported}
-            onStartWalk={handleStartWalk}
-            onStopWalk={handleStopWalk}
-          />
-
-          <section className="panel" aria-label="近くのスポット">
-            <h2 className="panel__title">近くのスポット</h2>
-            {spotsTruncated && (
-              <p className="panel__warn" role="status">
-                件数が上限で打ち切られています。表示されていないスポットがあります（カテゴリごと欠けることがあります）。
-              </p>
-            )}
-            <SpotList
+          {/*
+            ★ 有事モードではゲーム要素（探索率・散歩）を出さない（FR-08-2）。
+            代わりにライフラインを出す。押したときの挙動は平時と同じ（FR-08-7）。
+          */}
+          {emergency ? (
+            <EmergencyPanel
               spots={sortedSpots}
               selectedSpotId={selectedSpotId}
               onSelectSpot={setSelectedSpotId}
+              accessibleOnly={accessibleOnly}
+              onToggleAccessibleOnly={setAccessibleOnly}
+              hasPosition={geo.position !== undefined}
             />
-          </section>
+          ) : (
+            <>
+              <ExplorationPanel
+                summary={exploration.summary}
+                areaRadiusM={config?.exploration.areaRadiusM ?? 0}
+                mapEnabled={canUseMap}
+                position={geo.position}
+                unlockedAreas={exploration.unlockedAreas}
+                walkStarted={walkStarted}
+                soundReady={soundReady}
+                wakeLockHeld={wakeLock.held}
+                wakeLockSupported={wakeLock.supported}
+                onStartWalk={handleStartWalk}
+                onStopWalk={handleStopWalk}
+              />
+
+              <section className="panel" aria-label="近くのスポット">
+                <h2 className="panel__title">近くのスポット</h2>
+                {spotsTruncated && (
+                  <p className="panel__warn" role="status">
+                    件数が上限で打ち切られています。表示されていないスポットがあります（カテゴリごと欠けることがあります）。
+                  </p>
+                )}
+                <SpotList
+                  spots={sortedSpots}
+                  selectedSpotId={selectedSpotId}
+                  onSelectSpot={setSelectedSpotId}
+                />
+              </section>
+            </>
+          )}
         </aside>
       </main>
 

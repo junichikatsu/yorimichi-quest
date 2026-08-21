@@ -12,6 +12,21 @@ import type { MapOptions } from 'mapbox-gl'
 export const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
 
 /**
+ * 有事モードのスタイル（FR-08-2）。
+ *
+ * ★ 平時と同じ地図では切り替わったことが伝わらない。暗い配色にして、
+ * ライフラインのピンだけが浮くようにする。ピンの体系は変えない（FR-08-7）。
+ *
+ * ★ 道と地名は残るスタイルを選ぶ。装飾を落としたスタイルは避難所へ向かうのに使えない。
+ */
+export const EMERGENCY_MAP_STYLE = 'mapbox://styles/mapbox/dark-v11'
+
+/** モードに対応するスタイル。切替は setStyle で行う（地図の位置と縮尺は保たれる） */
+export function mapStyleFor(emergency: boolean): string {
+  return emergency ? EMERGENCY_MAP_STYLE : MAP_STYLE
+}
+
+/**
  * 地名の言語。
  *
  * ★ 既定では英語表記になる（"Tokyo Station" 等）。千代田区・港区を歩く日本語の

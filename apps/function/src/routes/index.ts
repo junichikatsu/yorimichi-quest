@@ -102,6 +102,7 @@ export function createRoutes(): Hono<AppEnv> {
       usesSampleData: config.seedDataset === 'sample',
       assetVersion: assetVersion(),
       debugMoveEnabled: config.debugMoveEnabled,
+      emergencyDemoEnabled: config.emergencyDemoEnabled,
       exploration: {
         tileSizeM: config.exploreTileSizeM,
         revealRadiusM: config.exploreRevealRadiusM,
