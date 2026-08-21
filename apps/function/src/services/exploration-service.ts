@@ -1,4 +1,5 @@
 import {
+  areaKeyOf,
   effectiveTileCount,
   summarizeExploration,
   tileOf,
@@ -41,12 +42,16 @@ function toApiTile(record: ExploredTileRecord): ExploredTile {
   }
 }
 
-function toResponse(records: ExploredTileRecord[], params: ExplorationParams): ExplorationResponse {
-  const unlockConfig: AreaUnlockConfig = {
+function unlockConfigOf(params: ExplorationParams): AreaUnlockConfig {
+  return {
     tileSizeM: params.tileSizeM,
     unlockRatio: params.unlockRatio,
     unlockMaxTiles: params.unlockMaxTiles,
   }
+}
+
+function toResponse(records: ExploredTileRecord[], params: ExplorationParams): ExplorationResponse {
+  const unlockConfig = unlockConfigOf(params)
   const tileKeys = records.map((record) => record.tileKey)
 
   return {
@@ -88,6 +93,15 @@ export interface RecordExplorationInput extends ExplorationParams {
  * データストアのアクセス回数（E4）: query × 1 ＋ putItem × **新規タイル数**。
  * 既知のタイルは書かないので、同じ場所に留まり続けても書き込みは増えない。
  * 上限に達している場合は新規タイルを書かない（無制限に増え続けるのを防ぐ）。
+ *
+ * ★ **開放済みの町丁目の中は書かない。**
+ * 全面が霧から抜けており、探索率も町丁目の全タイル数（`effectiveTileCount`）で数えるので、
+ * 1 枚増やしても**応答は 1 ビットも変わらない**。putItem と保存件数だけが増える。
+ * 最大の町丁目は 1433 タイル（50m 換算）あり、既に開いている区画で上限を食い潰しうる。
+ *
+ * 引き換えに、開放後の細かい軌跡は残らない。`EXPLORE_UNLOCK_RATIO` /
+ * `EXPLORE_UNLOCK_MAX_TILES` を**後から厳しくすると**、開放済みだった町丁目が
+ * 閾値を割って閉じうる（緩める方向は安全）。
  */
 export async function recordExploration(
   ctx: DataStoreContext,
@@ -96,12 +110,22 @@ export async function recordExploration(
   const records = await listExploredTiles(ctx, input.userId, input.maxTiles)
   const known = new Map(records.map((record) => [record.tileKey, record]))
 
+  const unlockConfig = unlockConfigOf(input)
+  const openedAreas = new Set(
+    unlockedAreas(known.keys(), unlockConfig).map((area) => area.areaKey),
+  )
+
   const fresh: ExploredTileRecord[] = []
   for (const point of input.points) {
     if (known.size >= input.maxTiles) break
 
     const tile = tileOf(point, input.tileSizeM)
     if (known.has(tile.key)) continue
+
+    if (openedAreas.size > 0) {
+      const areaKey = areaKeyOf(tile.key, input.tileSizeM)
+      if (areaKey !== undefined && openedAreas.has(areaKey)) continue
+    }
 
     const record: ExploredTileRecord = {
       tileKey: tile.key,
