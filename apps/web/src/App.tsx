@@ -6,7 +6,7 @@ import type {
   SpotWithDistance,
   UserView,
 } from '@imanouchi/shared'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   fetchClientConfig,
@@ -26,9 +26,13 @@ import { MapView } from './components/MapView.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StatusBar } from './components/StatusBar.js'
+import { WalkGuard } from './components/WalkGuard.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
+import { canPlaySound, enableSound, notifyAreaUnlocked, notifyWalkGuard } from './feedback.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
+import { useWakeLock } from './hooks/useWakeLock.js'
+import { WALK_STALE_MS, initialWalkTracker, speedKmh, trackWalk } from './walking.js'
 import {
   LiffError,
   clearReloginMark,
@@ -69,12 +73,25 @@ export function App(): React.JSX.Element {
   const [debugMoveOffered, setDebugMoveOffered] = useState(false)
 
   /**
+   * 散歩中（画面を見ずに歩ける状態）か。
+   *
+   * ★ 自動では入れない。音の許可も画面ロックの抑止も、端末の決まりで
+   * **ユーザー操作の中でしか始められない**。
+   */
+  const [walkStarted, setWalkStarted] = useState(false)
+  const [soundReady, setSoundReady] = useState(false)
+  const [walk, setWalk] = useState(initialWalkTracker)
+  /** 歩行中の覆いを本人が閉じたか。立ち止まるまで出し直さない */
+  const [guardDismissed, setGuardDismissed] = useState(false)
+
+  /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
    * この 1 行が同意画面の意味を担保している。
    */
   const consented = user?.locationConsentGiven ?? false
   const geo = useGeolocation(consented)
   const exploration = useExploration(phase === 'ready' ? config?.exploration : undefined)
+  const wakeLock = useWakeLock(walkStarted)
 
   /**
    * 現在地を歩いた記録として積む（FR-02-7）。
@@ -86,6 +103,96 @@ export function App(): React.JSX.Element {
     if (phase !== 'ready' || !geo.position) return
     exploration.track(geo.position)
   }, [phase, geo.position, exploration])
+
+  /* ---------------- 歩行中モード（FR-02-9〜11・NFR-14） ---------------- */
+
+  /**
+   * 歩いている最中かを測位から判定する。
+   *
+   * ★ 模擬位置（デモ移動）では判定しない。ジョイスティックは一瞬で数十m動くため
+   * 常に「歩行中」になり、**デモの最中に画面が覆われる**。
+   */
+  useEffect(() => {
+    if (!walkStarted || !geo.position || geo.status === 'simulated') return
+    const at = Date.now()
+    const position = geo.position
+    setWalk((prev) => trackWalk(prev, { ...position, at }))
+  }, [walkStarted, geo.position, geo.status])
+
+  /*
+   * ★ 模擬位置のあいだは覆わない。
+   * 判定側でも弾いているが、実測で歩いたあとにジョイスティックへ切り替えると
+   * 判定が更新されず `walking` が真のまま残る。**表示側でも弾く。**
+   */
+  const walkGuardVisible =
+    walkStarted && walk.walking && !guardDismissed && geo.status !== 'simulated'
+
+  // 立ち止まったら覆いを出し直せるようにする（閉じたまま歩き続けられては意味がない）
+  useEffect(() => {
+    if (!walk.walking) setGuardDismissed(false)
+  }, [walk.walking])
+
+  /**
+   * 測位が途切れたら歩行中を解除する。
+   *
+   * ★ `watchPosition` は位置が変わらないと通知しない端末がある。立ち止まった瞬間に
+   * 更新が止まるため、これが無いと**覆いが出たまま**になる。
+   */
+  const lastSampleAt = walk.anchor?.at
+  useEffect(() => {
+    if (!walkStarted || !walk.walking) return
+    const timer = setTimeout(() => {
+      setWalk((prev) => ({ ...prev, walking: false, speedMps: 0 }))
+    }, WALK_STALE_MS)
+    return () => clearTimeout(timer)
+  }, [walkStarted, walk.walking, lastSampleAt])
+
+  // 覆いの出入りを音で知らせる。画面を見ていないので、切り替わりが分からない
+  const guardShownRef = useRef(false)
+  useEffect(() => {
+    if (guardShownRef.current === walkGuardVisible) return
+    guardShownRef.current = walkGuardVisible
+    if (walkStarted) notifyWalkGuard(walkGuardVisible)
+  }, [walkGuardVisible, walkStarted])
+
+  /**
+   * 町丁目が開いたら音で知らせる（FR-02-10）。
+   *
+   * ★ 画面ではなく音で出すことが要件である。画面にしか出さないなら、
+   * 進捗を見るために歩きながら画面を見ることになる。
+   */
+  const unlockedBaselineRef = useRef(0)
+  useEffect(() => {
+    const count = exploration.unlockedAreas.length
+
+    /*
+     * ★ 散歩していない間は基準を追従させるだけで鳴らさない。
+     * 起動直後の読み込みでは**前回までに開けた町丁目がまとめて届く**ため、
+     * 増分をそのまま知らせると、歩いていないのに鳴る。
+     */
+    if (!walkStarted) {
+      unlockedBaselineRef.current = count
+      return
+    }
+
+    if (count <= unlockedBaselineRef.current) return
+    unlockedBaselineRef.current = count
+    notifyAreaUnlocked()
+  }, [walkStarted, exploration.unlockedAreas])
+
+  const handleStartWalk = useCallback(() => {
+    // ★ ユーザー操作の中で解錠する。ここを外すと iOS では以降ずっと無音になる
+    void enableSound().then(setSoundReady)
+    setWalk(initialWalkTracker())
+    setGuardDismissed(false)
+    setWalkStarted(true)
+  }, [])
+
+  const handleStopWalk = useCallback(() => {
+    setWalkStarted(false)
+    setGuardDismissed(false)
+    setWalk(initialWalkTracker())
+  }, [])
 
   /* ---------------- 起動 → 設定取得 → LINE ログイン ---------------- */
 
@@ -356,6 +463,12 @@ export function App(): React.JSX.Element {
             mapEnabled={canUseMap}
             position={geo.position}
             unlockedAreas={exploration.unlockedAreas}
+            walkStarted={walkStarted}
+            soundReady={soundReady}
+            wakeLockHeld={wakeLock.held}
+            wakeLockSupported={wakeLock.supported}
+            onStartWalk={handleStartWalk}
+            onStopWalk={handleStopWalk}
           />
 
           <section className="panel" aria-label="近くのスポット">
@@ -373,6 +486,19 @@ export function App(): React.JSX.Element {
           </section>
         </aside>
       </main>
+
+      {/*
+        ★ 覆いは app の直下に置く。地図やサイドバーの内側に入れると、
+        親の overflow やスタッキング文脈に閉じ込められて画面全体を覆えない。
+      */}
+      {walkGuardVisible && (
+        <WalkGuard
+          speedKmh={speedKmh(walk)}
+          unlockedCount={exploration.unlockedAreas.length}
+          soundReady={soundReady && canPlaySound()}
+          onDismiss={() => setGuardDismissed(true)}
+        />
+      )}
 
       {message !== '' && (
         <div className="toast" role="status">

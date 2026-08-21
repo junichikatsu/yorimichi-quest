@@ -636,6 +636,131 @@ button {
   font-weight: 600;
 }
 
+/* ---------------- 散歩中（FR-02-9〜11） ---------------- */
+
+.exploration__walk {
+  margin: 0.7rem 0 0.2rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--chip);
+}
+
+.exploration__walk-button {
+  width: 100%;
+}
+
+.exploration__walk-state {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.3rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+/* 散歩中であることの目印。色だけに頼らず「散歩中」の文字も併記する（NFR-08） */
+.exploration__walk-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.exploration__walk-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.exploration__walk-list li + li {
+  margin-top: 0.15rem;
+}
+
+/*
+ * 歩行中の覆い。
+ *
+ * ★ 画面全体を覆う。出典表示（FR-02-6）も隠れるが、これは意図した挙動である。
+ * 歩いている間は地図そのものを見せないための機構であり、覆いを閉じれば戻る。
+ * ジョイスティックのように「常時フッタを隠す」のとは別の話（styles.test.ts）。
+ *
+ * ★ 半透明にしない。透けて見えるなら、歩きながら読んでしまう。
+ */
+.walkguard {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: #12100f;
+  color: #f5f2ef;
+  /* 覆いの下を操作させない。指が当たっても地図に届かないようにする */
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.walkguard__body {
+  width: 100%;
+  max-width: 22rem;
+  text-align: center;
+}
+
+.walkguard__title {
+  margin: 0 0 0.6rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.walkguard__lead {
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  /* 暗い背景なので、本文の明度は落としすぎない（NFR-08） */
+  color: #e4dedb;
+}
+
+.walkguard__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin: 0 0 0.9rem;
+}
+
+.walkguard__stats dt {
+  font-size: 0.78rem;
+  color: #b8b0ac;
+}
+
+.walkguard__stats dd {
+  margin: 0.1rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.walkguard__note {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: #c9c2be;
+}
+
+/* 逃げ道。測位が乱れて誤検出したときに開けなくなってはいけない */
+.walkguard__dismiss {
+  width: 100%;
+  border-color: #6f6763;
+  color: #f5f2ef;
+  background: transparent;
+}
+
+.walkguard__caution {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #b8b0ac;
+}
+
 /* ---------------- デモ移動（ジョイスティック） ---------------- */
 /*
  * ★ 本番の機能ではない。LINE アプリ内では表示しない（debug-move.ts で判定）。
