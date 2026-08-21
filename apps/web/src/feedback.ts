@@ -1,0 +1,147 @@
+/**
+ * 音と振動での知らせ（FR-02-10）。
+ *
+ * ★ これは装飾ではない。**画面を見ずに歩けるようにするための機構**である。
+ * 進捗が画面にしか出ないなら、歩きながら画面を見ることになる（NFR-14）。
+ *
+ * ★ 実機で測ってから決めている（LINE の WebView / 2026-08-21）。
+ *
+ * | | iOS | Android |
+ * | --- | --- | --- |
+ * | 音（WebAudio） | 鳴った | 鳴った |
+ * | マナーモードでも鳴る | `audioSession = 'playback'` で鳴った | 元から鳴る（media 音量） |
+ * | `navigator.vibrate` | **不可**（呼べても無視される） | 可 |
+ *
+ * よって **音を主、振動を補助**として扱う。振動しない端末でも成立させること。
+ * iOS の触覚を鳴らす抜け道（`input switch` の副作用）は実機で無反応を確認した。
+ * Apple が塞いだ経路であり、載せない。
+ */
+
+type AudioContextCtor = new () => AudioContext
+
+interface AudioSessionLike {
+  type: string
+}
+
+let ctx: AudioContext | undefined
+
+function audioContextCtor(): AudioContextCtor | undefined {
+  if (typeof window === 'undefined') return undefined
+  const scope = window as unknown as {
+    AudioContext?: AudioContextCtor
+    webkitAudioContext?: AudioContextCtor
+  }
+  return scope.AudioContext ?? scope.webkitAudioContext
+}
+
+function audioSession(): AudioSessionLike | undefined {
+  if (typeof navigator === 'undefined') return undefined
+  return (navigator as unknown as { audioSession?: AudioSessionLike }).audioSession
+}
+
+/** テストのために内部状態を捨てる */
+export function resetFeedback(): void {
+  ctx = undefined
+}
+
+/** 音を鳴らせる状態か */
+export function canPlaySound(): boolean {
+  return ctx !== undefined && ctx.state === 'running'
+}
+
+/**
+ * 音を鳴らせるようにする。
+ *
+ * ★ 必ず**ユーザー操作の中から**呼ぶこと。操作の外で作った AudioContext は
+ * iOS では suspended のままで、以降どれだけ鳴らそうとしても無音になる。
+ * 「散歩をはじめる」の1タップに寄せてあるのはこのためである。
+ */
+export async function enableSound(): Promise<boolean> {
+  const Ctor = audioContextCtor()
+  if (!Ctor) return false
+
+  /*
+   * マナーモードでも鳴らす。
+   * iOS の既定（ambient）は消音スイッチに従うため、通知として使えない。
+   * Safari 独自かつ策定中の API なので、無い場合も落とさない。
+   */
+  const session = audioSession()
+  if (session) {
+    try {
+      session.type = 'playback'
+    } catch {
+      // 立てられなくても音そのものは鳴る（マナーモードで無音になるだけ）
+    }
+  }
+
+  try {
+    ctx ??= new Ctor()
+    if (ctx.state !== 'running') await ctx.resume()
+    return ctx.state === 'running'
+  } catch {
+    return false
+  }
+}
+
+/** 端末を振動させる。対応していなければ何もしない（iOS は常にここで終わる） */
+export function vibrate(pattern: number[]): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & { vibrate?: (pattern: number[]) => boolean }
+  if (typeof nav.vibrate !== 'function') return false
+
+  try {
+    return nav.vibrate(pattern)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 単音を鳴らす。
+ *
+ * 音量は控えめにする。ポケットに入れて歩く前提なので、耳障りだと切られてしまう。
+ * 端末の音量そのものは Web からは変えられない。
+ */
+function tone(startAt: number, freq: number, durationSec: number): void {
+  if (!ctx) return
+
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.value = freq
+
+  // 立ち上がりと減衰を付ける。矩形に切ると「プツッ」というノイズが乗る
+  gain.gain.setValueAtTime(0.0001, startAt)
+  gain.gain.exponentialRampToValueAtTime(0.22, startAt + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durationSec)
+
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start(startAt)
+  osc.stop(startAt + durationSec + 0.05)
+}
+
+function playSequence(freqs: number[], stepSec: number, durationSec: number): void {
+  if (!canPlaySound() || !ctx) return
+
+  const now = ctx.currentTime
+  freqs.forEach((freq, index) => {
+    tone(now + index * stepSec, freq, durationSec)
+  })
+}
+
+/**
+ * 町丁目が開いたときの知らせ。
+ *
+ * 上昇する2音にする。**下降だと失敗に聞こえる**ため、進捗の知らせには使わない。
+ */
+export function notifyAreaUnlocked(): void {
+  playSequence([660, 990], 0.16, 0.3)
+  vibrate([120, 90, 120])
+}
+
+/** 歩行中モードへ入った／出たときの短い知らせ。画面を見ずに切り替わりが分かるように */
+export function notifyWalkGuard(entering: boolean): void {
+  playSequence(entering ? [520] : [780], 0.12, 0.18)
+  vibrate([60])
+}

@@ -10,6 +10,16 @@ interface ExplorationPanelProps {
   position: Position | undefined
   /** 全面が開放された町丁目（#27） */
   unlockedAreas: UnlockedAreaBounds[]
+  /** 散歩中（音で知らせ、画面を消させない状態）か */
+  walkStarted: boolean
+  /** 音を鳴らせているか */
+  soundReady: boolean
+  /** 画面の自動ロックを抑止できているか */
+  wakeLockHeld: boolean
+  /** 端末が自動ロックの抑止に対応しているか */
+  wakeLockSupported: boolean
+  onStartWalk: () => void
+  onStopWalk: () => void
 }
 
 export function ExplorationPanel({
@@ -18,6 +28,12 @@ export function ExplorationPanel({
   mapEnabled,
   position,
   unlockedAreas,
+  walkStarted,
+  soundReady,
+  wakeLockHeld,
+  wakeLockSupported,
+  onStartWalk,
+  onStopWalk,
 }: ExplorationPanelProps): React.JSX.Element {
   const coverage = summary?.coveragePercent ?? 0
   const tileCount = summary?.tileCount ?? 0
@@ -46,6 +62,56 @@ export function ExplorationPanel({
         aria-label={`探索率 ${coverage.toFixed(2)}パーセント`}
       >
         <div className="exploration__bar-fill" style={{ width: `${Math.max(coverage, 0.5)}%` }} />
+      </div>
+
+      {/*
+        散歩の開始（FR-02-10・FR-02-11）。
+
+        ★ 音の許可と画面ロックの抑止は、どちらも**ユーザー操作の中でしか始められない**。
+        端末の決まりであり、回避できない。そのため 1 タップにまとめてある。
+        別々のボタンにすると、片方だけ押した状態で「知らせが来ない」ことになる。
+      */}
+      <div className="exploration__walk">
+        {walkStarted ? (
+          <>
+            <p className="exploration__walk-state">
+              <span className="exploration__walk-dot" aria-hidden="true" />
+              散歩中
+            </p>
+            <ul className="exploration__walk-list">
+              <li>{soundReady ? '知らせ：音で鳴ります' : '知らせ：音が使えません（画面のみ）'}</li>
+              <li>
+                {!wakeLockSupported
+                  ? '画面：この端末では消えるのを止められません'
+                  : wakeLockHeld
+                    ? '画面：消えません'
+                    : '画面：いま抑止できていません'}
+              </li>
+            </ul>
+            <button
+              type="button"
+              className="button button--ghost exploration__walk-button"
+              onClick={onStopWalk}
+            >
+              散歩をおわる
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="button button--primary exploration__walk-button"
+              onClick={onStartWalk}
+            >
+              散歩をはじめる
+            </button>
+            <p className="exploration__note">
+              押すと、歩ききった町丁目を<strong>音でお知らせ</strong>し、
+              <strong>画面が消えないように</strong>します。歩いている間は画面を見ずに、
+              ポケットに入れたままで進みます。
+            </p>
+          </>
+        )}
       </div>
 
       <dl className="exploration__stats">

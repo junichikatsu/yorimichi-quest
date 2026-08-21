@@ -44,6 +44,23 @@ function mediaBlock(source: string, header: string): string {
   throw new Error(`${header} の波括弧が閉じていない`)
 }
 
+/** セレクタ1つの宣言ブロックを取り出す */
+function ruleBlock(source: string, selector: string): string {
+  const start = source.indexOf(`${selector} {`)
+  expect(start, `${selector} が見つからない`).toBeGreaterThanOrEqual(0)
+
+  const open = source.indexOf('{', start)
+  const close = source.indexOf('}', open)
+  return source.slice(open + 1, close)
+}
+
+/** そのセレクタの z-index */
+function zIndexOf(source: string, selector: string): number {
+  const match = /z-index:\s*(\d+)/.exec(ruleBlock(source, selector))
+  expect(match, `${selector} に z-index が無い`).not.toBeNull()
+  return Number(match![1])
+}
+
 describe('styles.css', () => {
   it('★ 使っている CSS 変数がすべて定義されている', () => {
     const used = new Set([...css.matchAll(/var\((--[a-z0-9_-]+)/g)].map((m) => m[1]))
@@ -83,10 +100,33 @@ describe('styles.css', () => {
   })
 
   it('霧のキャンバスは操作を通す', () => {
-    // 宣言ブロックも同じ理由でブレース数えで取る
-    const start = css.indexOf('.map__fog')
-    const open = css.indexOf('{', start)
-    const close = css.indexOf('}', open)
-    expect(css.slice(open + 1, close)).toContain('pointer-events: none')
+    expect(ruleBlock(css, '.map__fog')).toContain('pointer-events: none')
+  })
+
+  /*
+   * 歩行中の覆い（FR-02-9）。
+   *
+   * ★ 「歩きながら見せない」ための機構なので、**見えてしまう／触れてしまう**形の
+   * 崩れはすべて機能の否定になる。3 つとも CSS 1 行で壊れる。
+   */
+  it('★ 歩行中の覆いは他のどの要素より前に出る', () => {
+    const guard = zIndexOf(css, '.walkguard')
+
+    // ジョイスティックやトーストが上に残ると、覆っている最中に触れてしまう
+    for (const selector of ['.joystick', '.joystick-reopen', '.toast']) {
+      expect(guard, `${selector} より前に出ていない`).toBeGreaterThan(zIndexOf(css, selector))
+    }
+  })
+
+  it('★ 歩行中の覆いは透けない（透けたら歩きながら読んでしまう）', () => {
+    const block = ruleBlock(css, '.walkguard')
+    const background = /background:\s*([^;]+);/.exec(block)
+
+    expect(background, '背景色が無い').not.toBeNull()
+    expect(background![1]).not.toMatch(/rgba|transparent|hsla/)
+  })
+
+  it('★ 歩行中の覆いは下の操作を通さない', () => {
+    expect(ruleBlock(css, '.walkguard')).toContain('touch-action: none')
   })
 })
