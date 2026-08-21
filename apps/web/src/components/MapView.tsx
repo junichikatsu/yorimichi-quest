@@ -12,6 +12,7 @@ import {
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
+import { mapOptions } from '../map-options.js'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface MapViewProps {
@@ -29,8 +30,6 @@ interface MapViewProps {
   /** 現在地に描くキャラクター（FR-02-8）。未取得なら点で描く */
   avatar: Avatar | undefined
 }
-
-const MAP_STYLE = 'mapbox://styles/mapbox/streets-v12'
 
 /**
  * 霧の色。
@@ -131,15 +130,10 @@ export function MapView({
     if (!containerRef.current || mapRef.current) return
 
     mapboxgl.accessToken = token
+    // 言語・投影法・操作部品の文言は map-options.ts に置いてある（検査で固定するため）
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: MAP_STYLE,
-      // 測位できるまではエリア中心。位置が届いたら下の追従で現在地へ移す
-      center: [area.center.lng, area.center.lat],
-      zoom: area.zoom,
-      // 霧の半径計算がメルカトル前提。既定の globe のままだと低ズームで半径がずれる
-      projection: 'mercator',
-      attributionControl: true,
+      ...mapOptions(area),
     })
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
