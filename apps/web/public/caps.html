@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>端末機能の確認 — イマノウチ</title>
+    <!--
+      開発用の確認ページ（歩きスマホ対策の検討）。
+
+      ★ 単独で完結させている。app.js もスタイルシートも読まない。
+      調べたいのは「LINE の WebView で何が使えるか」であり、本体の読み込みやログインを
+      挟むと、失敗したときにどちらの問題か分からなくなる。
+
+      ★ 「API があるか」と「実際に鳴ったか」を分けて記録する。
+      iOS はマナーモードで無音になり、Vibration API は呼べても無視される。
+      鳴ったかどうかは人が答える以外に取れない。
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f4;
+        --panel: #fff;
+        --text: #1b2016;
+        --muted: #5c6552;
+        --line: #d8ddd0;
+        --ok: #1f7a3d;
+        --ng: #a8321f;
+        --warn: #8a6510;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161a13;
+          --panel: #1f2419;
+          --text: #eaeee4;
+          --muted: #a4ad98;
+          --line: #333a2c;
+          --ok: #6bd18d;
+          --ng: #ff9a86;
+          --warn: #e0b95c;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 16px 16px 48px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, 'Hiragino Kaku Gothic ProN', sans-serif;
+        line-height: 1.6;
+        -webkit-text-size-adjust: 100%;
+      }
+      h1 {
+        font-size: 1.15rem;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 1rem;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 8px;
+      }
+      code {
+        font-size: 0.85em;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        margin: 12px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 4px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        width: 46%;
+        font-weight: 600;
+      }
+      td.v {
+        font-variant-numeric: tabular-nums;
+        word-break: break-all;
+      }
+      .ok {
+        color: var(--ok);
+        font-weight: 700;
+      }
+      .ng {
+        color: var(--ng);
+        font-weight: 700;
+      }
+      .warn {
+        color: var(--warn);
+        font-weight: 700;
+      }
+      button {
+        font: inherit;
+        min-height: 44px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--text);
+        cursor: pointer;
+      }
+      button.primary {
+        background: #2f6d3a;
+        border-color: #2f6d3a;
+        color: #fff;
+        font-weight: 700;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 8px 0;
+      }
+      .ask {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 6px;
+      }
+      .ask button {
+        min-height: 38px;
+        padding: 4px 12px;
+      }
+      .answered {
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      pre {
+        margin: 0;
+        padding: 8px;
+        max-height: 40vh;
+        overflow: auto;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 0.75rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      textarea {
+        width: 100%;
+        min-height: 30vh;
+        font-size: 0.75rem;
+        font-family: ui-monospace, monospace;
+      }
+      .offscreen {
+        position: absolute;
+        left: -9999px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+      .banner {
+        background: var(--panel);
+        border: 1px solid var(--warn);
+        border-left-width: 4px;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>端末機能の確認</h1>
+    <p class="note">
+      歩きスマホ対策（音・振動・画面の点灯維持）が LINE の中で使えるかを実測するページです。
+    </p>
+
+    <div class="banner">
+      <strong>LINE から開いてください。</strong>
+      トークに URL を送って開くか、ミニアプリの URL の末尾を <code>/caps.html</code>
+      に変えて開きます。ブラウザ（Safari / Chrome）で開いた結果とは別物になるため、<strong
+        >両方で試して見比べる</strong
+      >のが目的です。
+    </div>
+
+    <section class="panel">
+      <h2>1. 環境</h2>
+      <table id="env"></table>
+    </section>
+
+    <section class="panel">
+      <h2>2. 対応状況（API があるか）</h2>
+      <p class="note">API があっても実際に鳴るとは限りません。3 で確かめます。</p>
+      <table id="caps"></table>
+    </section>
+
+    <section class="panel">
+      <h2>3. 実際に試す</h2>
+      <p class="note">
+        音と画面点灯は「タップしてから」でないと始められない仕様です（ユーザー操作が必要）。
+      </p>
+
+      <div class="row">
+        <button type="button" class="primary" id="btnSound">音を鳴らす</button>
+        <span id="soundState" class="note"></span>
+      </div>
+      <div class="ask" id="askSound"></div>
+
+      <div class="row">
+        <button type="button" id="btnSoundPlayback">マナーモードを無視して鳴らす</button>
+        <span id="playbackState" class="note"></span>
+      </div>
+      <div class="ask" id="askPlayback"></div>
+      <p class="note">
+        iOS の消音スイッチを<strong>ON（マナーモード）にしてから</strong>両方を試すと差が出ます。
+      </p>
+
+      <div class="row">
+        <button type="button" id="btnVibrate">振動させる</button>
+        <span id="vibrateState" class="note"></span>
+      </div>
+      <div class="ask" id="askVibrate"></div>
+
+      <div class="row">
+        <button type="button" id="btnHaptic">iOS の触覚を鳴らす（抜け道）</button>
+        <span id="hapticState" class="note"></span>
+      </div>
+      <div class="ask" id="askHaptic"></div>
+      <p class="note">
+        スイッチ要素の副作用を突く方法です。Apple が iOS 26.5 で塞いだと言われているため、<strong
+          >動かないことの確認</strong
+        >が目的です。
+      </p>
+
+      <div class="row">
+        <button type="button" id="btnWake">画面を消させない</button>
+        <button type="button" id="btnWakeOff">解除する</button>
+        <span id="wakeState" class="note"></span>
+      </div>
+      <div class="ask" id="askWake"></div>
+      <p class="note">
+        取得したまま<strong>1 分ほど放置</strong>して、画面が暗くならないかを見てください。
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>4. 測位ログ</h2>
+      <p class="note">
+        開始してから歩いてください。<strong>画面を消す／LINE を閉じる／別アプリへ移る</strong>と
+        ログが止まります。止まっている間隔がそのまま「画面を見ないと記録できない時間」です。
+      </p>
+      <div class="row">
+        <button type="button" class="primary" id="btnGeo">測位をはじめる</button>
+        <button type="button" id="btnGeoStop">止める</button>
+        <span id="geoState" class="note"></span>
+      </div>
+      <pre id="log">（まだありません）</pre>
+    </section>
+
+    <section class="panel">
+      <h2>5. 結果を渡す</h2>
+      <div class="row">
+        <button type="button" class="primary" id="btnCopy">結果をコピー</button>
+        <span id="copyState" class="note"></span>
+      </div>
+      <textarea id="dump" readonly hidden></textarea>
+    </section>
+
+    <!-- iOS の触覚を鳴らすための要素。label を click すると Taptic Engine が動く -->
+    <label class="offscreen" id="hapticLabel">
+      触覚テスト
+      <input type="checkbox" switch id="hapticSwitch" />
+    </label>
+
+    <script>
+      ;(function () {
+        'use strict'
+
+        /** 記録。最後にまとめてコピーして渡す */
+        var report = { env: {}, caps: {}, tried: {}, answers: {}, log: [] }
+        var started = Date.now()
+
+        function el(id) {
+          return document.getElementById(id)
+        }
+
+        function clock(at) {
+          var d = new Date(at)
+          function pad(n) {
+            return String(n).padStart(2, '0')
+          }
+          return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+        }
+
+        function log(text) {
+          var at = Date.now()
+          report.log.push(clock(at) + ' (+' + Math.round((at - started) / 1000) + 's) ' + text)
+          // 長時間の測位でも膨らみ続けないように上限を置く
+          if (report.log.length > 500) report.log.shift()
+
+          var pre = el('log')
+          pre.textContent = report.log.join('\n')
+          pre.scrollTop = pre.scrollHeight
+        }
+
+        /** 表に 1 行足す。★ innerHTML は使わない */
+        function addRow(table, label, value, kind) {
+          var tr = document.createElement('tr')
+          var th = document.createElement('th')
+          th.textContent = label
+          var td = document.createElement('td')
+          td.className = 'v'
+          td.textContent = String(value)
+          if (kind) td.classList.add(kind)
+          tr.appendChild(th)
+          tr.appendChild(td)
+          table.appendChild(tr)
+        }
+
+        function has(obj, key) {
+          try {
+            return obj !== null && obj !== undefined && key in obj
+          } catch (err) {
+            return false
+          }
+        }
+
+        /* ---------------- 1. 環境 ---------------- */
+
+        var ua = navigator.userAgent
+        var inLine = /\bLine\//i.test(ua)
+        var ios = /iPhone|iPad|iPod/i.test(ua)
+        var android = /Android/i.test(ua)
+
+        function osVersion() {
+          var m
+          if (ios) {
+            m = /OS (\d+)[._](\d+)(?:[._](\d+))?/.exec(ua)
+            return m ? 'iOS ' + m[1] + '.' + m[2] + (m[3] ? '.' + m[3] : '') : 'iOS 不明'
+          }
+          if (android) {
+            m = /Android (\d+(?:\.\d+)*)/.exec(ua)
+            return m ? 'Android ' + m[1] : 'Android 不明'
+          }
+          return 'その他'
+        }
+
+        function lineVersion() {
+          var m = /\bLine\/([\d.]+)/i.exec(ua)
+          return m ? m[1] : '—'
+        }
+
+        report.env = {
+          os: osVersion(),
+          inLine: inLine,
+          lineVersion: lineVersion(),
+          ua: ua,
+          screen: window.screen.width + '×' + window.screen.height,
+          dpr: window.devicePixelRatio,
+          secureContext: window.isSecureContext,
+        }
+
+        var envTable = el('env')
+        addRow(envTable, 'OS', report.env.os)
+        addRow(
+          envTable,
+          'LINE の中で開いているか',
+          inLine ? 'はい（LINE ' + lineVersion() + '）' : 'いいえ（通常のブラウザ）',
+          inLine ? 'ok' : 'warn',
+        )
+        addRow(envTable, '画面', report.env.screen + ' / DPR ' + report.env.dpr)
+        addRow(
+          envTable,
+          'HTTPS（安全なコンテキスト）',
+          report.env.secureContext ? 'はい' : 'いいえ（測位も使えません）',
+          report.env.secureContext ? 'ok' : 'ng',
+        )
+        addRow(envTable, 'User-Agent', ua)
+
+        /* ---------------- 2. 対応状況 ---------------- */
+
+        var AudioCtor = window.AudioContext || window.webkitAudioContext
+        var switchSupported = has(document.createElement('input'), 'switch')
+
+        report.caps = {
+          vibrate: has(navigator, 'vibrate'),
+          wakeLock: has(navigator, 'wakeLock'),
+          audioSession: has(navigator, 'audioSession'),
+          audioSessionType: has(navigator, 'audioSession') ? navigator.audioSession.type : '—',
+          audioContext: Boolean(AudioCtor),
+          inputSwitch: switchSupported,
+          geolocation: has(navigator, 'geolocation'),
+          notification: has(window, 'Notification'),
+          serviceWorker: has(navigator, 'serviceWorker'),
+        }
+
+        var capsTable = el('caps')
+
+        function capRow(label, ok, extra) {
+          addRow(
+            capsTable,
+            label,
+            (ok ? 'あり' : 'なし') + (extra ? '（' + extra + '）' : ''),
+            ok ? 'ok' : 'ng',
+          )
+        }
+
+        capRow('振動 navigator.vibrate', report.caps.vibrate)
+        capRow('画面点灯維持 navigator.wakeLock', report.caps.wakeLock)
+        capRow(
+          '音声セッション navigator.audioSession',
+          report.caps.audioSession,
+          report.caps.audioSession ? 'type=' + report.caps.audioSessionType : '',
+        )
+        capRow('WebAudio', report.caps.audioContext)
+        capRow('input type=checkbox switch（触覚の抜け道の前提）', report.caps.inputSwitch)
+        capRow('測位 navigator.geolocation', report.caps.geolocation)
+        capRow('Web 通知 Notification', report.caps.notification)
+        capRow('Service Worker', report.caps.serviceWorker)
+
+        /* ---------------- 鳴ったかどうかを人に聞く ---------------- */
+
+        /**
+         * ★ API の成否と、実際に鳴ったかは別物である。
+         * iOS は消音スイッチで無音になり、vibrate は true を返しても震えない。
+         * 人の回答を残さないと、結果を読み違える。
+         */
+        function ask(containerId, key, yes, no) {
+          var box = el(containerId)
+          box.textContent = ''
+
+          var label = document.createElement('span')
+          label.className = 'answered'
+          label.textContent = '結果は？'
+          box.appendChild(label)
+
+          function button(text, value) {
+            var b = document.createElement('button')
+            b.type = 'button'
+            b.textContent = text
+            b.addEventListener('click', function () {
+              report.answers[key] = value
+              box.textContent = ''
+              var done = document.createElement('span')
+              done.className = value === 'yes' ? 'ok' : 'ng'
+              done.textContent = '記録しました：' + text
+              box.appendChild(done)
+              log('回答 ' + key + ' = ' + value + '（' + text + '）')
+            })
+            return b
+          }
+
+          box.appendChild(button(yes, 'yes'))
+          box.appendChild(button(no, 'no'))
+        }
+
+        /* ---------------- 3-1. 音 ---------------- */
+
+        var audioCtx = null
+
+        function beep(times) {
+          var now = audioCtx.currentTime
+          for (var i = 0; i < times; i += 1) {
+            var osc = audioCtx.createOscillator()
+            var gain = audioCtx.createGain()
+            var at = now + i * 0.35
+            osc.type = 'sine'
+            osc.frequency.value = 880
+            // 耳に痛くない程度に抑える。端末の音量そのものは Web から変えられない
+            gain.gain.setValueAtTime(0.0001, at)
+            gain.gain.exponentialRampToValueAtTime(0.25, at + 0.02)
+            gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.25)
+            osc.connect(gain)
+            gain.connect(audioCtx.destination)
+            osc.start(at)
+            osc.stop(at + 0.3)
+          }
+        }
+
+        function play(stateId, key, askId) {
+          var state = el(stateId)
+          if (!AudioCtor) {
+            state.textContent = 'WebAudio がありません'
+            state.className = 'ng'
+            report.tried[key] = 'no-audiocontext'
+            return
+          }
+
+          try {
+            if (!audioCtx) audioCtx = new AudioCtor()
+            var before = audioCtx.state
+
+            // ★ ユーザー操作の中で resume する。外すと iOS では無音のまま終わる
+            var ready = audioCtx.state === 'running' ? Promise.resolve() : audioCtx.resume()
+
+            ready.then(
+              function () {
+                beep(2)
+                state.textContent = '鳴らしました（state: ' + before + ' → ' + audioCtx.state + '）'
+                state.className = 'note'
+                report.tried[key] = before + ' → ' + audioCtx.state
+                log('音を再生 ' + key + ' state=' + audioCtx.state)
+                ask(askId, key, '聞こえた', '聞こえない')
+              },
+              function (err) {
+                state.textContent = 'resume に失敗：' + String(err)
+                state.className = 'ng'
+                report.tried[key] = 'resume error: ' + String(err)
+                log('resume に失敗 ' + String(err))
+              },
+            )
+          } catch (err) {
+            state.textContent = '失敗：' + String(err)
+            state.className = 'ng'
+            report.tried[key] = 'error: ' + String(err)
+            log('音の再生に失敗 ' + String(err))
+          }
+        }
+
+        el('btnSound').addEventListener('click', function () {
+          play('soundState', 'sound', 'askSound')
+        })
+
+        el('btnSoundPlayback').addEventListener('click', function () {
+          var state = el('playbackState')
+          if (!has(navigator, 'audioSession')) {
+            state.textContent = 'navigator.audioSession がありません（マナーモードは無視できません）'
+            state.className = 'ng'
+            report.tried['soundPlayback'] = 'no-audiosession'
+            log('audioSession なし')
+            return
+          }
+
+          try {
+            navigator.audioSession.type = 'playback'
+            log('audioSession.type = playback を設定（現在: ' + navigator.audioSession.type + '）')
+            report.caps.audioSessionAfterSet = navigator.audioSession.type
+          } catch (err) {
+            log('audioSession の設定に失敗 ' + String(err))
+          }
+          play('playbackState', 'soundPlayback', 'askPlayback')
+        })
+
+        /* ---------------- 3-2. 振動 ---------------- */
+
+        el('btnVibrate').addEventListener('click', function () {
+          var state = el('vibrateState')
+          if (!has(navigator, 'vibrate')) {
+            state.textContent = 'navigator.vibrate がありません'
+            state.className = 'ng'
+            report.tried['vibrate'] = 'missing'
+            log('vibrate なし')
+            return
+          }
+
+          // ★ true が返っても震えるとは限らない。iOS は呼べても無視する
+          var accepted = navigator.vibrate([200, 100, 200])
+          state.textContent = '呼びました（戻り値: ' + accepted + '）'
+          state.className = 'note'
+          report.tried['vibrate'] = 'returned ' + accepted
+          log('vibrate 呼び出し 戻り値=' + accepted)
+          ask('askVibrate', 'vibrate', '震えた', '震えない')
+        })
+
+        /* ---------------- 3-3. iOS の触覚（抜け道） ---------------- */
+
+        el('btnHaptic').addEventListener('click', function () {
+          var state = el('hapticState')
+          if (!switchSupported) {
+            state.textContent = 'switch 属性に対応していません（この方法は使えません）'
+            state.className = 'ng'
+            report.tried['haptic'] = 'no-switch-attr'
+            log('switch 属性なし')
+            return
+          }
+
+          try {
+            el('hapticLabel').click()
+            state.textContent = 'スイッチを切り替えました'
+            state.className = 'note'
+            report.tried['haptic'] = 'clicked'
+            log('触覚の抜け道を実行')
+            ask('askHaptic', 'haptic', '震えた', '震えない')
+          } catch (err) {
+            state.textContent = '失敗：' + String(err)
+            state.className = 'ng'
+            report.tried['haptic'] = 'error: ' + String(err)
+          }
+        })
+
+        /* ---------------- 3-4. 画面を消させない ---------------- */
+
+        var sentinel = null
+        var wakeWanted = false
+
+        function acquireWake() {
+          var state = el('wakeState')
+          if (!has(navigator, 'wakeLock')) {
+            state.textContent = 'navigator.wakeLock がありません'
+            state.className = 'ng'
+            report.tried['wakeLock'] = 'missing'
+            log('wakeLock なし')
+            return
+          }
+
+          navigator.wakeLock.request('screen').then(
+            function (lock) {
+              sentinel = lock
+              wakeWanted = true
+              state.textContent = '取得しました（画面は消えません）'
+              state.className = 'ok'
+              report.tried['wakeLock'] = 'acquired'
+              log('wakeLock 取得')
+
+              lock.addEventListener('release', function () {
+                sentinel = null
+                log('wakeLock が解放された（画面を消す／別アプリへ移ると起きる）')
+                el('wakeState').textContent = '解放されました'
+                el('wakeState').className = 'warn'
+              })
+
+              ask('askWake', 'wakeLock', '1分放置しても消えない', '消えた')
+            },
+            function (err) {
+              // 取得できない理由は端末側の事情（電池残量が少ない等）でも起きる
+              state.textContent = '取得できません：' + String(err)
+              state.className = 'ng'
+              report.tried['wakeLock'] = 'error: ' + String(err)
+              log('wakeLock 取得失敗 ' + String(err))
+            },
+          )
+        }
+
+        el('btnWake').addEventListener('click', function () {
+          acquireWake()
+        })
+
+        el('btnWakeOff').addEventListener('click', function () {
+          wakeWanted = false
+          if (!sentinel) {
+            el('wakeState').textContent = '取得していません'
+            el('wakeState').className = 'note'
+            return
+          }
+          sentinel.release().then(function () {
+            sentinel = null
+            el('wakeState').textContent = '解除しました'
+            el('wakeState').className = 'note'
+            log('wakeLock を手動で解除')
+          })
+        })
+
+        /* ---------------- 4. 測位ログ ---------------- */
+
+        var watchId = null
+        var fixes = 0
+        var lastFixAt = 0
+
+        el('btnGeo').addEventListener('click', function () {
+          if (watchId !== null) return
+          if (!has(navigator, 'geolocation')) {
+            el('geoState').textContent = '測位に対応していません'
+            el('geoState').className = 'ng'
+            return
+          }
+
+          el('geoState').textContent = '測位中'
+          el('geoState').className = 'ok'
+          log('測位を開始')
+
+          watchId = navigator.geolocation.watchPosition(
+            function (result) {
+              fixes += 1
+              var at = Date.now()
+              var gap = lastFixAt === 0 ? 0 : Math.round((at - lastFixAt) / 1000)
+              lastFixAt = at
+
+              var speed = result.coords.speed
+              log(
+                '測位 #' +
+                  fixes +
+                  ' 精度 ' +
+                  Math.round(result.coords.accuracy) +
+                  'm' +
+                  (gap > 0 ? ' 前回から ' + gap + 's' : '') +
+                  (speed === null || speed === undefined ? '' : ' 速度 ' + speed.toFixed(1) + 'm/s'),
+              )
+            },
+            function (err) {
+              log('測位エラー ' + err.code + ' ' + err.message)
+              el('geoState').textContent = 'エラー: ' + err.message
+              el('geoState').className = 'ng'
+            },
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+          )
+        })
+
+        el('btnGeoStop').addEventListener('click', function () {
+          if (watchId === null) return
+          navigator.geolocation.clearWatch(watchId)
+          watchId = null
+          el('geoState').textContent = '止めました（測位 ' + fixes + ' 件）'
+          el('geoState').className = 'note'
+          log('測位を停止（合計 ' + fixes + ' 件）')
+        })
+
+        /*
+         * 画面を消したとき・戻したときに何が起きるかを残す。
+         * ★ ここが「画面を見ないと記録できない時間」の実測になる。
+         * 測位が止まった区間は、ログの空白としてそのまま見える。
+         */
+        document.addEventListener('visibilitychange', function () {
+          log('visibilitychange → ' + document.visibilityState)
+          // 解放された wakeLock は自動では戻らないので取り直す
+          if (document.visibilityState === 'visible' && wakeWanted && sentinel === null) {
+            acquireWake()
+          }
+        })
+        window.addEventListener('pagehide', function () {
+          log('pagehide')
+        })
+        document.addEventListener('freeze', function () {
+          log('freeze（ページが凍結された）')
+        })
+        document.addEventListener('resume', function () {
+          log('resume（凍結から復帰）')
+        })
+
+        /* ---------------- 5. 結果を渡す ---------------- */
+
+        el('btnCopy').addEventListener('click', function () {
+          var text = JSON.stringify(
+            { env: report.env, caps: report.caps, tried: report.tried, answers: report.answers },
+            null,
+            2,
+          )
+          text += '\n\n--- ログ ---\n' + report.log.join('\n') + '\n'
+
+          var dump = el('dump')
+          dump.hidden = false
+          dump.value = text
+
+          function fallback() {
+            dump.focus()
+            dump.select()
+            el('copyState').textContent = '下のテキストを選択してコピーしてください'
+            el('copyState').className = 'warn'
+          }
+
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+              el('copyState').textContent = 'コピーしました'
+              el('copyState').className = 'ok'
+            }, fallback)
+            return
+          }
+          fallback()
+        })
+
+        log('読み込み完了（' + report.env.os + ' / ' + (inLine ? 'LINE 内' : 'ブラウザ') + '）')
+      })()
+    </script>
+  </body>
+</html>

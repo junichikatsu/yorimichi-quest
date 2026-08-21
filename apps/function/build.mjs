@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   { name: 'styles.css', contentType: 'text/css; charset=utf-8', binary: false },
   { name: 'app.js', contentType: 'text/javascript; charset=utf-8', binary: false },
   { name: 'app.css', contentType: 'text/css; charset=utf-8', binary: false },
+  { name: 'caps.html', contentType: 'text/html; charset=utf-8', binary: false },
 ]
 
 function resolveCommit() {

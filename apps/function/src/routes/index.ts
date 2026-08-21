@@ -60,6 +60,13 @@ export function createRoutes(): Hono<AppEnv> {
   routes.get('/styles.css', (c) => sendAsset(c, 'styles.css'))
   routes.get('/app.js', (c) => sendAsset(c, 'app.js'))
   routes.get('/app.css', (c) => sendAsset(c, 'app.css'))
+  /*
+   * 端末機能の確認ページ（開発用）。
+   *
+   * 音・振動・画面点灯維持が LINE の WebView で使えるかは、仕様を読んでも分からず
+   * 実機で確かめる以外にない。本体から導線は張っていない（URL を直接開く）。
+   */
+  routes.get('/caps.html', (c) => sendAsset(c, 'caps.html'))
 
   /* ---------------- ミドルウェア（1 箇所でまとめて適用） ---------------- */
 
