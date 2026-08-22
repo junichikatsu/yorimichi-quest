@@ -81,6 +81,11 @@ UUID を envVars に入れないと `/v1/health` の `configOk` が false にな
 `USE_FAKE_DATASTORE` は**設定しない**。true だとインメモリ実装になり、再起動で
 データが消える。
 
+`ENABLE_DEV_LOGIN` も**設定しない**。ローカルで LINE ログインが完走しないための
+開発用ログイン（`POST /v1/auth/dev`）を開ける変数である。**誰でもログインできる
+経路**なので本番に出してはいけない。なお経路そのものが `USE_FAKE_DATASTORE` が
+真のときしか生えないため、上の運用を守っていれば設定が紛れ込んでも 404 になる。
+
 ## 2. GitHub 側の登録
 
 **Environment `production`** を作り、そこに登録する。

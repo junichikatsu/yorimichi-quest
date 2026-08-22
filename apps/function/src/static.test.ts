@@ -28,6 +28,9 @@ function servedAssets(): string[] {
 const TRIGGER_PATH = '/imanouchi'
 
 beforeEach(() => {
+  // 開発用ページの経路が開く条件（ローカル起動と同じ状態）
+  process.env['USE_FAKE_DATASTORE'] = 'true'
+  process.env['ENABLE_DEV_LOGIN'] = 'true'
   // 実ファイルではなく名前をそのまま返す。配線だけを見る
   setStaticAssetLoader((name) => ({
     contentType: 'text/html; charset=utf-8',
@@ -38,15 +41,44 @@ beforeEach(() => {
 
 afterEach(() => {
   setStaticAssetLoader(undefined)
+  delete process.env['USE_FAKE_DATASTORE']
+  delete process.env['ENABLE_DEV_LOGIN']
 })
+
+/**
+ * 開発用のページ。
+ *
+ * ★ ルートを**開発用に閉じてある**（インメモリ実装のときだけ返す）ので、ZIP に
+ * 入れない。本番に置いても中身を返す API が無く、開いても何も出ないためである。
+ * ローカルは public/ をディスクから読むのでそのまま開ける。
+ */
+const DEV_ONLY_ASSETS = ['card-catalog.html']
 
 describe('静的ファイルの配信', () => {
   it('ルートが返すファイルはすべて ZIP に同梱されている', () => {
-    const served = servedAssets()
+    const served = servedAssets().filter((name) => !DEV_ONLY_ASSETS.includes(name))
     expect(served.length).toBeGreaterThan(0)
 
     for (const name of served) {
       expect(buildSource, `${name} が build.mjs の STATIC_ASSETS に無い`).toContain(`'${name}'`)
+    }
+  })
+
+  it('★ 開発用のページは ZIP に入れない（本番に置くと壊れたページになる）', () => {
+    for (const name of DEV_ONLY_ASSETS) {
+      expect(buildSource, `${name} が build.mjs の STATIC_ASSETS に入っている`).not.toContain(
+        `'${name}'`,
+      )
+    }
+  })
+
+  it('★ 開発用のページは本番では 404（インメモリ実装のときだけ返す）', async () => {
+    process.env['USE_FAKE_DATASTORE'] = 'false'
+    const app = createApp()
+
+    for (const name of DEV_ONLY_ASSETS) {
+      const response = await app.request(`/${name}`)
+      expect(response.status, name).toBe(404)
     }
   })
 

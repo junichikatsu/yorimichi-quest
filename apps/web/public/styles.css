@@ -326,10 +326,12 @@ button {
 /* ---------------- パネル ---------------- */
 
 .sidebar {
+  /* ★ タブの帯が余白を打ち消すので、値を1か所に置く（食い違うと隙間が出る） */
+  --sidebar-pad: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.9rem;
+  padding: var(--sidebar-pad);
   background: var(--bg);
   border-left: 1px solid var(--line);
 }
@@ -1506,16 +1508,6 @@ button {
 
 /* ---------------- カードコレクション（FR-14） ---------------- */
 
-.statusbar__cards {
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
 .panel--cards {
   border-color: var(--accent);
 }
@@ -1590,10 +1582,31 @@ button {
 .cardgrid {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  /*
+   * ★ 2列に固定する。`auto-fill` にするとサイドバーの幅で3列になり、
+   * **1枚が小さくなってドット絵が潰れる。** 文字を小さくしてでも絵の大きさを取る。
+   */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
   margin: 0.7rem 0 0;
   padding: 0;
+}
+
+/* 一覧の中だけ文字を一段小さくする（絵に高さを譲る） */
+.cardgrid .card__kind {
+  font-size: 0.62rem;
+}
+
+.cardgrid .card__title {
+  font-size: 0.78rem;
+}
+
+.cardgrid .card__body,
+.cardgrid .card__condition {
+  font-size: 0.68rem;
+  /* 一覧は縦に余裕があるので1行多く見せる */
+  -webkit-line-clamp: 4;
+  max-height: calc(4 * 1.5em);
 }
 
 /*
@@ -1607,99 +1620,118 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  height: 100%;
+  /*
+   * ★ 縦横比を固定する。**本文の長さで高さが変わると、並べたときに揃わない。**
+   * カードは同じ形の札が並ぶものなので、文章量で形が変わってはいけない。
+   * 5:7 はトレーディングカードに近い比率。
+   */
+  aspect-ratio: 5 / 7;
   padding: 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
   background: var(--surface);
+  /*
+   * ★ 角丸を使わず階段状に落とす。**これがドット絵と揃える要点**である。
+   * 丸めるとドットの絵だけが浮いて、枠と中身が別物に見える。
+   */
+  clip-path: polygon(
+    0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+    100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+    6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+  );
+  box-shadow: inset 0 0 0 3px var(--card-color), 4px 4px 0 rgb(36 31 39 / 22%);
+  /* 等幅にして文字もドットの列に寄せる */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .card--achieved {
-  border-color: var(--card-color);
-  /* 達成したカードだけ箔の質感を出す。CSS だけで作れる（画像を持たない） */
-  background:
-    conic-gradient(
-      from 210deg,
-      rgb(255 255 255 / 0%) 0deg,
-      rgb(255 255 255 / 55%) 90deg,
-      rgb(255 255 255 / 0%) 190deg,
-      rgb(255 255 255 / 45%) 300deg,
-      rgb(255 255 255 / 0%) 360deg
-    ),
-    linear-gradient(160deg, color-mix(in srgb, var(--card-color) 18%, white), var(--surface));
+  --card-color: var(--accent);
+}
+
+/* 道具は実物の色に寄せる（茶）。場所と行動はカテゴリの色を表示側が渡す */
+.card--tool.card--achieved {
+  --card-color: #7a5c2e;
 }
 
 .card__kind {
   margin: 0;
   font-size: 0.68rem;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--card-color);
+}
+
+.card__progress {
+  font-variant-numeric: tabular-nums;
 }
 
 .card__title {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   line-height: 1.4;
+  /*
+   * ★ 3行で切る。スポット名は長いものがあり（「ありすいきいきプラザ」など）、
+   * 切らないと本文を押し出してカードから溢れる。
+   */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card__body,
 .card__condition {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   line-height: 1.5;
+  /*
+   * 残りの高さに収める。
+   * ★ 行数で切る（`overflow: hidden` だけだと**行の途中で切れて壊れて見える**）。
+   */
+  flex: 1;
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /*
+   * ★ 行数の上限と**高さの上限を両方置く。** 行数だけだと、器が3行より高いときに
+   * 4行目の上半分が覗いて壊れて見える（実際に覗いた）。
+   */
+  max-height: calc(3 * 1.5em);
 }
 
 .card__condition {
   color: var(--muted);
 }
 
-/* カードの絵。画像を持たず、色と1文字とリングで描く */
+/*
+ * カードの絵。**画像を持たず 24×24 の点を canvas に打つ。**
+ *
+ * ★ 拡大は image-rendering に任せる。canvas の実寸を大きくして太い四角を描くと、
+ * 端末の拡大率で点の大きさが揃わない。
+ */
 .cardart {
-  --card-color: var(--accent);
+  /* ★ 色はカード（article）から受け取る。絵の側で決めると枠と食い違う */
+  --art-color: var(--card-color);
+  /* ★ 縮ませない。カードの高さを固定したので、文章が長いと絵が潰される */
+  flex: none;
+  width: 100%;
+  /*
+   * ★ カードの高さに対する割合で持つ（`aspect-ratio` と `width: auto` の
+   * 組み合わせにすると、flex の中で幅が canvas の実寸 24px まで縮む）。
+   */
+  height: 42%;
   display: grid;
   place-items: center;
-  height: 4.2rem;
-  border-radius: 8px;
-  background: linear-gradient(150deg, var(--card-color), color-mix(in srgb, var(--card-color) 55%, black));
-  color: #fff;
+  background: color-mix(in srgb, var(--card-color) 14%, var(--surface));
 }
 
-.cardart--tool {
-  --card-color: #7a5c2e;
-}
-
-.cardart--mission {
-  --card-color: var(--accent);
-}
-
-.cardart__glyph {
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.cardart__ring {
-  width: 3.6rem;
-  height: 3.6rem;
-}
-
-.cardart__ring-track {
-  fill: none;
-  stroke: rgb(255 255 255 / 35%);
-  stroke-width: 6;
-}
-
-.cardart__ring-value {
-  fill: none;
-  stroke: #fff;
-  stroke-width: 6;
-  stroke-linecap: round;
-}
-
-.cardart__ring-text {
-  fill: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  text-anchor: middle;
+.cardart__canvas {
+  display: block;
+  /* ★ 正方形を保つ。器の幅いっぱいに伸ばすと絵が横に潰れる */
+  height: 100%;
+  width: auto;
+  aspect-ratio: 1 / 1;
+  /* ★ これが無いとドット絵がぼやけて、拡大した写真のように見える */
+  image-rendering: pixelated;
 }
 
 /* ---------------- カード獲得の演出（FR-14-8） ---------------- */
@@ -1762,6 +1794,8 @@ button {
  */
 .reveal__flip {
   position: relative;
+  /* 裏面（absolute）と表面の大きさをそろえるため、ここで比率を持つ */
+  aspect-ratio: 5 / 7;
   transform-style: preserve-3d;
   animation: card-flip 0.62s ease-out backwards;
   animation-delay: var(--reveal-delay, 0s);
@@ -1772,18 +1806,57 @@ button {
   backface-visibility: hidden;
 }
 
+/* 表面は器いっぱいに広げる（比率は .reveal__flip が持つ） */
+.reveal__front {
+  height: 100%;
+}
+
+/*
+ * 演出の中の文字は一段小さくする。
+ *
+ * ★ ここは「何を手に入れたか」が伝わればよい。全文は一覧で読める。
+ * 文字を大きく保つと行が入りきらず、**行の途中で切れて壊れて見える**。
+ */
+.reveal__front .card__body {
+  font-size: 0.68rem;
+}
+
 .reveal__back {
   position: absolute;
   inset: 0;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background:
-    repeating-linear-gradient(
-      45deg,
-      color-mix(in srgb, var(--accent) 70%, black) 0 6px,
-      var(--accent) 6px 12px
-    );
+  /* 表面と同じ階段状の角にそろえる（丸めると裏だけ別物に見える） */
+  clip-path: polygon(
+    0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+    100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+    6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+  );
+  background: #1b1622;
+  box-shadow: inset 0 0 0 3px var(--accent);
   transform: rotateY(180deg);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.35rem;
+  color: #fff;
+}
+
+.reveal__mark {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  background: rgb(255 255 255 / 92%);
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 700;
+  /* 角を丸めない。表面と同じドットの作法にそろえる */
+  box-shadow: 0 0 0 3px #1b1622, 3px 3px 0 rgb(0 0 0 / 35%);
+}
+
+.reveal__word {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.3em;
 }
 
 @keyframes card-flip {
@@ -1805,3 +1878,70 @@ button {
     display: none;
   }
 }
+
+/*
+ * 開発用ログインの入口（ローカル確認専用）。
+ *
+ * ★ 本番の導線と見分けがつく見た目にする。破線にしてあるのは、
+ * 「これは製品の機能ではない」と一目で分かるようにするためである。
+ */
+.start__button--dev {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/*
+ * サイドバーのタブ（探索・スポット / カード）。
+ *
+ * ★ 積み重ねずに切り替える。カードを開いたときに探索や近くのスポットが下へ
+ * 押し出されると、地図の横で何を見ているのか分からなくなる。
+ *
+ * ★ 上に貼り付ける（sticky）。一覧を下までたどってから切り替え直すのは面倒である。
+ */
+.sidetabs {
+  position: sticky;
+  /*
+   * ★ サイドバーの padding ぶん上へ吸い付かせ、**左右と上の余白を打ち消して
+   * 全幅の帯にする。** 帯にしないと、スクロールした中身が余白の隙間と
+   * 丸めた角の外側から覗いて、タブに重なって見える（実際に重なった）。
+   */
+  top: calc(-1 * var(--sidebar-pad));
+  z-index: 3;
+  margin: calc(-1 * var(--sidebar-pad)) calc(-1 * var(--sidebar-pad)) 0;
+  padding: var(--sidebar-pad) var(--sidebar-pad) 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+  /* ★ 透けない地色。サイドバーと同じにして、帯だと分からないようにする */
+  background: var(--bg);
+}
+
+.sidetabs__tab {
+  flex: 1;
+  display: inline-flex;
+  /* ★ 中央にそろえる。baseline だと件数の文字に引かれて上寄りになる */
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 2.4rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sidetabs__tab--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.sidetabs__count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+

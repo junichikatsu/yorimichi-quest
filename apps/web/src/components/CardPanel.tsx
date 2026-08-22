@@ -5,7 +5,7 @@ import {
   type CardsResponse,
 } from '@imanouchi/shared'
 import { useState } from 'react'
-import { CardArt } from './CardArt.js'
+import { CardArt, cardColorStyle } from './CardArt.js'
 
 interface CardPanelProps {
   cards: CardsResponse | undefined
@@ -103,9 +103,21 @@ export function CardPanel({ cards, onClose }: CardPanelProps): React.JSX.Element
       <ul className="cardgrid">
         {shown.map((card) => (
           <li key={card.cardId}>
-            <article className={card.achieved ? 'card card--achieved' : 'card'}>
+            <article
+              className={`card card--${card.kind}${card.achieved ? ' card--achieved' : ''}`}
+              style={cardColorStyle(card)}
+            >
               <CardArt card={card} />
-              <p className="card__kind">{CARD_KIND_LABELS[card.kind]}</p>
+              <p className="card__kind">
+                {CARD_KIND_LABELS[card.kind]}
+                {/* ★ ミッションは進捗を数字で出す（絵は旗なので、絵からは進みが分からない） */}
+                {card.progress && (
+                  <span className="card__progress">
+                    {' '}
+                    {card.progress.current}/{card.progress.total}
+                  </span>
+                )}
+              </p>
               <h3 className="card__title">{card.title}</h3>
               {/*
                 ★ 達成後にだけ中身を出す。未達成では**サーバーが中身を返していない**ので、

@@ -123,6 +123,17 @@ export function guestLogin(): Promise<GuestLoginResponse> {
   return request<GuestLoginResponse>('/v1/auth/guest', { method: 'POST' })
 }
 
+/**
+ * 開発用ログイン（ローカル確認専用）。
+ *
+ * ★ ローカルでは LIFF のログインが完走しないため、これが無いとログインが要る機能
+ * （チェックインの保存・カード）を手元で確かめられない。サーバー側はインメモリ実装
+ * のときしかこの経路を作らないので、本番では 404 になる。
+ */
+export function devLogin(): Promise<LoginResponse> {
+  return request<LoginResponse>('/v1/auth/dev', { method: 'POST' })
+}
+
 export function fetchMe(): Promise<MeResponse> {
   return request<MeResponse>('/v1/me')
 }

@@ -103,6 +103,19 @@ export interface AppConfig {
   emergencyDemoEnabled: boolean
   /** LINE ログインなしの「おためし」を許すか。読み取り専用のセッションを発行する */
   guestModeEnabled: boolean
+  /**
+   * 開発用ログインを許すか。
+   *
+   * ★ **ローカルで動作確認するためだけのもの。** LIFF はエンドポイント URL に
+   * 公開URLを登録した状態で LINE アプリから開く必要があるため、**ローカルでは
+   * LINE ログインが完走できない。** その結果、ログインが要る機能（チェックインの
+   * 保存・カード）を手元で確かめられない。
+   *
+   * ★ 有効になるのは `useFakeDataStore` が真のときだけである（ルートの登録時に
+   * 確認している）。本番は `USE_FAKE_DATASTORE` を設定しない運用なので、
+   * **この変数が本番に紛れ込んでも経路そのものが生えない。**
+   */
+  devLoginEnabled: boolean
 
   /* ---- 探索（FR-02-7） ---- */
   /** 記録の粒度（m 四方）。小さくすると軌跡は滑らかになるが書き込みが面積比で増える */
@@ -175,6 +188,8 @@ export function loadConfig(): AppConfig {
     emergencyDemoEnabled: readBoolean('ENABLE_EMERGENCY_DEMO', true),
     // LINE を持っていない人にも動きを見せるために既定で許す。読み取りしかできない
     guestModeEnabled: readBoolean('ENABLE_GUEST_MODE', true),
+    // 既定は false。ローカル起動（local.ts）だけが自分で true にする
+    devLoginEnabled: readBoolean('ENABLE_DEV_LOGIN', false),
 
     exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
     // タイルより大きくする。同じ大きさだと隣り合うタイルの間に霧が残って軌跡が途切れる

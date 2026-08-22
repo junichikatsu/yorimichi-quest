@@ -106,6 +106,9 @@ beforeEach(() => {
   process.env['ENABLE_GUEST_MODE'] = 'true'
   // ★ 個別のテストで上書きするので、毎回消してから始める（前のテストの値が残る）
   delete process.env['CHECKIN_COOLDOWN_HOURS']
+  // ローカル起動（local.ts）と同じ状態にする。個別のテストが上書きする
+  process.env['ENABLE_DEV_LOGIN'] = 'true'
+  delete process.env['MAX_SPOTS_PER_REQUEST']
   setDataStoreClient(new FakeDataStoreClient())
   resetFakeDataStore()
   resetRateLimit()
@@ -1354,7 +1357,7 @@ describe('GET /v1/cards', () => {
     expect(text).not.toContain('揺れが収まるまで動かない')
   })
 
-  it('場所カードはカテゴリ別の件数で残りを示す（371枚を並べない）', async () => {
+  it('場所カードはカテゴリ別の件数で残りを示す（全枚数を並べない）', async () => {
     const { token } = await loginOk()
     const body = await fetchCards(token)
 
@@ -1365,6 +1368,21 @@ describe('GET /v1/cards', () => {
     }
     // 集計の総数はスポット件数（並べた枚数ではない）
     expect(body.summary.byKind.place.total).toBeGreaterThan(0)
+  })
+
+  it('★ 場所の総数は表示上限（MAX_SPOTS_PER_REQUEST）に引きずられない', async () => {
+    /*
+     * 実際に踏んだ間違い。表示用の上限（既定 200）で数えると、対象エリアの 370 件に
+     * 対して「AED 0/200」のように**総数が嘘になる**（query はサブキーの昇順で返すため、
+     * 辞書順で先のカテゴリだけが残る）。
+     */
+    process.env['MAX_SPOTS_PER_REQUEST'] = '1'
+    const { token } = await loginOk()
+    const body = await fetchCards(token)
+
+    // 上限 1 でも、カードの総数はサンプルデータの全件ぶんになる
+    expect(body.summary.byKind.place.total).toBeGreaterThan(1)
+    expect(body.places.length).toBeGreaterThan(1)
   })
 
   it('★ 認証なし・おためしでは使えない', async () => {
@@ -1449,5 +1467,63 @@ describe('カードの達成（FR-14-4・FR-14-5・FR-14-6）', () => {
 
     expect(body.acquiredCards).toEqual([])
     expect(dump('fake-user-cards')).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 開発用ログイン（ローカル確認専用）
+ * ------------------------------------------------------------------ */
+
+describe('POST /v1/auth/dev', () => {
+  /*
+   * ★ 守りたいのは「本番に経路が生えない」ことである。
+   *
+   * ルートの登録が `useFakeDataStore` を条件にしているため、本番（テーブルへ
+   * 接続する構成）ではハンドラそのものが存在しない。ここを崩すと、**誰でも
+   * ログインできるエンドポイントが本番に生える。**
+   */
+  it('ローカル（インメモリ実装）ではログインでき、書き込みも通る', async () => {
+    const response = await app.request('/v1/auth/dev', { method: 'POST' })
+    expect(response.status).toBe(200)
+
+    const body = await json<LoginResponse>(response)
+    expect(body.user.userId).toMatch(/^U[0-9a-f]{32}$/)
+
+    // LINE ログインと同じ形のセッションなので、書き込みが要る経路も通る
+    const checkinResponse = await checkin(body.token, AT_SPOT)
+    expect(checkinResponse.status).toBe(200)
+    expect((await json<CheckinResponse>(checkinResponse)).saved).toBe(true)
+  })
+
+  it('★ インメモリ実装でなければ 404（本番に経路が生えない）', async () => {
+    process.env['USE_FAKE_DATASTORE'] = 'false'
+
+    const response = await app.request('/v1/auth/dev', { method: 'POST' })
+    expect(response.status).toBe(404)
+  })
+
+  it('★ 環境変数で止められる', async () => {
+    process.env['ENABLE_DEV_LOGIN'] = 'false'
+
+    expect((await app.request('/v1/auth/dev', { method: 'POST' })).status).toBe(404)
+  })
+
+  it('クライアントへ「使えるか」を配る（画面が入口を出すかを決められる）', async () => {
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(body.devLoginEnabled).toBe(true)
+
+    process.env['USE_FAKE_DATASTORE'] = 'false'
+    const production = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(production.devLoginEnabled).toBe(false)
+  })
+
+  it('★ 同じ利用者として続けられる（開き直しても記録が残る）', async () => {
+    const first = await json<LoginResponse>(await app.request('/v1/auth/dev', { method: 'POST' }))
+    await checkin(first.token, AT_SPOT)
+
+    const second = await json<LoginResponse>(await app.request('/v1/auth/dev', { method: 'POST' }))
+    expect(second.user.userId).toBe(first.user.userId)
+    expect(second.registered).toBe(false)
+    expect(second.user.totalPoints).toBeGreaterThan(0)
   })
 })

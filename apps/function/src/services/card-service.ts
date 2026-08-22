@@ -5,6 +5,7 @@ import {
   type DataStoreContext,
 } from '@imanouchi/datastore'
 import {
+  CARD_KIND_LABELS,
   CARD_KINDS,
   CARD_KIND_ORDER,
   ITEM_DEFS,
@@ -13,6 +14,8 @@ import {
   SPOT_CATEGORIES,
   SPOT_CATEGORY_LABELS,
   parseCardId,
+  PIXEL_ART,
+  pixelArtKeyOf,
   toCardId,
   type AreaId,
   type CardCollectionSummary,
@@ -40,6 +43,17 @@ import { allQuizEntries } from '../data/quiz-bank.js'
 
 /** 一度に扱うカードの上限。到達しない値だが、無制限のクエリを投げない */
 const MAX_CARDS = 1000
+
+/**
+ * 場所カードを数えるときに読むスポットの上限。
+ *
+ * ★ **`MAX_SPOTS_PER_REQUEST`（既定 200）を使ってはいけない。** あれは
+ * 「1リクエストで画面へ返す件数」の上限であり、対象エリアには 370 件ある。
+ * これで数えると **「AED 0/200」のように総数が嘘になる**（データストアの query は
+ * サブキーの昇順で返すため、辞書順で先のカテゴリだけが残る）。
+ * ここは返さずに数えるだけなので、全件読める値にしておく。
+ */
+const MAX_SPOT_SCAN = 1000
 
 /** カード1枚の定義。達成状態を持たない「器」 */
 export interface CardDefinition {
@@ -158,7 +172,6 @@ function emptyByKind(): Record<CardKind, CardKindProgress> {
 export interface BuildCardsInput {
   userId: UserId
   areaId: AreaId
-  maxSpots: number
 }
 
 export async function buildCards(
@@ -167,7 +180,7 @@ export async function buildCards(
 ): Promise<CardsResponse> {
   const [achieved, spots] = await Promise.all([
     listAchievedCards(ctx, input.userId, MAX_CARDS),
-    listSpotsByArea(ctx, input.areaId, input.maxSpots),
+    listSpotsByArea(ctx, input.areaId, MAX_SPOT_SCAN),
   ])
 
   const achievedAt = new Map(achieved.map((card) => [card.cardId, card.achievedAt]))
@@ -288,12 +301,11 @@ export async function grantMissions(
   ctx: DataStoreContext,
   userId: UserId,
   areaId: AreaId,
-  maxSpots: number,
   nowIso: string,
 ): Promise<CardView[]> {
   const [achieved, spots] = await Promise.all([
     listAchievedCards(ctx, userId, MAX_CARDS),
-    listSpotsByArea(ctx, areaId, maxSpots),
+    listSpotsByArea(ctx, areaId, MAX_SPOT_SCAN),
   ])
 
   const achievedAt = new Map(achieved.map((card) => [card.cardId, card.achievedAt]))
@@ -322,4 +334,115 @@ export async function grantMissions(
 
   if (met.length === 0) return []
   return grantCards(ctx, userId, met, nowIso)
+}
+
+/* ------------------------------------------------------------------ *
+ * カードの一覧（開発用）
+ * ------------------------------------------------------------------ */
+
+export interface CardCatalogGroup {
+  kind: CardKind
+  label: string
+  /** この種類の総数。場所は対象エリアのスポット件数 */
+  total: number
+  /** 達成条件の説明（種類ごと） */
+  howTo: string
+  /** カードの定義。場所は見本だけ（全件はスポット数と同じになる） */
+  cards: CardDefinition[]
+}
+
+export interface CardCatalog {
+  groups: CardCatalogGroup[]
+  places: PlaceCardSummary[]
+  total: number
+  /**
+   * ドット絵そのもの（開発用の一覧ページが描くために渡す）。
+   *
+   * ★ ページ側に書き写さない。絵を直したときに一覧だけ古いまま残る。
+   */
+  art: Record<string, string[]>
+  /** カードIDごとの絵の名前 */
+  artKeys: Record<string, string>
+}
+
+/**
+ * カードの定義を全部返す（**開発用**）。
+ *
+ * ★ 種類と中身を見比べるための一覧である。**中身（達成後にだけ見せる文）も返す**
+ * ため、本番へ出してはいけない。ルート側でインメモリ実装のときだけ生やしている。
+ *
+ * ★ 画面に書き写さず、ここから引く。書き写すと、出題やアイテムを増やしたときに
+ * 一覧だけ古いまま残る。
+ */
+export async function buildCatalog(
+  ctx: DataStoreContext,
+  areaId: AreaId,
+  placeSamples: number,
+): Promise<CardCatalog> {
+  const spots = await listSpotsByArea(ctx, areaId, MAX_SPOT_SCAN)
+
+  const placeTotals = new Map<SpotCategory, number>()
+  for (const spot of spots) {
+    placeTotals.set(spot.category, (placeTotals.get(spot.category) ?? 0) + 1)
+  }
+
+  const groups: CardCatalogGroup[] = [
+    {
+      kind: 'action',
+      label: CARD_KIND_LABELS.action,
+      total: actionCardDefs().length,
+      howTo: '対応するクイズに正解すると達成する（FR-14-5）。見出しは「場面」で、行動そのものは達成後にだけ見える。',
+      cards: actionCardDefs(),
+    },
+    {
+      kind: 'tool',
+      label: CARD_KIND_LABELS.tool,
+      total: toolCardDefs().length,
+      howTo: 'チェックイン、またはクイズ正解で手に入る（FR-14-6）。説明は「それを使って何をするか」を主語にしている（G-8）。',
+      cards: toolCardDefs(),
+    },
+    {
+      kind: 'place',
+      label: CARD_KIND_LABELS.place,
+      total: spots.length,
+      howTo: 'その場所でチェックインすると達成する（FR-14-4）。スポット1件につき1枚。',
+      cards: spots.slice(0, placeSamples).map(placeCardDef),
+    },
+    {
+      kind: 'mission',
+      label: CARD_KIND_LABELS.mission,
+      total: missionCardDefs().length,
+      howTo: '他のカードの達成枚数だけで判定する（FR-14-7）。専用のカウンタを持たない。',
+      cards: missionCardDefs(),
+    },
+  ]
+
+  const places: PlaceCardSummary[] = SPOT_CATEGORIES.filter(
+    (category) => (placeTotals.get(category) ?? 0) > 0,
+  ).map((category) => ({
+    category,
+    label: SPOT_CATEGORY_LABELS[category],
+    achieved: 0,
+    total: placeTotals.get(category) ?? 0,
+  }))
+
+  const artKeys: Record<string, string> = {}
+  for (const group of groups) {
+    for (const card of group.cards) {
+      const parsed = parseCardId(card.cardId)
+      artKeys[card.cardId] = pixelArtKeyOf({
+        kind: parsed?.kind ?? group.kind,
+        key: parsed?.key ?? '',
+        category: card.category,
+      })
+    }
+  }
+
+  return {
+    groups,
+    places,
+    total: groups.reduce((sum, group) => sum + group.total, 0),
+    art: PIXEL_ART,
+    artKeys,
+  }
 }

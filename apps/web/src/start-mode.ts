@@ -13,6 +13,13 @@ export interface StartContext {
   liffLoggedIn: boolean
   /** サーバーがおためしを許しているか */
   guestModeEnabled: boolean
+  /**
+   * 開発用ログインが使えるか（ローカル起動のときだけ真）。
+   *
+   * ★ おためしを止めていても、これが使えるなら選択画面を出す必要がある。
+   * 出さないと**ローカルで確認する入口が無くなる**（LIFF は完走しないため）。
+   */
+  devLoginEnabled: boolean
 }
 
 /**
@@ -30,6 +37,6 @@ export interface StartContext {
 export function shouldOfferStartChoice(context: StartContext): boolean {
   if (context.inLineClient) return false
   if (context.liffLoggedIn) return false
-  if (!context.guestModeEnabled) return false
+  if (!context.guestModeEnabled && !context.devLoginEnabled) return false
   return true
 }

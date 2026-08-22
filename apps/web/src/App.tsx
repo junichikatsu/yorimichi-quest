@@ -16,6 +16,7 @@ import {
   answerQuiz,
   ApiError,
   checkin,
+  devLogin,
   fetchCards,
   fetchClientConfig,
   fetchProgress,
@@ -155,7 +156,13 @@ export function App(): React.JSX.Element {
    * 増えないので、開くたびに最新を取れば足りる。
    */
   const [cards, setCards] = useState<CardsResponse | undefined>(undefined)
-  const [cardsOpen, setCardsOpen] = useState(false)
+  /**
+   * サイドバーのタブ。
+   *
+   * ★ 積み重ねずに切り替える。カードを開いたときに探索や近くのスポットが下へ
+   * 押し出されると、**地図の横で何を見ているのか分からなくなる。**
+   */
+  const [sidebarTab, setSidebarTab] = useState<'explore' | 'cards'>('explore')
   /** 手に入れたカードの演出（FR-14-8）。空なら出さない */
   const [revealCards, setRevealCards] = useState<CardView[]>([])
 
@@ -418,6 +425,28 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
+  /**
+   * 開発用ログイン（ローカル確認専用）。
+   *
+   * ★ LINE ログインと同じ形のセッションを受け取るので、以降の経路は本番と同じ。
+   * サーバー側はインメモリ実装のときしかこの経路を作らない。
+   */
+  const startDevLogin = useCallback(async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await devLogin()
+      setToken(result.token)
+      setMode('line')
+      setUser(result.user)
+      setPhase(result.user.locationConsentGiven ? 'ready' : 'consent')
+      setMessage('')
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : '開発用ログインに失敗しました。')
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
 
@@ -446,6 +475,7 @@ export function App(): React.JSX.Element {
           inLineClient,
           liffLoggedIn,
           guestModeEnabled: loaded.guestModeEnabled,
+          devLoginEnabled: loaded.devLoginEnabled,
         })) {
           setPhase('start')
           return
@@ -621,14 +651,38 @@ export function App(): React.JSX.Element {
    *
    * ★ 取得に失敗しても行き止まりにしない。読み込み中の表示のまま閉じられる。
    */
-  const openCards = useCallback(async (): Promise<void> => {
-    setCardsOpen(true)
+  const loadCards = useCallback(async (): Promise<void> => {
     try {
       setCards(await fetchCards())
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : 'カードを取得できませんでした。')
     }
   }, [])
+
+  /**
+   * スポットを選ぶ。
+   *
+   * ★ カードのタブを見ている最中に地図のピンを押したら、探索のタブへ戻す。
+   * 戻さないと**押したのに何も起きていないように見える**（詳細もチェックインの
+   * ボタンも、探索のタブの側にある）。
+   */
+  const selectSpot = useCallback((spotId: SpotId | undefined): void => {
+    setSelectedSpotId(spotId)
+    if (spotId !== undefined) setSidebarTab('explore')
+  }, [])
+
+  /**
+   * カードのタブを見ているあいだに、必要なら取りに行く。
+   *
+   * ★ 起動時には引かない。カードは歩いている間に増えないので、見るときに取れば足りる。
+   * 獲得したときは `cards` を undefined に戻してあるので、次に見たときに最新になる。
+   */
+  useEffect(() => {
+    if (phase !== 'ready' || sidebarTab !== 'cards' || mode !== 'line') return
+    if (cards !== undefined) return
+    void loadCards()
+  }, [phase, sidebarTab, mode, cards, loadCards])
+
 
   /**
    * チェックイン（FR-03）。
@@ -912,11 +966,13 @@ export function App(): React.JSX.Element {
     return (
       <StartGate
         guestAvailable={config?.guestModeEnabled ?? false}
+        devAvailable={config?.devLoginEnabled ?? false}
         busy={busy}
         onLineLogin={() => {
           if (config) void runLineLogin(config)
         }}
         onGuest={() => void startGuest()}
+        onDevLogin={() => void startDevLogin()}
         message={message}
       />
     )
@@ -947,16 +1003,6 @@ export function App(): React.JSX.Element {
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
         onOpenCreator={() => setCreatorOpen((open) => !open)}
-        /*
-          ★ おためしではカードを出さない。達成状態をサーバーが持たないと、
-          未達成カードの中身を隠す仕組み（FR-14-3）が成立しない。
-          有事モードでも出さない（FR-08-2）。
-        */
-        onOpenCards={
-          mode === 'line' && game.cards
-            ? () => (cardsOpen ? setCardsOpen(false) : void openCards())
-            : undefined
-        }
         emergencyAvailable={config?.emergencyDemoEnabled ?? false}
         emergency={emergency}
         onToggleEmergency={handleToggleEmergency}
@@ -989,7 +1035,7 @@ export function App(): React.JSX.Element {
             spots={sortedSpots}
             position={geo.position}
             selectedSpotId={selectedSpotId}
-            onSelectSpot={setSelectedSpotId}
+            onSelectSpot={selectSpot}
             exploredTiles={exploration.tiles}
             unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
@@ -1032,11 +1078,52 @@ export function App(): React.JSX.Element {
             />
           )}
 
-          {cardsOpen && game.cards && (
-            <CardPanel cards={cards} onClose={() => setCardsOpen(false)} />
+          {/*
+            ★ タブで切り替える（積み重ねない）。
+            カードを開いたときに探索や近くのスポットが下へ押し出されると、
+            地図の横で何を見ているのか分からなくなる。
+
+            ★ 有事モードでは出さない。ゲーム要素（探索・カード）を隠すため
+            （FR-08-2）、切り替える先が無い。
+          */}
+          {!emergency && game.cards && (
+            <div className="sidetabs" role="tablist" aria-label="表示の切り替え">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'explore'}
+                className={
+                  sidebarTab === 'explore' ? 'sidetabs__tab sidetabs__tab--on' : 'sidetabs__tab'
+                }
+                onClick={() => setSidebarTab('explore')}
+              >
+                探索・スポット
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'cards'}
+                className={
+                  sidebarTab === 'cards' ? 'sidetabs__tab sidetabs__tab--on' : 'sidetabs__tab'
+                }
+                onClick={() => setSidebarTab('cards')}
+              >
+                カード
+                {cards && (
+                  <span className="sidetabs__count">
+                    {cards.summary.achieved}/{cards.summary.total}
+                  </span>
+                )}
+              </button>
+            </div>
           )}
 
-          {selectedSpot && (
+          {/*
+            ★ スポットの詳細は有事モードでも出す。
+            有事は EmergencyPanel から選ぶので、詳細が出ないと行き止まりになる
+            （チェックインとクイズの導線だけを隠している）。
+          */}
+          {(emergency || sidebarTab === 'explore') && selectedSpot && (
             <SpotPanel
               spot={selectedSpot}
               checkinRadiusM={config?.checkinRadiusM ?? 100}
@@ -1054,7 +1141,7 @@ export function App(): React.JSX.Element {
             ★ クイズはスポット詳細の下に置く（別画面にしない）。
             画面を切り替えると、戻ったときに地図の位置と縮尺が失われる。
           */}
-          {quiz && game.quiz && (
+          {sidebarTab === 'explore' && quiz && game.quiz && (
             <QuizPanel
               spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
               quiz={quiz.response.quiz}
@@ -1078,11 +1165,13 @@ export function App(): React.JSX.Element {
             <EmergencyPanel
               spots={sortedSpots}
               selectedSpotId={selectedSpotId}
-              onSelectSpot={setSelectedSpotId}
+              onSelectSpot={selectSpot}
               accessibleOnly={accessibleOnly}
               onToggleAccessibleOnly={setAccessibleOnly}
               hasPosition={geo.position !== undefined}
             />
+          ) : sidebarTab === 'cards' && game.cards ? (
+            <CardPanel cards={cards} onClose={() => setSidebarTab('explore')} />
           ) : (
             <>
               <ExplorationPanel
@@ -1109,7 +1198,7 @@ export function App(): React.JSX.Element {
                 <SpotList
                   spots={sortedSpots}
                   selectedSpotId={selectedSpotId}
-                  onSelectSpot={setSelectedSpotId}
+                  onSelectSpot={selectSpot}
                 />
               </section>
             </>

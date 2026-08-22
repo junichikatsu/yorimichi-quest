@@ -62,8 +62,6 @@ export interface AnswerQuizInput {
   choiceIndex: number
   now: number
   correctPoints: number
-  /** ミッションの判定でスポットを数えるときの上限（FR-14-7） */
-  maxSpots: number
 }
 
 /**
@@ -205,7 +203,7 @@ export async function answerQuiz(
   const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
   if (acquiredCards.length > 0) {
     acquiredCards.push(
-      ...(await grantMissions(ctx, userId, input.areaId, input.maxSpots, nowIso)),
+      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
     )
   }
 

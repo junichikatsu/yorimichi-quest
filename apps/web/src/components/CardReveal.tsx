@@ -1,6 +1,6 @@
 import { CARD_KIND_LABELS, type CardView } from '@imanouchi/shared'
 import { useEffect } from 'react'
-import { CardArt } from './CardArt.js'
+import { CardArt, cardColorStyle } from './CardArt.js'
 
 interface CardRevealProps {
   cards: CardView[]
@@ -51,8 +51,15 @@ export function CardReveal({ cards, onDone }: CardRevealProps): React.JSX.Elemen
             style={{ ['--reveal-delay' as string]: `${index * 0.16}s` }}
           >
             <div className="reveal__flip">
-              <div className="reveal__back" aria-hidden="true" />
-              <article className="reveal__front card card--achieved">
+              {/* 裏面。めくる前に見える面（決定した案：ドット枠＋ロゴ） */}
+              <div className="reveal__back" aria-hidden="true">
+                <span className="reveal__mark">今</span>
+                <span className="reveal__word">イマノウチ</span>
+              </div>
+              <article
+                className={`reveal__front card card--${card.kind} card--achieved`}
+                style={cardColorStyle(card)}
+              >
                 <CardArt card={card} />
                 <p className="card__kind">{CARD_KIND_LABELS[card.kind]}</p>
                 <h3 className="card__title">{card.title}</h3>
