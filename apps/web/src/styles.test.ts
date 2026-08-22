@@ -225,6 +225,23 @@ describe('styles.css', () => {
     }
   })
 
+  /*
+   * 重ねて出すクイズ（FR-04-1）。
+   *
+   * ★ サイドバーの中に置くと、スマホでは地図の下に積まれて画面の外にある。
+   * 重ねる以上、**上に何が乗るか**を決めておかないと、演出に隠れる／
+   * 逆に演出を隠すことになる。
+   */
+  it('★ クイズは演出より後ろ、トーストより前に出る', () => {
+    const quiz = zIndexOf(css, '.quizmodal')
+
+    // 点数とカードの演出はクイズの上に出る（出題の裏で祝われては伝わらない）
+    expect(quiz).toBeLessThan(zIndexOf(css, '.burst'))
+    expect(quiz).toBeLessThan(zIndexOf(css, '.reveal'))
+    // 失敗の知らせが暗幕の裏に隠れてはいけない
+    expect(quiz).toBeLessThan(zIndexOf(css, '.toast'))
+  })
+
   it('★ 演出が重なったときは強いものが前に出る（点数 → 帯 → カード）', () => {
     /*
      * 同時に出さないのが原則（画面側で順に出している）。それでも重なったときに
@@ -257,7 +274,7 @@ describe('styles.css', () => {
       '.mapcheckin',
       '.flash',
       '.walkdigest',
-      '.panel--quiz',
+      '.quizmodal__sheet',
       '.quiz__stamp',
       '.reveal__flip',
       '.statusbar__points--bumped',

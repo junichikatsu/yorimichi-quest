@@ -1428,26 +1428,6 @@ export function App(): React.JSX.Element {
           )}
 
           {/*
-            ★ クイズはスポット詳細の下に置く（別画面にしない）。
-            画面を切り替えると、戻ったときに地図の位置と縮尺が失われる。
-          */}
-          {sidebarTab === 'explore' && quiz && game.quiz && (
-            <QuizPanel
-              spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
-              quiz={quiz.response.quiz}
-              alreadyCleared={quiz.response.alreadyCleared}
-              result={quizResult}
-              busy={busy}
-              onAnswer={(choiceIndex) => void handleAnswer(choiceIndex)}
-              onRetry={() => setQuizResult(undefined)}
-              onClose={() => {
-                setQuiz(undefined)
-                setQuizResult(undefined)
-              }}
-            />
-          )}
-
-          {/*
             ★ 有事モードではゲーム要素（探索率・散歩）を出さない（FR-08-2）。
             代わりにライフラインを出す。押したときの挙動は平時と同じ（FR-08-7）。
           */}
@@ -1520,6 +1500,34 @@ export function App(): React.JSX.Element {
           result={burst}
           localOnly={mode === 'guest'}
           onDone={() => setBurst(undefined)}
+        />
+      )}
+
+      {/*
+        ★ クイズは画面に重ねて出す（FR-04-1）。
+        地図やサイドバーの中には置かない。**スマホでは地図の下に積まれるため、
+        チェックインしても出題が画面の外にあり、あることに気づけない。**
+        実際にそうなった（気づかれない出題は、出していないのと同じ）。
+
+        ★ 別画面にはしない。重ねるだけなので地図は作り直されず、閉じれば
+        中心と縮尺はそのまま残る（画面遷移にすると失われる）。
+
+        ★ 待たせない。点数の演出が消えるのを待たずに出す（FR-04-6）。
+        点数の演出はこの上に重なって数秒で消える。
+      */}
+      {quiz && game.quiz && (
+        <QuizPanel
+          spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
+          quiz={quiz.response.quiz}
+          alreadyCleared={quiz.response.alreadyCleared}
+          result={quizResult}
+          busy={busy}
+          onAnswer={(choiceIndex) => void handleAnswer(choiceIndex)}
+          onRetry={() => setQuizResult(undefined)}
+          onClose={() => {
+            setQuiz(undefined)
+            setQuizResult(undefined)
+          }}
         />
       )}
 

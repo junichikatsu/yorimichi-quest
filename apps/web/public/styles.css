@@ -515,7 +515,12 @@ button {
   background: var(--ink);
   color: #fff;
   font-size: 0.85rem;
-  z-index: 10;
+  /*
+   * ★ 重ねて出すもの（クイズ・演出・まとめ）より前に置く。
+   * ここが低いと、クイズを開いている間に出る「回答を送れませんでした」が
+   * **暗幕の裏に隠れて見えない**。歩行中の覆いよりは後ろに置く。
+   */
+  z-index: 55;
 }
 
 /* ---------------- 出典（FR-10-2） ---------------- */
@@ -1460,7 +1465,7 @@ button {
   .mapcheckin,
   .flash,
   .walkdigest,
-  .panel--quiz,
+  .quizmodal__sheet,
   .quiz__stamp,
   .reveal__flip,
   .statusbar__points--bumped,
@@ -2408,20 +2413,65 @@ button {
   font-size: 1rem;
 }
 
-/* クイズが開いたことを見せる。回答の操作は待たせない（FR-04-6） */
-.panel--quiz {
+/*
+ * クイズを画面に重ねて出す（FR-04-1）。
+ *
+ * ★ サイドバーの中に置くと、スマホでは地図の下に積まれて画面の外にある。
+ * **チェックインしても出題があることに気づけない**（実際にそうなった）。
+ *
+ * ★ 別画面にはしない。重ねるだけなので地図は作り直されず、閉じれば中心と
+ * 縮尺はそのまま残る。
+ *
+ * ★ 演出（点数・カード）より後ろに置く。並びは
+ * クイズ 25 < burst 30 < 帯 35 < カード 40 < まとめ 50 < トースト 55 < 覆い 60。
+ * 点数の演出は待たずにこの上へ重なり、数秒で消える。
+ */
+.quizmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  /* ★ スマホは下寄せ。片手で持ったときに選択肢が親指の届く側へ来る（NFR-08） */
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.6rem;
+  padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
+  background: rgb(20 16 22 / 55%);
+  /* 裏の地図を引っぱらない。指が滑っても地図が動かないようにする */
+  overscroll-behavior: contain;
+}
+
+/* 広い画面では真ん中に置く。下寄せにする理由（親指）が無い */
+@media (min-width: 900px) {
+  .quizmodal {
+    align-items: center;
+  }
+}
+
+.quizmodal__sheet {
+  width: min(100%, 30rem);
+  /* 解説まで入って画面より高くなることがある。板の中でだけ送る */
+  max-height: 88dvh;
+  overflow-y: auto;
   animation: quiz-in 0.26s ease-out;
 }
 
 @keyframes quiz-in {
   from {
     opacity: 0;
-    transform: translateY(0.5rem);
+    transform: translateY(1.2rem);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 読み終えたあとの出口。× は小さく上端にあるので、大きな出口を下にも置く */
+.quizmodal__back {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 0.6rem;
 }
 
 /* 結果の印。装飾であり、文言（正解です／おしい）だけでも成立させる */

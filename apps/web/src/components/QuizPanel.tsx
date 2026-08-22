@@ -1,5 +1,5 @@
 import type { QuizAnswerResponse, QuizPrompt } from '@imanouchi/shared'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface QuizPanelProps {
   spotName: string
@@ -21,6 +21,14 @@ interface QuizPanelProps {
  *
  * ★ 演出やロードで待たせない。回答直後に操作権を戻す（FR-04-6）。
  * 正解を表示するためにアニメーションを挟むと、歩きながら遊ぶ前提が崩れる。
+ *
+ * ★ 画面に重ねて出す。サイドバーの中に置くと、**スマホでは地図の下に積まれて
+ * 画面の外にあり、チェックインしても出題があることに気づけない**（実際に
+ * そうなった）。ただし別画面にはしない。重ねるだけなので地図は作り直されず、
+ * 閉じれば中心と縮尺はそのまま残る。
+ *
+ * ★ 背景を触っても閉じない。**解説を読み終える前に消えては困る**（誤って
+ * 触れただけで学ぶ機会が消える）。閉じるのは × と「地図にもどる」だけにする。
  */
 export function QuizPanel({
   spotName,
@@ -35,13 +43,31 @@ export function QuizPanel({
   const [selected, setSelected] = useState<number | undefined>(undefined)
   const answered = result !== undefined
 
+  /*
+   * 答えたら解説まで送る。
+   *
+   * ★ 結果は選択肢の**下**に出る。板の高さが足りないと画面の外に出るので、
+   * 「答えたのに何も起きていない」ように見える。解説を必ず見せる設計
+   * （FR-04-6）は、解説が見えるところに無ければ成立しない。
+   *
+   * ★ 動きは付けない（`behavior` を指定しない＝即座に送る）。動きを減らす
+   * 設定を尊重するため（NFR-08）で、ここは演出ではなく位置合わせである。
+   */
+  const resultRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!answered) return
+    resultRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [answered])
+
   const handleRetry = (): void => {
     setSelected(undefined)
     onRetry()
   }
 
   return (
-    <section className="panel panel--quiz" aria-label="防災クイズ">
+    <div className="quizmodal">
+    <div className="quizmodal__sheet">
+    <section className="panel panel--quiz" role="dialog" aria-modal="true" aria-label="防災クイズ">
       <div className="panel__head">
         <div>
           {/* ★ クイズであることを目立たせる。チェックインの付属物ではない（FR-04・G-8） */}
@@ -89,6 +115,7 @@ export function QuizPanel({
 
       {answered && (
         <div
+          ref={resultRef}
           className={`quiz__result quiz__result--${result.correct ? 'correct' : 'wrong'}`}
           role="status"
         >
@@ -121,6 +148,18 @@ export function QuizPanel({
       <p className="panel__note">
         まちがえてもポイントは減りません。解説を読んで、何度でも挑戦できます。
       </p>
+
+      {/*
+        ★ 読み終えたあとの出口を大きく置く。× だけだと、重ねて出している以上
+        「どうやって地図に戻るのか」が分からない（× は小さく、位置も上端である）。
+      */}
+      {answered && (
+        <button type="button" className="button button--ghost quizmodal__back" onClick={onClose}>
+          地図にもどる
+        </button>
+      )}
     </section>
+    </div>
+    </div>
   )
 }
