@@ -1,4 +1,4 @@
-import type { SpotId, UserId } from '@imanouchi/shared'
+import { isSpotId, type SpotId, type UserId } from '@imanouchi/shared'
 import type { DataStoreContext } from '../context.js'
 import {
   spotStateKey,
@@ -54,8 +54,10 @@ export async function getUserSpotState(
     }),
   )
   if (!result) return undefined
+  return toState(result.params?.Item)
+}
 
-  const item = result.params?.Item
+function toState(item: unknown): UserSpotState | undefined {
   if (typeof item !== 'object' || item === null) return undefined
   const raw = item as Record<string, unknown>
 
@@ -98,4 +100,54 @@ export async function putUserSpotState(
       },
     }),
   )
+}
+
+/** 1レコード（スポットIDつき） */
+export interface UserSpotStateEntry extends UserSpotState {
+  spotId: SpotId
+}
+
+/**
+ * この利用者の全スポットぶんの状態を取る。
+ *
+ * ★ **1回の query で済む。** メインキーが `user#<userId>` なので、サブキーを
+ * 指定しなければその人の行が全部返る。スポットごとに getItem すると
+ * 訪れた数だけアクセスが増える（制約 E4：月次上限がある）。
+ *
+ * ★ 起動時にこれを引くのは「押せないボタンを押させない」ためである。
+ * 手元に前回時刻が無いと、再読み込み後は**チェックイン済みの場所でもボタンが
+ * 押せる状態に見え、押してから 409 で断られる**。
+ */
+export async function listUserSpotStates(
+  ctx: DataStoreContext,
+  userId: UserId,
+  limit: number,
+): Promise<UserSpotStateEntry[]> {
+  const tableId = ctx.tableId('userSpotState')
+  const result = await runOp('query', () =>
+    ctx.client.query({
+      tableId,
+      expression: `#${USER_SPOT_STATE_MAIN_KEY} = :${USER_SPOT_STATE_MAIN_KEY}`,
+      values: { [USER_SPOT_STATE_MAIN_KEY]: userKey(userId) },
+      limit,
+      order: false,
+    }),
+  )
+
+  const entries: UserSpotStateEntry[] = []
+  for (const item of result.params?.Items ?? []) {
+    const state = toState(item)
+    if (!state) continue
+
+    // サブキーは `spot#<spotId>`。接頭辞を外して戻す
+    const raw = item as Record<string, unknown>
+    const subKey = raw[USER_SPOT_STATE_SUB_KEY]
+    if (typeof subKey !== 'string' || !subKey.startsWith('spot#')) continue
+    const spotId = subKey.slice('spot#'.length)
+    if (!isSpotId(spotId)) continue
+
+    entries.push({ ...state, spotId })
+  }
+
+  return entries
 }

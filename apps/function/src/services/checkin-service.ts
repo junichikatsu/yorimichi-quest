@@ -5,11 +5,19 @@ import {
   getUser,
   getUserSpotState,
   incrementSpotCheckinCount,
+  listUserSpotStates,
   putUser,
   putUserSpotState,
   type DataStoreContext,
 } from '@imanouchi/datastore'
-import type { AreaId, CheckinResponse, SpotId } from '@imanouchi/shared'
+import type {
+  AreaId,
+  CheckinResponse,
+  ProgressResponse,
+  SpotId,
+  SpotProgressEntry,
+  UserId,
+} from '@imanouchi/shared'
 import { AppError, notFound, unauthorized } from '../errors.js'
 import { withDistance } from './spot-service.js'
 import type { Actor } from './actor.js'
@@ -141,4 +149,35 @@ export async function performCheckin(
     visitCount,
     saved: true,
   }
+}
+
+/**
+ * 進み具合をまとめて返す（FR-03・FR-04）。
+ *
+ * ★ データストアのアクセスは **query 1 回**。スポットごとに引くと、訪れた数だけ
+ * アクセスが増える（制約 E4）。
+ *
+ * ★ 次にチェックインできる時刻はここで計算する。クライアントに待ち時間を
+ * 計算させると、設定を変えたときに古いバンドルだけ挙動が違う状態になる。
+ */
+export async function getProgress(
+  ctx: DataStoreContext,
+  input: { userId: UserId; cooldownHours: number; limit: number },
+): Promise<ProgressResponse> {
+  const cooldownMs = input.cooldownHours * 60 * 60 * 1000
+  // 打ち切りを見分けるために1件多く引く（黙って切ると、切れた分のボタンが押せてしまう）
+  const rows = await listUserSpotStates(ctx, input.userId, input.limit + 1)
+  const truncated = rows.length > input.limit
+
+  const spots: SpotProgressEntry[] = (truncated ? rows.slice(0, input.limit) : rows).map((row) => ({
+    spotId: row.spotId,
+    visitCount: row.visitCount,
+    nextAvailableAt:
+      row.lastCheckinAt === undefined
+        ? undefined
+        : new Date(row.lastCheckinAt + cooldownMs).toISOString(),
+    quizCleared: row.quizClearedAt !== undefined,
+  }))
+
+  return { spots, truncated }
 }
