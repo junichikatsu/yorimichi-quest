@@ -4,6 +4,7 @@ import {
   enableSound,
   notifyAreaUnlocked,
   notifyArrival,
+  notifyCardAcquired,
   resetFeedback,
   vibrate,
 } from './feedback.js'
@@ -166,5 +167,25 @@ describe('notifyArrival', () => {
 
     // 2打＋跳ねの3音。開放（2音）とは数で、チェックイン（3音上昇）とはリズムで分かれる
     expect(ctx.createOscillator).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('notifyCardAcquired', () => {
+  it('★ 音を有効にしていなくても落ちない（無音で通り過ぎる）', () => {
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('navigator', {})
+
+    expect(() => notifyCardAcquired()).not.toThrow()
+  })
+
+  it('★ いちばん長い上昇にする（チェックインより格が下にならないように）', async () => {
+    const ctx = fakeAudioContext('running')
+    vi.stubGlobal('window', { AudioContext: vi.fn(() => ctx) })
+    vi.stubGlobal('navigator', {})
+    await enableSound()
+
+    notifyCardAcquired()
+
+    expect(ctx.createOscillator).toHaveBeenCalledTimes(4)
   })
 })

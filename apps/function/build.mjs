@@ -22,6 +22,13 @@ const STATIC_ASSETS = [
   { name: 'app.js', contentType: 'text/javascript; charset=utf-8', binary: false },
   { name: 'app.css', contentType: 'text/css; charset=utf-8', binary: false },
   { name: 'caps.html', contentType: 'text/html; charset=utf-8', binary: false },
+  /*
+   * ★ card-catalog.html（カードの一覧・開発用）は**入れない。**
+   *
+   * ローカル起動は public/ をディスクから読むのでそのまま開ける。ZIP に入れると
+   * 本番にも置かれるが、中身を返す API（/v1/dev/card-catalog）はインメモリ実装の
+   * ときしか通らないため、開いても何も出ない**壊れたページ**になる。
+   */
 ]
 
 function resolveCommit() {

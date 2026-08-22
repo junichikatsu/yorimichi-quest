@@ -1,9 +1,17 @@
 interface StartGateProps {
   /** おためしを許すか（サーバー設定） */
   guestAvailable: boolean
+  /**
+   * 開発用ログインが使えるか（ローカル起動のときだけ真）。
+   *
+   * ★ ローカルでは LIFF のログインが完走しないため、これが無いと
+   * **チェックインの保存とカードを手元で確かめられない。**
+   */
+  devAvailable: boolean
   busy: boolean
   onLineLogin: () => void
   onGuest: () => void
+  onDevLogin: () => void
   /** 直前の失敗の説明。LINE ログインが失敗して戻ってきた場合に出す */
   message: string
 }
@@ -19,9 +27,11 @@ interface StartGateProps {
  */
 export function StartGate({
   guestAvailable,
+  devAvailable,
   busy,
   onLineLogin,
   onGuest,
+  onDevLogin,
   message,
 }: StartGateProps): React.JSX.Element {
   return (
@@ -67,6 +77,27 @@ export function StartGate({
               地図と有事モードは同じように動きます。
               <strong>歩いた記録はこの端末の中だけに残り</strong>、
               ログインしても引き継げません。
+            </p>
+          </>
+        )}
+
+        {/*
+          ★ ローカル起動のときだけ出る。サーバー側もインメモリ実装のときしか
+          この経路を作らないので、本番では出ようがない。
+        */}
+        {devAvailable && (
+          <>
+            <button
+              type="button"
+              className="button button--ghost start__button start__button--dev"
+              onClick={onDevLogin}
+              disabled={busy}
+            >
+              開発用ログイン（ローカル確認）
+            </button>
+            <p className="start__note">
+              LINE ログインと同じ経路で動きます。チェックインの保存とカードを手元で確かめる
+              ためのもので、<strong>記録はサーバーを再起動すると消えます</strong>。
             </p>
           </>
         )}

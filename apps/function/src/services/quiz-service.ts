@@ -6,9 +6,11 @@ import {
   putUserSpotState,
   type DataStoreContext,
 } from '@imanouchi/datastore'
-import type { AreaId, QuizAnswerResponse, QuizResponse, SpotId } from '@imanouchi/shared'
+import { ITEM_DEFS, SPOT_CATEGORY_LABELS, toCardId, type SpotCategory } from '@imanouchi/shared'
+import type { AreaId, CardView, ItemKey, QuizAnswerResponse, QuizResponse, SpotId } from '@imanouchi/shared'
 import { quizSource, toPrompt } from '../data/quiz-bank.js'
 import { badRequest, notFound, unauthorized } from '../errors.js'
+import { grantCards, grantMissions, type CardDefinition } from './card-service.js'
 import type { Actor } from './actor.js'
 
 /**
@@ -63,6 +65,41 @@ export interface AnswerQuizInput {
 }
 
 /**
+ * クイズ正解でしか手に入らない道具（FR-14-6）。
+ *
+ * ★ チェックインで配るもの（`checkinItemFor`）と重ならないよう、カテゴリごとに
+ * 別の道具を割り当てている。同じものを配ると、クイズに答える意味が薄くなる。
+ */
+function quizRewardFor(category: SpotCategory): ItemKey | undefined {
+  switch (category) {
+    case 'shelter':
+      return 'zukin'
+    case 'aed':
+      return 'headlight'
+    case 'accessible_toilet':
+      return 'whistle'
+    case 'water':
+      return 'raincoat'
+    default:
+      return undefined
+  }
+}
+
+function toolCardDef(itemKey: ItemKey): CardDefinition {
+  const def = ITEM_DEFS[itemKey]
+  return {
+    cardId: toCardId('tool', itemKey),
+    kind: 'tool',
+    title: def.name,
+    condition:
+      def.fromCategory === null
+        ? '現地のクイズに正解して手に入れる'
+        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}でチェックインして手に入れる`,
+    body: def.use,
+  }
+}
+
+/**
  * 採点（FR-04-3・FR-04-6）。
  *
  * 報酬はスポットごとに一度だけ。二度目以降の正解でも解説は返すが、加点はしない。
@@ -100,6 +137,8 @@ export async function answerQuiz(
       pointsEarned: correct ? input.correctPoints : 0,
       totalPoints: 0,
       canRetry: !correct,
+      // ★ おためしではカードを扱わない（未達成の中身を隠す仕組みが成立しないため）
+      acquiredCards: [],
       saved: false,
     }
   }
@@ -121,6 +160,8 @@ export async function answerQuiz(
       totalPoints: profile.totalPoints,
       // ペナルティを課さないので、不正解ならいつでも再挑戦できる（G-7）
       canRetry: !correct,
+      // 報酬を受け取り済みなので、カードも増えない
+      acquiredCards: [],
       saved: false,
     }
   }
@@ -140,6 +181,32 @@ export async function answerQuiz(
     quizClearedAt: input.now,
   })
 
+  /*
+   * カード（FR-14）。行動カードと、クイズ正解でしか手に入らない道具カードを達成させる。
+   *
+   * ★ 行動カードの中身は**行動そのもの**（`card.action`）である。見出しは場面に
+   * してあるので、達成するまで答えは読めない。
+   */
+  const targets: CardDefinition[] = [
+    {
+      cardId: toCardId('action', entry.quizId),
+      kind: 'action',
+      title: entry.card.scene,
+      condition: 'このスポットのクイズに正解する',
+      body: entry.card.action,
+      category: entry.category,
+    },
+  ]
+  const rewardKey = quizRewardFor(spot.category)
+  if (rewardKey) targets.push(toolCardDef(rewardKey))
+
+  const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
+  if (acquiredCards.length > 0) {
+    acquiredCards.push(
+      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
+    )
+  }
+
   return {
     correct: true,
     answerIndex: entry.answerIndex,
@@ -147,6 +214,7 @@ export async function answerQuiz(
     pointsEarned: input.correctPoints,
     totalPoints,
     canRetry: false,
+    acquiredCards,
     saved: true,
   }
 }

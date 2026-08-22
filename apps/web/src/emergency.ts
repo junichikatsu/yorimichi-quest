@@ -32,11 +32,19 @@ export interface GameElements {
   quiz: boolean
   /** 探索率と霧（FR-02-7） */
   exploration: boolean
+  /** カードの一覧と獲得の演出（FR-14） */
+  cards: boolean
 }
 
 export function gameElements(emergency: boolean): GameElements {
   const visible = !emergency
-  return { points: visible, checkin: visible, quiz: visible, exploration: visible }
+  return {
+    points: visible,
+    checkin: visible,
+    quiz: visible,
+    exploration: visible,
+    cards: visible,
+  }
 }
 
 /**

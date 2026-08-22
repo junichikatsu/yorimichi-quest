@@ -125,6 +125,7 @@ describe('gameElements', () => {
       checkin: true,
       quiz: true,
       exploration: true,
+      cards: true,
     })
   })
 

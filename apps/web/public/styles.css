@@ -158,11 +158,24 @@ button {
   flex-direction: column;
 }
 
+/*
+ * 状態バー。
+ *
+ * ★ 折り返せるようにしておく（`flex-wrap`）。
+ *
+ * 右側に置くものは増える（位置情報・有事モードの切替…）。狭い画面で入り切らないとき、
+ * 折り返せないと**左のブランドが潰されて縦に伸びる**。実際にそうなった：
+ * ポイント（FR-03-2）と有事モード（FR-08-1）が増えた結果、スマホで
+ * 「イ／マ／ノ／ウ／チ」と1文字ずつ改行され、状態バーが画面の1/4を占めた。
+ *
+ * 潰れるより、2段になるほうがよい。
+ */
 .statusbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding: 0.6rem 0.9rem;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
@@ -172,6 +185,18 @@ button {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  /* 余った幅を取る。縮むのは名前だけに限る（下の nowrap で切り詰める） */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * ★ 名前の入れ物には min-width: 0 が必要である。
+ *
+ * フレックスの子は既定で「最小内容幅」より縮まない。**日本語の最小内容幅は
+ * 1文字**なので、これが無いと幅1文字まで縮んでから縦に伸び続ける。
+ */
+.statusbar__names {
   min-width: 0;
 }
 
@@ -188,16 +213,28 @@ button {
   display: inline-block;
 }
 
+/*
+ * ★ 折り返さずに切り詰める。
+ *
+ * 日本語はどこでも改行できるため、幅が足りないと 1 文字ずつ縦に積まれる。
+ * 「…」で切れているほうが、縦に伸びて地図を押しのけるより読める。
+ */
 .statusbar__title {
   margin: 0;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__sub {
   margin: 0;
   font-size: 0.78rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__geo {
@@ -208,6 +245,8 @@ button {
   background: var(--chip);
   color: var(--muted);
   flex: none;
+  /* 「位置情報を利用できません」も1文字ずつ折り返させない */
+  white-space: nowrap;
 }
 
 .statusbar__geo--denied,
@@ -329,10 +368,12 @@ button {
 /* ---------------- パネル ---------------- */
 
 .sidebar {
+  /* ★ タブの帯が余白を打ち消すので、値を1か所に置く（食い違うと隙間が出る） */
+  --sidebar-pad: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.9rem;
+  padding: var(--sidebar-pad);
   background: var(--bg);
   border-left: 1px solid var(--line);
 }
@@ -586,7 +627,9 @@ button {
   overflow: hidden;
 }
 
+/* ★ 伸びるところを見せる。数値だけが差し替わると、進んだことに気づかない */
 .exploration__bar-fill {
+  transition: width 0.5s ease-out;
   height: 100%;
   background: var(--accent);
 }
@@ -764,6 +807,7 @@ button {
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .statusbar__mode--on {
@@ -1282,10 +1326,36 @@ button {
   align-items: baseline;
   gap: 0.15rem;
   margin-left: auto;
+  /* 数字は切り詰められない。名前より優先して幅を確保する */
+  flex: none;
+  white-space: nowrap;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background: var(--chip);
   color: var(--accent);
+}
+
+/*
+ * 増えた瞬間の跳ね（FR-03-2）。
+ *
+ * ★ 演出は地図の上に出るのに、累計はここにある。**増えたことがこの数字に
+ * つながっている**ことを一度だけ見せる。減ることは無いので増加時のみ。
+ */
+.statusbar__points--bumped {
+  animation: points-bump 0.7s ease-out;
+}
+
+@keyframes points-bump {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18);
+    background: #ece2f6;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .statusbar__points-value {
@@ -1391,13 +1461,26 @@ button {
   .flash,
   .walkdigest,
   .panel--quiz,
-  .quiz__stamp {
+  .quiz__stamp,
+  .reveal__flip,
+  .statusbar__points--bumped,
+  .sidetabs__new {
     animation: none;
+  }
+
+  /* 幅が伸びるのも動きである。落とす設定では即座に反映する */
+  .exploration__bar-fill {
+    transition: none;
   }
 
   .marker--ready {
     animation: none;
     box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 4px rgb(107 78 143 / 60%);
+  }
+
+  /* 裏面は見せない。返る動きが無いなら、裏のまま止まって見える */
+  .reveal__back {
+    display: none;
   }
 }
 
@@ -1525,6 +1608,465 @@ button {
   color: var(--accent);
 }
 
+/* ---------------- カードコレクション（FR-14） ---------------- */
+
+.panel--cards {
+  border-color: var(--accent);
+}
+
+.cardfilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+
+.cardfilter__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.cardfilter__item--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.cardfilter__count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* 場所カードの残り。371枚を並べる代わりに件数で示す */
+.placecount {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.placecount__item {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chip);
+}
+
+.placecount__label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.placecount__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.placecount__total {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.cardgrid {
+  list-style: none;
+  display: grid;
+  /*
+   * ★ 2列に固定する。`auto-fill` にするとサイドバーの幅で3列になり、
+   * **1枚が小さくなってドット絵が潰れる。** 文字を小さくしてでも絵の大きさを取る。
+   */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.7rem 0 0;
+  padding: 0;
+}
+
+/* 一覧の中だけ文字を一段小さくする（絵に高さを譲る） */
+.cardgrid .card__kind {
+  font-size: 0.62rem;
+}
+
+.cardgrid .card__title {
+  font-size: 0.78rem;
+}
+
+.cardgrid .card__body,
+.cardgrid .card__condition {
+  font-size: 0.68rem;
+  /* 一覧は縦に余裕があるので1行多く見せる */
+  -webkit-line-clamp: 4;
+  max-height: calc(4 * 1.5em);
+}
+
+/*
+ * カード1枚。
+ *
+ * ★ 未達成でも枠を並べる（FR-14）。「何が残っているか」が常に見えている状態を作る。
+ * 未達成は色を落とすが、**線は残す**（消えていると存在しないように見える）。
+ */
+.card {
+  --card-color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  /*
+   * ★ 縦横比を固定する。**本文の長さで高さが変わると、並べたときに揃わない。**
+   * カードは同じ形の札が並ぶものなので、文章量で形が変わってはいけない。
+   * 5:7 はトレーディングカードに近い比率。
+   */
+  aspect-ratio: 5 / 7;
+  padding: 0.5rem;
+  background: var(--surface);
+  /*
+   * ★ 角丸を使わず階段状に落とす。**これがドット絵と揃える要点**である。
+   * 丸めるとドットの絵だけが浮いて、枠と中身が別物に見える。
+   */
+  clip-path: polygon(
+    0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+    100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+    6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+  );
+  box-shadow: inset 0 0 0 3px var(--card-color), 4px 4px 0 rgb(36 31 39 / 22%);
+  /* 等幅にして文字もドットの列に寄せる */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.card--achieved {
+  --card-color: var(--accent);
+}
+
+/* 道具は実物の色に寄せる（茶）。場所と行動はカテゴリの色を表示側が渡す */
+.card--tool.card--achieved {
+  --card-color: #7a5c2e;
+}
+
+.card__kind {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--card-color);
+}
+
+.card__progress {
+  font-variant-numeric: tabular-nums;
+}
+
+.card__title {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  /*
+   * ★ 3行で切る。スポット名は長いものがあり（「ありすいきいきプラザ」など）、
+   * 切らないと本文を押し出してカードから溢れる。
+   */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card__body,
+.card__condition {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  /*
+   * 残りの高さに収める。
+   * ★ 行数で切る（`overflow: hidden` だけだと**行の途中で切れて壊れて見える**）。
+   */
+  flex: 1;
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /*
+   * ★ 行数の上限と**高さの上限を両方置く。** 行数だけだと、器が3行より高いときに
+   * 4行目の上半分が覗いて壊れて見える（実際に覗いた）。
+   */
+  max-height: calc(3 * 1.5em);
+}
+
+.card__condition {
+  color: var(--muted);
+}
+
+/*
+ * カードの絵。**画像を持たず 24×24 の点を canvas に打つ。**
+ *
+ * ★ 拡大は image-rendering に任せる。canvas の実寸を大きくして太い四角を描くと、
+ * 端末の拡大率で点の大きさが揃わない。
+ */
+.cardart {
+  /* ★ 色はカード（article）から受け取る。絵の側で決めると枠と食い違う */
+  --art-color: var(--card-color);
+  /* ★ 縮ませない。カードの高さを固定したので、文章が長いと絵が潰される */
+  flex: none;
+  width: 100%;
+  /*
+   * ★ カードの高さに対する割合で持つ（`aspect-ratio` と `width: auto` の
+   * 組み合わせにすると、flex の中で幅が canvas の実寸 24px まで縮む）。
+   */
+  height: 42%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--card-color) 14%, var(--surface));
+}
+
+.cardart__canvas {
+  display: block;
+  /* ★ 正方形を保つ。器の幅いっぱいに伸ばすと絵が横に潰れる */
+  height: 100%;
+  width: auto;
+  aspect-ratio: 1 / 1;
+  /* ★ これが無いとドット絵がぼやけて、拡大した写真のように見える */
+  image-rendering: pixelated;
+}
+
+/* ---------------- カード獲得の演出（FR-14-8） ---------------- */
+
+/*
+ * ★ 下の地図に指が届くようにはしない（ここはタップで閉じる面である）。
+ * チェックインの演出（.burst）と違い、**触って閉じることが操作の一部**なので
+ * pointer-events は通す。
+ */
+.reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  padding: 1.2rem;
+  background: rgb(20 16 22 / 72%);
+  cursor: pointer;
+}
+
+.reveal__lead {
+  margin: 0;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.reveal__hint {
+  margin: 0;
+  color: rgb(255 255 255 / 75%);
+  font-size: 0.75rem;
+}
+
+.reveal__cards {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+}
+
+.reveal__slot {
+  /* 既定は遅延なし。1枚ずつずらす値は表示側が要素に入れる */
+  --reveal-delay: 0s;
+  width: 9rem;
+  /* 3D の奥行き。これが無いと回転が平面のつぶれた動きになる */
+  perspective: 900px;
+}
+
+/*
+ * 裏から表へ返す。
+ *
+ * ★ transform と opacity だけを動かす（レイアウトを触らない）。
+ * ライブラリを入れずに 60fps を出すための条件である。
+ */
+.reveal__flip {
+  position: relative;
+  /* 裏面（absolute）と表面の大きさをそろえるため、ここで比率を持つ */
+  aspect-ratio: 5 / 7;
+  transform-style: preserve-3d;
+  animation: card-flip 0.62s ease-out backwards;
+  animation-delay: var(--reveal-delay, 0s);
+}
+
+.reveal__back,
+.reveal__front {
+  backface-visibility: hidden;
+}
+
+/* 表面は器いっぱいに広げる（比率は .reveal__flip が持つ） */
+.reveal__front {
+  height: 100%;
+}
+
+/*
+ * 演出の中の文字は一段小さくする。
+ *
+ * ★ ここは「何を手に入れたか」が伝わればよい。全文は一覧で読める。
+ * 文字を大きく保つと行が入りきらず、**行の途中で切れて壊れて見える**。
+ */
+.reveal__front .card__body {
+  font-size: 0.68rem;
+}
+
+.reveal__back {
+  position: absolute;
+  inset: 0;
+  /* 表面と同じ階段状の角にそろえる（丸めると裏だけ別物に見える） */
+  clip-path: polygon(
+    0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+    100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+    6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+  );
+  background: #1b1622;
+  box-shadow: inset 0 0 0 3px var(--accent);
+  transform: rotateY(180deg);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.35rem;
+  color: #fff;
+}
+
+.reveal__mark {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  background: rgb(255 255 255 / 92%);
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 700;
+  /* 角を丸めない。表面と同じドットの作法にそろえる */
+  box-shadow: 0 0 0 3px #1b1622, 3px 3px 0 rgb(0 0 0 / 35%);
+}
+
+.reveal__word {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.3em;
+}
+
+@keyframes card-flip {
+  from {
+    transform: rotateY(180deg) scale(0.94);
+  }
+  to {
+    transform: rotateY(360deg) scale(1);
+  }
+}
+
+/*
+ * 開発用ログインの入口（ローカル確認専用）。
+ *
+ * ★ 本番の導線と見分けがつく見た目にする。破線にしてあるのは、
+ * 「これは製品の機能ではない」と一目で分かるようにするためである。
+ */
+.start__button--dev {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/*
+ * 新しく手に入れたカードの印（FR-14-8）。
+ *
+ * ★ 獲得の演出は数秒で消える。**消えたあとの行き先**をタブに残しておく。
+ * 獲得時は枚数の表示を取り直すために消しているので、これが無いと
+ * 「手に入れたのに、むしろ数字が消えた」ことになる。
+ */
+.sidetabs__new {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: newcards-in 0.3s ease-out;
+}
+
+@keyframes newcards-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * サイドバーのタブ（探索・スポット / カード）。
+ *
+ * ★ 積み重ねずに切り替える。カードを開いたときに探索や近くのスポットが下へ
+ * 押し出されると、地図の横で何を見ているのか分からなくなる。
+ *
+ * ★ 上に貼り付ける（sticky）。一覧を下までたどってから切り替え直すのは面倒である。
+ */
+.sidetabs {
+  position: sticky;
+  /*
+   * ★ サイドバーの padding ぶん上へ吸い付かせ、**左右と上の余白を打ち消して
+   * 全幅の帯にする。** 帯にしないと、スクロールした中身が余白の隙間と
+   * 丸めた角の外側から覗いて、タブに重なって見える（実際に重なった）。
+   */
+  top: calc(-1 * var(--sidebar-pad));
+  z-index: 3;
+  margin: calc(-1 * var(--sidebar-pad)) calc(-1 * var(--sidebar-pad)) 0;
+  padding: var(--sidebar-pad) var(--sidebar-pad) 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+  /* ★ 透けない地色。サイドバーと同じにして、帯だと分からないようにする */
+  background: var(--bg);
+}
+
+.sidetabs__tab {
+  flex: 1;
+  display: inline-flex;
+  /* ★ 中央にそろえる。baseline だと件数の文字に引かれて上寄りになる */
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 2.4rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sidetabs__tab--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.sidetabs__count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+
 /* ---------------- 到着の知らせと出来事の演出（FR-02-10・FR-03-2） ---------------- */
 
 /*
@@ -1614,9 +2156,14 @@ button {
 .flash {
   position: fixed;
   left: 50%;
-  top: 4.2rem;
+  top: calc(env(safe-area-inset-top, 0px) + 4.2rem);
   transform: translateX(-50%);
-  z-index: 40;
+  /*
+   * ★ カードの演出（`.reveal`）より後ろに置く。強い演出が出ている間に
+   * 帯を重ねない（重なるとどちらも読まれない）。並びは
+   * burst 30 < flash 35 < reveal 40 < walkdigest 50 < walkguard 60。
+   */
+  z-index: 35;
   pointer-events: none;
   max-width: min(92vw, 24rem);
   padding: 0.5rem 1.1rem;
