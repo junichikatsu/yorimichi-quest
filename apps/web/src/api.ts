@@ -1,5 +1,7 @@
 import type {
   Avatar,
+  CheckinRequest,
+  CheckinResponse,
   ClientConfigResponse,
   ConsentRequest,
   ErrorResponse,
@@ -9,6 +11,9 @@ import type {
   GuestLoginResponse,
   LoginResponse,
   MeResponse,
+  QuizAnswerRequest,
+  QuizAnswerResponse,
+  QuizResponse,
   SpotsResponse,
 } from '@imanouchi/shared'
 
@@ -45,6 +50,14 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly status: number,
+    /**
+     * 付帯情報。
+     *
+     * ★ 画面の案内を書き分けるために要る。「離れすぎです」だけでは、
+     * 近づけば済むのか場所が違うのかが分からない（TOO_FAR は距離、
+     * COOLDOWN は次に押せる時刻を返す）。
+     */
+    readonly details: Record<string, string | number | boolean> = {},
   ) {
     super(message)
     this.name = 'ApiError'
@@ -72,14 +85,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let code = 'INTERNAL'
     let message = '通信に失敗しました'
+    let details: Record<string, string | number | boolean> = {}
     try {
       const body = (await response.json()) as ErrorResponse
       code = body.error.code
       message = body.error.message
+      details = body.error.details ?? {}
     } catch {
       // JSON で返らない経路（前段のエラーページ等）。status だけで判断する
     }
-    throw new ApiError(code, message, response.status)
+    throw new ApiError(code, message, response.status, details)
   }
 
   return (await response.json()) as T
@@ -146,5 +161,42 @@ export function saveAvatar(avatar: Avatar): Promise<MeResponse> {
   return request<MeResponse>('/v1/me/avatar', {
     method: 'PUT',
     body: JSON.stringify(avatar),
+  })
+}
+
+/**
+ * チェックイン（FR-03）。
+ *
+ * ★ 送るのは現在地だけ。距離もポイントもサーバーが決める。
+ * おためし（ゲスト）でも呼べるが、サーバーは保存しない（`saved` が false）。
+ */
+export function checkin(
+  spotId: string,
+  position: CheckinRequest,
+): Promise<CheckinResponse> {
+  return request<CheckinResponse>(`/v1/spots/${encodeURIComponent(spotId)}/checkin`, {
+    method: 'POST',
+    body: JSON.stringify(position),
+  })
+}
+
+/** クイズの取得（FR-04-1）。正解は含まれない */
+export function fetchQuiz(spotId: string): Promise<QuizResponse> {
+  return request<QuizResponse>(`/v1/spots/${encodeURIComponent(spotId)}/quiz`)
+}
+
+/**
+ * クイズの回答（FR-04-3・FR-04-6）。
+ *
+ * ★ 採点はサーバー。解説は正解・不正解のどちらでも返るので、
+ * 画面は結果をそのまま出せばよい。
+ */
+export function answerQuiz(
+  spotId: string,
+  body: QuizAnswerRequest,
+): Promise<QuizAnswerResponse> {
+  return request<QuizAnswerResponse>(`/v1/spots/${encodeURIComponent(spotId)}/quiz/answer`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }

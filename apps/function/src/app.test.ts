@@ -1,6 +1,7 @@
 import { FakeDataStoreClient, setDataStoreClient } from '@imanouchi/datastore'
 import type {
   AdminConfigResponse,
+  CheckinResponse,
   ClientConfigResponse,
   ErrorResponse,
   HealthResponse,
@@ -10,13 +11,15 @@ import type {
   GuestLoginResponse,
   MeResponse,
   PurgeResponse,
+  QuizAnswerResponse,
+  QuizResponse,
   SeedResponse,
   SpotsResponse,
 } from '@imanouchi/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app.js'
 import { resetRateLimit } from './middleware/rate-limit.js'
-import { resetFakeDataStore } from './services/datastore-context.js'
+import { fakeDataStore, resetFakeDataStore } from './services/datastore-context.js'
 import { setStaticAssetLoader } from './static.js'
 
 /**
@@ -33,6 +36,18 @@ const CHANNEL_ID = '1234567890'
 const TRIGGER_PATH = '/imanouchi'
 
 const app = createApp()
+
+/**
+ * インメモリ実装の中身を見る。
+ *
+ * ★ おためし（ゲスト）で「書かれていないこと」を確かめるには、レスポンスだけでは
+ * 足りない。**行が増えていないこと**を見る必要がある。
+ */
+function dump(tableId: string): Record<string, unknown>[] {
+  const store = fakeDataStore()
+  expect(store, 'インメモリ実装が使われていない').toBeDefined()
+  return store!.client.dump(tableId)
+}
 
 async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T
@@ -87,6 +102,8 @@ beforeEach(() => {
   process.env['RATE_LIMIT_PER_MINUTE'] = '200'
   process.env['AREA_ID'] = 'chiyoda-minato'
   process.env['ENABLE_GUEST_MODE'] = 'true'
+  // ★ 個別のテストで上書きするので、毎回消してから始める（前のテストの値が残る）
+  delete process.env['CHECKIN_COOLDOWN_HOURS']
   setDataStoreClient(new FakeDataStoreClient())
   resetFakeDataStore()
   resetRateLimit()
@@ -883,5 +900,318 @@ describe('おためし利用（POST /v1/auth/guest）', () => {
     const response = await app.request('/v1/auth/guest', { method: 'POST' })
 
     expect(response.status).toBe(403)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * チェックイン（FR-03）
+ * ------------------------------------------------------------------ */
+
+/** サンプルデータの避難場所（日比谷公園）。位置はこのスポットに合わせる */
+const SHELTER_SPOT_ID = 'sample-hibiya-park'
+const AT_SPOT = { lat: 35.6739, lng: 139.7568 }
+
+function checkinBody(position: { lat: number; lng: number }): string {
+  return JSON.stringify(position)
+}
+
+async function checkin(
+  token: string,
+  position: { lat: number; lng: number },
+  spotId = SHELTER_SPOT_ID,
+): Promise<Response> {
+  return app.request(`/v1/spots/${spotId}/checkin`, {
+    method: 'POST',
+    headers: auth(token),
+    body: checkinBody(position),
+  })
+}
+
+describe('POST /v1/spots/:spotId/checkin', () => {
+  it('圏内ならチェックインでき、初回ボーナスが付く（FR-03-1・FR-03-2）', async () => {
+    const { token } = await loginOk()
+    const response = await checkin(token, AT_SPOT)
+    const body = await json<CheckinResponse>(response)
+
+    expect(response.status).toBe(200)
+    expect(body.saved).toBe(true)
+    expect(body.breakdown.firstVisitBonus).toBeGreaterThan(0)
+    expect(body.pointsEarned).toBe(body.breakdown.base + body.breakdown.firstVisitBonus)
+    expect(body.totalPoints).toBe(body.pointsEarned)
+    expect(body.visitCount).toBe(1)
+    // 回数は事前計算で持つ（集計クエリが無いため）
+    expect(body.spot.checkinCount).toBe(1)
+  })
+
+  it('累計ポイントが /v1/me にも反映される', async () => {
+    const { token } = await loginOk()
+    const earned = (await json<CheckinResponse>(await checkin(token, AT_SPOT))).pointsEarned
+
+    const me = await json<MeResponse>(await app.request('/v1/me', { headers: auth(token) }))
+    expect(me.user.totalPoints).toBe(earned)
+  })
+
+  it('★ 圏外は 409 TOO_FAR。距離を返して近づけることを伝える', async () => {
+    const { token } = await loginOk()
+    // 約 1.4km 南（サーバーが距離を計算するので、申告位置がそのまま判定される）
+    const response = await checkin(token, { lat: 35.6615, lng: 139.7568 })
+    const body = await json<ErrorResponse>(response)
+
+    expect(response.status).toBe(409)
+    expect(body.error.code).toBe('TOO_FAR')
+    expect(body.error.details?.['distanceM']).toBeGreaterThan(100)
+  })
+
+  it('★ 同一スポットの再チェックインは制限される（FR-03-3）', async () => {
+    const { token } = await loginOk()
+    expect((await checkin(token, AT_SPOT)).status).toBe(200)
+
+    const response = await checkin(token, AT_SPOT)
+    const body = await json<ErrorResponse>(response)
+
+    expect(response.status).toBe(409)
+    expect(body.error.code).toBe('COOLDOWN')
+    expect(typeof body.error.details?.['nextAvailableAt']).toBe('string')
+  })
+
+  it('★ 制限が明けたら初回ボーナス無しで通り、訪問回数が増える', async () => {
+    /*
+     * ★ 偽の時計を持ち込まず、待ち時間を 0 にして「明けた状態」を作る。
+     * 時刻をずらす仕掛けはテストの外（環境変数）に置くほうが壊れにくい。
+     * クールダウンの境界そのものは packages/core の単体テストで見ている。
+     */
+    process.env['CHECKIN_COOLDOWN_HOURS'] = '0'
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+
+    const body = await json<CheckinResponse>(await checkin(token, AT_SPOT))
+    expect(body.breakdown.firstVisitBonus).toBe(0)
+    expect(body.pointsEarned).toBe(body.breakdown.base)
+    expect(body.visitCount).toBe(2)
+    expect(body.spot.checkinCount).toBe(2)
+  })
+
+  it('存在しないスポットは 404', async () => {
+    const { token } = await loginOk()
+    const response = await checkin(token, AT_SPOT, 'sample-does-not-exist')
+    expect(response.status).toBe(404)
+  })
+
+  it('spotId の形が不正なら 400', async () => {
+    const { token } = await loginOk()
+    const response = await checkin(token, AT_SPOT, 'NOT_A_SPOT_ID')
+    expect(response.status).toBe(400)
+  })
+
+  it('★ 認証なしでは呼べない', async () => {
+    const response = await app.request(`/v1/spots/${SHELTER_SPOT_ID}/checkin`, {
+      method: 'POST',
+      body: checkinBody(AT_SPOT),
+    })
+    expect(response.status).toBe(401)
+  })
+
+  it('★ 履歴が新しい順に取れる形で入る（サブキーは数値）', async () => {
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+
+    const rows = dump('fake-checkins')
+    expect(rows.length).toBe(1)
+    expect(typeof rows[0]?.['checkinAt']).toBe('number')
+    // スポット名は非正規化して持つ（JOIN が無いため）
+    expect(rows[0]?.['spotName']).toContain('日比谷公園')
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * クイズ（FR-04）
+ * ------------------------------------------------------------------ */
+
+async function fetchQuiz(token: string, spotId = SHELTER_SPOT_ID): Promise<QuizResponse> {
+  const response = await app.request(`/v1/spots/${spotId}/quiz`, { headers: auth(token) })
+  expect(response.status).toBe(200)
+  return json<QuizResponse>(response)
+}
+
+async function answer(
+  token: string,
+  quizId: string,
+  choiceIndex: number,
+  spotId = SHELTER_SPOT_ID,
+): Promise<Response> {
+  return app.request(`/v1/spots/${spotId}/quiz/answer`, {
+    method: 'POST',
+    headers: auth(token),
+    body: JSON.stringify({ quizId, choiceIndex }),
+  })
+}
+
+describe('GET /v1/spots/:spotId/quiz', () => {
+  it('スポットに応じた出題を返す（FR-04-1）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchQuiz(token)
+
+    expect(body.quiz.question).not.toBe('')
+    expect(body.quiz.options.length).toBeGreaterThanOrEqual(2)
+    expect(body.quiz.generatedBy).toBe('fixture')
+    expect(body.alreadyCleared).toBe(false)
+  })
+
+  it('★ レスポンスに正解も解説も含まれない（配信物から答えが読めない）', async () => {
+    const { token } = await loginOk()
+    const text = await (
+      await app.request(`/v1/spots/${SHELTER_SPOT_ID}/quiz`, { headers: auth(token) })
+    ).text()
+
+    expect(text).not.toContain('answerIndex')
+    expect(text).not.toContain('explanation')
+  })
+
+  it('★ 同じスポットでは毎回同じ問題が出る（リロードで変わらない）', async () => {
+    const { token } = await loginOk()
+    const first = await fetchQuiz(token)
+    const second = await fetchQuiz(token)
+
+    expect(second.quiz.quizId).toBe(first.quiz.quizId)
+  })
+
+  it('★ 未正解のうちは行動を問う設問が出る（FR-04-7・G-8）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchQuiz(token)
+
+    // 固定データでは行動の設問だけが `-action-` / `-flood-` の形を持つ
+    expect(body.quiz.quizId.startsWith('shelter-action')).toBe(true)
+  })
+})
+
+describe('POST /v1/spots/:spotId/quiz/answer', () => {
+  it('正解でボーナスポイントが入る（FR-04-3）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+
+    const body = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+
+    expect(body.correct).toBe(true)
+    expect(body.pointsEarned).toBeGreaterThan(0)
+    expect(body.totalPoints).toBe(body.pointsEarned)
+    expect(body.saved).toBe(true)
+    expect(body.canRetry).toBe(false)
+  })
+
+  it('★ 不正解でも解説と正解が返り、再挑戦できる（FR-04-6・G-7）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+
+    const body = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 1))
+
+    expect(body.correct).toBe(false)
+    expect(body.explanation).not.toBe('')
+    expect(body.answerIndex).toBe(0)
+    expect(body.canRetry).toBe(true)
+    // ★ ペナルティを与えない
+    expect(body.pointsEarned).toBe(0)
+    expect(body.totalPoints).toBe(0)
+  })
+
+  it('★ 報酬はスポットごとに一度だけ（二度目の正解では増えない）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+    const first = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+
+    const again = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+
+    expect(again.correct).toBe(true)
+    expect(again.pointsEarned).toBe(0)
+    expect(again.totalPoints).toBe(first.totalPoints)
+    expect(again.saved).toBe(false)
+  })
+
+  it('正解済みなら次は設備・備蓄を問う設問が出る（行動を扱ったあと）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+    await answer(token, quiz.quiz.quizId, 0)
+
+    const next = await fetchQuiz(token)
+    expect(next.alreadyCleared).toBe(true)
+    expect(next.quiz.quizId).not.toBe(quiz.quiz.quizId)
+  })
+
+  it('★ 別スポットのクイズIDで報酬だけ得ることはできない', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+
+    // 避難場所の設問を AED のスポットへ送る
+    const response = await answer(token, quiz.quiz.quizId, 0, 'sample-toranomon-aed')
+
+    expect(response.status).toBe(400)
+    expect((await json<ErrorResponse>(response)).error.code).toBe('BAD_REQUEST')
+  })
+
+  it('選択肢の範囲外は 400', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+
+    const response = await answer(token, quiz.quiz.quizId, 9)
+    expect(response.status).toBe(400)
+  })
+
+  it('存在しないクイズIDは 404', async () => {
+    const { token } = await loginOk()
+    const response = await answer(token, 'no-such-quiz', 0)
+    expect(response.status).toBe(404)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * おためし（ゲスト）でのチェックインとクイズ
+ * ------------------------------------------------------------------ */
+
+describe('おためしのチェックイン・クイズ', () => {
+  async function guestToken(): Promise<string> {
+    const response = await app.request('/v1/auth/guest', { method: 'POST' })
+    expect(response.status).toBe(200)
+    return (await json<GuestLoginResponse>(response)).token
+  }
+
+  it('判定はサーバーが行う（圏内なら成功する）', async () => {
+    const token = await guestToken()
+    const body = await json<CheckinResponse>(await checkin(token, AT_SPOT))
+
+    expect(body.pointsEarned).toBeGreaterThan(0)
+    // ★ サーバーは累計を持たない。画面が端末の記録へ加算する合図
+    expect(body.saved).toBe(false)
+    expect(body.totalPoints).toBe(0)
+  })
+
+  it('★ チェックインしてもデータストアには何も書かれない', async () => {
+    const token = await guestToken()
+    await checkin(token, AT_SPOT)
+
+    expect(dump('fake-checkins')).toEqual([])
+    expect(dump('fake-user-spot-state')).toEqual([])
+    expect(dump('fake-users')).toEqual([])
+  })
+
+  it('★ 圏外はゲストでも弾かれる（位置の判定は同じ経路）', async () => {
+    const token = await guestToken()
+    const response = await checkin(token, { lat: 35.6615, lng: 139.7568 })
+
+    expect(response.status).toBe(409)
+    expect((await json<ErrorResponse>(response)).error.code).toBe('TOO_FAR')
+  })
+
+  it('クイズは採点までサーバーで行い、保存はしない', async () => {
+    const token = await guestToken()
+    const quiz = await fetchQuiz(token)
+
+    const wrong = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 1))
+    expect(wrong.correct).toBe(false)
+    expect(wrong.explanation).not.toBe('')
+
+    const right = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+    expect(right.correct).toBe(true)
+    expect(right.pointsEarned).toBeGreaterThan(0)
+    expect(right.saved).toBe(false)
+    expect(dump('fake-user-spot-state')).toEqual([])
   })
 })

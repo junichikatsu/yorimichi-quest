@@ -1,0 +1,144 @@
+import { evaluateCheckin } from '@imanouchi/core'
+import {
+  appendCheckin,
+  getSpot,
+  getUser,
+  getUserSpotState,
+  incrementSpotCheckinCount,
+  putUser,
+  putUserSpotState,
+  type DataStoreContext,
+} from '@imanouchi/datastore'
+import type { AreaId, CheckinResponse, SpotId } from '@imanouchi/shared'
+import { AppError, notFound, unauthorized } from '../errors.js'
+import { withDistance } from './spot-service.js'
+import type { Actor } from './actor.js'
+
+/**
+ * チェックイン（FR-03）。
+ *
+ * ★ 距離もクールダウンもポイントも**サーバーで決める**（NFR-04）。
+ * クライアントから受け取るのは申告位置だけである。
+ *
+ * データストアのアクセス回数（制約 E4）: getItem × 3 + putItem × 4 = 7 回／回。
+ * 判定に必要な読み取りを `user_spot_state` の 1 件に寄せ、履歴の走査を避けている。
+ */
+
+export interface PerformCheckinInput {
+  actor: Actor
+  areaId: AreaId
+  spotId: SpotId
+  position: { lat: number; lng: number }
+  now: number
+  radiusM: number
+  cooldownHours: number
+}
+
+export async function performCheckin(
+  ctx: DataStoreContext,
+  input: PerformCheckinInput,
+): Promise<CheckinResponse> {
+  const spot = await getSpot(ctx, input.areaId, input.spotId)
+  if (!spot) throw notFound('スポットが見つかりません')
+
+  /*
+   * ★ おためし（ゲスト）は前回時刻を持たない。
+   *
+   * 記録をサーバーへ書かない設計なので、再チェックイン制限は**サーバーでは
+   * 効かない**（画面側が端末の記録で抑える）。ここで嘘の状態を作らず、
+   * 「前回が無い＝初回」としてそのまま扱う。
+   */
+  const state =
+    input.actor.kind === 'line'
+      ? await getUserSpotState(ctx, input.actor.userId, input.spotId)
+      : undefined
+
+  const decision = evaluateCheckin({
+    now: input.now,
+    userPosition: input.position,
+    spot: { lat: spot.lat, lng: spot.lng },
+    lastCheckinAt: state?.lastCheckinAt,
+    radiusM: input.radiusM,
+    cooldownMs: input.cooldownHours * 60 * 60 * 1000,
+  })
+
+  if (!decision.ok) {
+    if (decision.reason === 'too_far') {
+      // 距離は返す。画面が「あと何m」を出せないと、近づけばよいことが伝わらない
+      throw new AppError('TOO_FAR', 409, 'スポットから離れすぎています', {
+        distanceM: Math.round(decision.distanceM),
+        radiusM: decision.radiusM,
+      })
+    }
+    throw new AppError('COOLDOWN', 409, 'このスポットは時間をおいて再チェックインできます', {
+      nextAvailableAt: new Date(decision.nextAvailableAt).toISOString(),
+    })
+  }
+
+  const nextAvailableAt = new Date(decision.nextAvailableAt).toISOString()
+
+  // ★ おためしはここで終わり。判定だけ返し、データストアへは一切書かない
+  if (input.actor.kind === 'guest') {
+    return {
+      spot: withDistance(spot, input.position),
+      distanceM: Math.round(decision.distanceM),
+      pointsEarned: decision.pointsEarned,
+      breakdown: decision.breakdown,
+      // サーバーは累計を持たない。画面が端末の記録へ加算する
+      totalPoints: 0,
+      nextAvailableAt,
+      visitCount: 1,
+      saved: false,
+    }
+  }
+
+  const userId = input.actor.userId
+  const profile = await getUser(ctx, userId)
+  /*
+   * ★ セッションは正しいのにユーザーが居ない場合。
+   *
+   * ここで空のプロフィールを作ってはいけない。LINE の表示名を持たない行が
+   * できてしまい、以後のログインでも直らない。取り直せば `ensureUser` が通る。
+   */
+  if (!profile) throw unauthorized('ユーザー情報が見つかりません。開き直してください')
+
+  const nowIso = new Date(input.now).toISOString()
+  const visitCount = (state?.visitCount ?? 0) + 1
+
+  // 履歴（FR-03）。スポット名と点数を非正規化して持つ（JOIN が無いため）
+  await appendCheckin(ctx, userId, {
+    checkinAt: input.now,
+    spotId: spot.spotId,
+    spotName: spot.name,
+    pointsEarned: decision.pointsEarned,
+    lat: input.position.lat,
+    lng: input.position.lng,
+  })
+
+  // 再チェックイン制限と貢献度（FR-03-3・FR-03-4）
+  await putUserSpotState(ctx, userId, input.spotId, {
+    lastCheckinAt: input.now,
+    visitCount,
+    // ★ クイズの正解状態は引き継ぐ。ここで落とすと報酬を二重取りできる
+    quizClearedAt: state?.quizClearedAt,
+  })
+
+  await putUser(ctx, {
+    ...profile,
+    totalPoints: profile.totalPoints + decision.pointsEarned,
+    lastActiveAt: nowIso,
+  })
+
+  const updatedSpot = await incrementSpotCheckinCount(ctx, spot, nowIso)
+
+  return {
+    spot: withDistance(updatedSpot, input.position),
+    distanceM: Math.round(decision.distanceM),
+    pointsEarned: decision.pointsEarned,
+    breakdown: decision.breakdown,
+    totalPoints: profile.totalPoints + decision.pointsEarned,
+    nextAvailableAt,
+    visitCount,
+    saved: true,
+  }
+}

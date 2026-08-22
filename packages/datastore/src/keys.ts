@@ -1,4 +1,4 @@
-import type { AreaId, UserId } from '@imanouchi/shared'
+import type { AreaId, SpotId, UserId } from '@imanouchi/shared'
 
 /**
  * キー設計。
@@ -55,10 +55,32 @@ export const EXPLORED_TILES_MAIN_KEY = 'userKey'
  */
 export const EXPLORED_TILES_SUB_KEY = 'tileKey'
 
+export const CHECKINS_MAIN_KEY = 'userKey'
+/**
+ * チェックイン履歴（FR-03）のサブキー。
+ *
+ * ★ **数値型で作る。** 文字列にすると範囲クエリが辞書順になり、桁が上がった
+ * 時点で「新しい順に10件」が壊れる。作り直すしか直せない。
+ */
+export const CHECKINS_SUB_KEY = 'checkinAt'
+
+export const USER_SPOT_STATE_MAIN_KEY = 'userKey'
+export const USER_SPOT_STATE_SUB_KEY = 'spotKey'
+
 export function areaKey(areaId: AreaId): string {
   return `area#${areaId}`
 }
 
 export function userKey(userId: UserId): string {
   return `user#${userId}`
+}
+
+/**
+ * user_spot_state のサブキー。
+ *
+ * ★ 接頭辞を付ける。このテーブルは将来「そのスポットに対する別の状態」を
+ * 並べる余地があり、素の spotId だけでは種類を見分けられない。
+ */
+export function spotStateKey(spotId: SpotId): string {
+  return `spot#${spotId}`
 }

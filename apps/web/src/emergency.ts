@@ -10,6 +10,36 @@ import { SPOT_CATEGORY_LABELS, type SpotCategory, type SpotWithDistance } from '
  */
 
 /**
+ * 有事モードで隠すゲーム要素（FR-08-2）。
+ *
+ * ★ **隠すものを1か所に列挙する。** 画面ごとに `emergency &&` を書くと、
+ * 機能を足したときに片方だけ残る。実際に FR-03・FR-04 を足したとき、
+ * 霧と探索率は隠れているのに**ポイントとチェックインボタンが残った**。
+ *
+ * ★ 隠す理由は演出ではない。有事に「ポイントが増える」画面を見せることは、
+ * 危険な場所へ点数のために向かわせうる（NFR-14）。クイズも同じで、
+ * 逃げる最中に読ませるものではない。
+ *
+ * ★ キャラクター（FR-02-8）は隠さない。現在地の表し方を変えると
+ * FR-08-7（平時のプレイ経験だけで操作できる）に反する。
+ */
+export interface GameElements {
+  /** 累計ポイントの表示 */
+  points: boolean
+  /** チェックインの操作と演出（FR-03） */
+  checkin: boolean
+  /** クイズの出題・回答（FR-04） */
+  quiz: boolean
+  /** 探索率と霧（FR-02-7） */
+  exploration: boolean
+}
+
+export function gameElements(emergency: boolean): GameElements {
+  const visible = !emergency
+  return { points: visible, checkin: visible, quiz: visible, exploration: visible }
+}
+
+/**
  * 有事に見せるカテゴリの順番。
  *
  * ★ 距離順で全体を並べてはいけない。AED が 224 件あるため、近い順に並べると

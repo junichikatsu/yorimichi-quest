@@ -2,6 +2,7 @@ import { getUser, type DataStoreContext } from '@imanouchi/datastore'
 import {
   asSpotId,
   avatarUpdateRequestSchema,
+  checkinRequestSchema,
   consentRequestSchema,
   explorationRequestSchema,
   FALLBACK_AVATAR,
@@ -12,6 +13,7 @@ import {
   spotsQuerySchema,
   toUserView,
   type AdminConfigResponse,
+  type CheckinResponse,
   type ClientConfigResponse,
   type ExplorationResponse,
   type ExplorationUpdateResponse,
@@ -21,6 +23,9 @@ import {
   MAX_EXPLORATION_POINTS,
   type MeResponse,
   type PurgeResponse,
+  quizAnswerRequestSchema,
+  type QuizAnswerResponse,
+  type QuizResponse,
   type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
@@ -30,13 +35,15 @@ import { Hono } from 'hono'
 import { buildInfo, loadConfig, missingConfigKeys } from '../config.js'
 import { dataSourceCredits, datasetSpots } from '../data/spot-dataset.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from '../errors.js'
-import { ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.js'
+import { actorOf, ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rate-limit.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
 import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
 import { issueSession, newGuestId } from '../services/session.js'
+import { performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
+import { answerQuiz, getQuiz } from '../services/quiz-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { ensureUser, setAvatar, setLocationConsent } from '../services/user-service.js'
 import { assetVersion, sendAsset } from '../static.js'
@@ -107,6 +114,9 @@ export function createRoutes(): Hono<AppEnv> {
       debugMoveEnabled: config.debugMoveEnabled,
       emergencyDemoEnabled: config.emergencyDemoEnabled,
       guestModeEnabled: config.guestModeEnabled,
+      // ★ 判定はサーバー側。ここで配るのはボタンの出し方のためだけ（FR-03-1）
+      checkinRadiusM: config.checkinRadiusM,
+      checkinCooldownHours: config.checkinCooldownHours,
       exploration: {
         tileSizeM: config.exploreTileSizeM,
         revealRadiusM: config.exploreRevealRadiusM,
@@ -324,6 +334,86 @@ export function createRoutes(): Hono<AppEnv> {
     if (!spot) throw notFound('スポットが見つかりません')
 
     const response: SpotResponse = { spot }
+    return c.json(response)
+  })
+
+  /* ---------------- チェックイン（FR-03） ---------------- */
+
+  /**
+   * チェックイン。
+   *
+   * ★ 受け取るのは申告位置だけである。距離・ポイント・再チェックイン制限は
+   * すべてサーバーで決める（NFR-04）。「圏内である」という申告を信じたら、
+   * 家から全スポットにチェックインできてしまう。
+   */
+  routes.post('/v1/spots/:spotId/checkin', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = checkinRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const response: CheckinResponse = await performCheckin(ctx, {
+      actor: actorOf(c),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+      position: { lat: body.lat, lng: body.lng },
+      now: Date.now(),
+      radiusM: config.checkinRadiusM,
+      cooldownHours: config.checkinCooldownHours,
+    })
+
+    return c.json(response)
+  })
+
+  /* ---------------- クイズ（FR-04） ---------------- */
+
+  routes.get('/v1/spots/:spotId/quiz', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const ctx = await contextFor()
+    const response: QuizResponse = await getQuiz(ctx, {
+      actor: actorOf(c),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+    })
+
+    return c.json(response)
+  })
+
+  /**
+   * 回答（FR-04-3・FR-04-6）。
+   *
+   * ★ 採点はサーバーで行う。正解をクライアントへ配ると、配信された
+   * JavaScript を読むだけで答えが分かる。
+   */
+  routes.post('/v1/spots/:spotId/quiz/answer', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = quizAnswerRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const response: QuizAnswerResponse = await answerQuiz(ctx, {
+      actor: actorOf(c),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+      quizId: body.quizId,
+      choiceIndex: body.choiceIndex,
+      now: Date.now(),
+      correctPoints: config.quizCorrectPoints,
+    })
+
     return c.json(response)
   })
 

@@ -1,15 +1,21 @@
 import { distanceMeters, offsetByMeters } from '@imanouchi/core'
 import type {
   Avatar,
+  CheckinResponse,
   ClientConfigResponse,
+  QuizAnswerResponse,
+  QuizResponse,
   SpotId,
   SpotWithDistance,
   UserView,
 } from '@imanouchi/shared'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  answerQuiz,
   ApiError,
+  checkin,
   fetchClientConfig,
+  fetchQuiz,
   fetchSpots,
   guestLogin,
   isAuthExpired,
@@ -19,6 +25,7 @@ import {
   setToken,
 } from './api.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
+import { CheckinBurst } from './components/CheckinBurst.js'
 import { ConsentGate } from './components/ConsentGate.js'
 import { EmergencyBanner } from './components/EmergencyBanner.js'
 import { EmergencyPanel } from './components/EmergencyPanel.js'
@@ -26,14 +33,32 @@ import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
 import { MapView } from './components/MapView.js'
+import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
 import { WalkGuard } from './components/WalkGuard.js'
+import { NO_PROGRESS, progressFromStored, type SpotProgress } from './checkin-view.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
-import { clearGuestData, loadGuestConsent, saveGuestConsent } from './guest-store.js'
-import { canPlaySound, enableSound, notifyAreaUnlocked, notifyWalkGuard } from './feedback.js'
+import { gameElements } from './emergency.js'
+import {
+  clearGuestData,
+  EMPTY_GUEST_PROGRESS,
+  loadGuestConsent,
+  loadGuestProgress,
+  saveGuestConsent,
+  saveGuestProgress,
+  type GuestProgress,
+} from './guest-store.js'
+import {
+  canPlaySound,
+  enableSound,
+  notifyAreaUnlocked,
+  notifyCheckin,
+  notifyQuizResult,
+  notifyWalkGuard,
+} from './feedback.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import { useWakeLock } from './hooks/useWakeLock.js'
@@ -95,6 +120,31 @@ export function App(): React.JSX.Element {
   const [walk, setWalk] = useState(initialWalkTracker)
   /** 歩行中の覆いを本人が閉じたか。立ち止まるまで出し直さない */
   const [guardDismissed, setGuardDismissed] = useState(false)
+
+  /* ---------------- チェックインとクイズ（FR-03・FR-04） ---------------- */
+
+  /**
+   * スポットごとの進み（LINE ログイン時）。
+   *
+   * ★ サーバーの応答で分かったぶんだけを持つ。起動時にまとめて取得しない
+   * （スポットは数百件あり、全件ぶんの状態を引くとアクセス数が跳ねる）。
+   * 押せるかどうかの最終判定はサーバーが行うので、手元が空でも破綻しない。
+   */
+  const [serverProgress, setServerProgress] = useState<Record<string, SpotProgress>>({})
+
+  /**
+   * おためしの進み（端末の中だけ）。
+   *
+   * ★ サーバーへは書けないので、ポイントも再チェックイン制限もここで持つ。
+   * 保存の形（前回時刻）をそのまま持ち、待ち時間の計算は表示のときに行う。
+   */
+  const [guestProgress, setGuestProgress] = useState<GuestProgress>(EMPTY_GUEST_PROGRESS)
+
+  /** チェックインの演出（FR-03-2）。数秒で消える */
+  const [burst, setBurst] = useState<CheckinResponse | undefined>(undefined)
+  /** 開いているクイズと、その回答結果（FR-04） */
+  const [quiz, setQuiz] = useState<{ spotId: SpotId; response: QuizResponse } | undefined>(undefined)
+  const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
 
   /**
    * 有事モード（FR-08）。
@@ -228,7 +278,16 @@ export function App(): React.JSX.Element {
    */
   const handleToggleEmergency = useCallback(() => {
     setEmergency((current) => {
-      if (!current) handleStopWalk()
+      if (!current) {
+        handleStopWalk()
+        /*
+         * ★ 開いているクイズと演出も閉じる（FR-08-2）。
+         * 表示側でも隠しているが、**戻ってきたときに古い結果が残る**のを避ける。
+         */
+        setQuiz(undefined)
+        setQuizResult(undefined)
+        setBurst(undefined)
+      }
       return !current
     })
   }, [handleStopWalk])
@@ -331,6 +390,8 @@ export function App(): React.JSX.Element {
 
       const agreed = loadGuestConsent()
       setUser({ ...result.user, locationConsentGiven: agreed })
+      // ★ 前回のおためしの続きから始める（端末の中だけの記録）
+      setGuestProgress(loadGuestProgress())
       setPhase(agreed ? 'ready' : 'consent')
       setMessage('')
     } catch (err) {
@@ -433,6 +494,235 @@ export function App(): React.JSX.Element {
   }, [spots, geo.position])
 
   const selectedSpot = sortedSpots.find((spot) => spot.spotId === selectedSpotId)
+
+  /* ---------------- チェックインとクイズ（FR-03・FR-04） ---------------- */
+
+  const cooldownHours = config?.checkinCooldownHours ?? 24
+
+  /** 有事モードで隠すもの（FR-08-2）。判定は emergency.ts に寄せている */
+  const game = gameElements(emergency)
+
+  /**
+   * 画面が使う「スポットごとの進み」。
+   *
+   * ★ おためしと LINE ログインで**出どころが違うだけ**にしてある。
+   * 画面側に分岐を持ち込むと、片方だけ直して食い違う。
+   */
+  const progressMap = useMemo(
+    () =>
+      mode === 'guest' ? progressFromStored(guestProgress.spots, cooldownHours) : serverProgress,
+    [mode, guestProgress, cooldownHours, serverProgress],
+  )
+
+  /** 累計ポイント。おためしは端末の中の値を使う（サーバーは持っていない） */
+  const totalPoints = mode === 'guest' ? guestProgress.points : (user?.totalPoints ?? 0)
+
+  const progressOf = (spotId: SpotId): SpotProgress => progressMap[spotId] ?? NO_PROGRESS
+
+  /** おためしの記録を更新して端末へ書く。書けなくても画面は進む */
+  const updateGuestProgress = useCallback((next: GuestProgress): void => {
+    setGuestProgress(next)
+    saveGuestProgress(next)
+  }, [])
+
+  /**
+   * クイズを開く（FR-04-1）。
+   *
+   * ★ 取得に失敗しても行き止まりにしない。クイズが無いスポットもありうるので、
+   * 知らせるだけにして地図は触れる状態で残す。
+   */
+  const openQuiz = useCallback(
+    async (spotId: SpotId): Promise<void> => {
+      try {
+        const response = await fetchQuiz(spotId)
+
+        /*
+         * ★ おためしの「正解済み」はサーバーが知らない（保存していない）ので、
+         * 端末の記録で上書きする。上書きしないと、正解済みなのに報酬が増えるように
+         * 見えてしまう（実際には増えない）。
+         */
+        const alreadyCleared =
+          mode === 'guest'
+            ? guestProgress.spots[spotId]?.quizClearedAt !== undefined
+            : response.alreadyCleared
+
+        setQuiz({ spotId, response: { ...response, alreadyCleared } })
+        setQuizResult(undefined)
+      } catch (err) {
+        setMessage(err instanceof ApiError ? err.message : 'クイズを取得できませんでした。')
+      }
+    },
+    [mode, guestProgress],
+  )
+
+  /**
+   * チェックイン（FR-03）。
+   *
+   * ★ 判定はサーバーに任せる。手元では押せるボタンを出すかどうかだけを決めており、
+   * ここで再判定はしない（二重に判定すると、片方の閾値だけ変わって食い違う）。
+   */
+  const handleCheckin = useCallback(
+    async (spot: SpotWithDistance): Promise<void> => {
+      if (!geo.position) {
+        setMessage('現在地が取れていないためチェックインできません。')
+        return
+      }
+
+      setBusy(true)
+      setMessage('')
+      try {
+        const result = await checkin(spot.spotId, geo.position)
+
+        // ★ 音でも知らせる。歩行中モードでは画面を見ていない（FR-02-10・NFR-14）
+        notifyCheckin()
+        setBurst(result)
+
+        const nextAvailableAt = new Date(result.nextAvailableAt).getTime()
+
+        if (result.saved) {
+          setServerProgress((current) => ({
+            ...current,
+            [spot.spotId]: {
+              nextAvailableAt,
+              visitCount: result.visitCount,
+              quizCleared: current[spot.spotId]?.quizCleared ?? false,
+            },
+          }))
+          setUser((current) =>
+            current ? { ...current, totalPoints: result.totalPoints } : current,
+          )
+        } else {
+          /*
+           * ★ おためし。サーバーは累計も前回時刻も持たないので、ここで足す。
+           * 保存できなくても遊べる状態は保つ（saveGuestProgress が黙って諦める）。
+           */
+          const stored = guestProgress.spots[spot.spotId]
+          updateGuestProgress({
+            points: guestProgress.points + result.pointsEarned,
+            spots: {
+              ...guestProgress.spots,
+              [spot.spotId]: {
+                lastCheckinAt: Date.now(),
+                visitCount: (stored?.visitCount ?? 0) + 1,
+                quizClearedAt: stored?.quizClearedAt,
+              },
+            },
+          })
+        }
+
+        // ★ チェックインしたらその場で出題する（FR-04-1）
+        await openQuiz(spot.spotId)
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setMessage(err.message)
+
+          /*
+           * ★ 制限に当たったら、次に押せる時刻を覚える。
+           * 覚えないと、押しては断られるという繰り返しになる。
+           */
+          const next = err.details['nextAvailableAt']
+          if (err.code === 'COOLDOWN' && typeof next === 'string') {
+            const at = new Date(next).getTime()
+            setServerProgress((current) => ({
+              ...current,
+              [spot.spotId]: {
+                nextAvailableAt: at,
+                visitCount: current[spot.spotId]?.visitCount ?? 1,
+                quizCleared: current[spot.spotId]?.quizCleared ?? false,
+              },
+            }))
+          }
+          return
+        }
+        setMessage('チェックインできませんでした。通信状況を確認してください。')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [geo.position, guestProgress, openQuiz, updateGuestProgress],
+  )
+
+  /**
+   * クイズの回答（FR-04-3・FR-04-6）。
+   *
+   * ★ 採点はサーバー。ここは結果を映すだけで、正解の判定は持たない。
+   */
+  const handleAnswer = useCallback(
+    async (choiceIndex: number): Promise<void> => {
+      if (!quiz) return
+
+      setBusy(true)
+      try {
+        const result = await answerQuiz(quiz.spotId, {
+          quizId: quiz.response.quiz.quizId,
+          choiceIndex,
+        })
+
+        notifyQuizResult(result.correct)
+
+        /*
+         * ★ おためしで正解済みの場合、サーバーは加点ぶんを返してくる
+         * （正解状態を持たないため）。**そのまま出すと、増えないポイントを
+         * 増えたように見せてしまう。** 表示から落としてから画面へ渡す。
+         */
+        const rewarded =
+          mode === 'guest' && quiz.response.alreadyCleared
+            ? { ...result, pointsEarned: 0 }
+            : result
+        setQuizResult(rewarded)
+
+        if (result.saved) {
+          setUser((current) =>
+            current ? { ...current, totalPoints: result.totalPoints } : current,
+          )
+          setServerProgress((current) => ({
+            ...current,
+            [quiz.spotId]: {
+              nextAvailableAt: current[quiz.spotId]?.nextAvailableAt,
+              visitCount: current[quiz.spotId]?.visitCount ?? 0,
+              quizCleared: true,
+            },
+          }))
+          return
+        }
+
+        /*
+         * ★ おためしの加点は**端末の記録で一度だけ**にする。
+         *
+         * サーバーは正解状態を持たないため、同じ設問に何度正解しても
+         * `pointsEarned` が返る。ここで抑えないと点数を無限に増やせる。
+         */
+        if (mode === 'guest' && result.correct) {
+          const stored = guestProgress.spots[quiz.spotId]
+          if (stored?.quizClearedAt !== undefined) return
+
+          // ★ 今開いているクイズも「正解済み」に切り替える（同じ画面での二重取りを防ぐ）
+          setQuiz((current) =>
+            current && current.spotId === quiz.spotId
+              ? { ...current, response: { ...current.response, alreadyCleared: true } }
+              : current,
+          )
+
+          updateGuestProgress({
+            points: guestProgress.points + result.pointsEarned,
+            spots: {
+              ...guestProgress.spots,
+              [quiz.spotId]: {
+                lastCheckinAt: stored?.lastCheckinAt ?? Date.now(),
+                visitCount: stored?.visitCount ?? 0,
+                quizClearedAt: Date.now(),
+              },
+            },
+          })
+        }
+      } catch (err) {
+        setMessage(err instanceof ApiError ? err.message : '回答を送れませんでした。')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [quiz, mode, guestProgress, updateGuestProgress],
+  )
 
   /**
    * デモ用の移動操作を出すか（判定は debug-move.ts）。
@@ -566,6 +856,7 @@ export function App(): React.JSX.Element {
     <div className={emergency ? 'app app--emergency' : 'app'}>
       <StatusBar
         user={user}
+        totalPoints={game.points ? totalPoints : undefined}
         areaName={config?.area.name ?? ''}
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
@@ -646,7 +937,37 @@ export function App(): React.JSX.Element {
           )}
 
           {selectedSpot && (
-            <SpotPanel spot={selectedSpot} onClose={() => setSelectedSpotId(undefined)} />
+            <SpotPanel
+              spot={selectedSpot}
+              checkinRadiusM={config?.checkinRadiusM ?? 100}
+              progress={progressOf(selectedSpot.spotId)}
+              busy={busy}
+              now={Date.now()}
+              actionsVisible={game.checkin}
+              onCheckin={() => void handleCheckin(selectedSpot)}
+              onOpenQuiz={() => void openQuiz(selectedSpot.spotId)}
+              onClose={() => setSelectedSpotId(undefined)}
+            />
+          )}
+
+          {/*
+            ★ クイズはスポット詳細の下に置く（別画面にしない）。
+            画面を切り替えると、戻ったときに地図の位置と縮尺が失われる。
+          */}
+          {quiz && game.quiz && (
+            <QuizPanel
+              spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
+              quiz={quiz.response.quiz}
+              alreadyCleared={quiz.response.alreadyCleared}
+              result={quizResult}
+              busy={busy}
+              onAnswer={(choiceIndex) => void handleAnswer(choiceIndex)}
+              onRetry={() => setQuizResult(undefined)}
+              onClose={() => {
+                setQuiz(undefined)
+                setQuizResult(undefined)
+              }}
+            />
           )}
 
           {/*
@@ -706,6 +1027,18 @@ export function App(): React.JSX.Element {
           unlockedCount={exploration.unlockedAreas.length}
           soundReady={soundReady && canPlaySound()}
           onDismiss={() => setGuardDismissed(true)}
+        />
+      )}
+
+      {/*
+        ★ 演出は app の直下に置く。サイドバーの内側だと、スクロール位置によって
+        見えないことがある（記録できたのに何も起きていないように見える）。
+      */}
+      {burst && game.checkin && (
+        <CheckinBurst
+          result={burst}
+          localOnly={mode === 'guest'}
+          onDone={() => setBurst(undefined)}
         />
       )}
 

@@ -2,6 +2,7 @@ import {
   createDataStoreContext,
   createFakeDataStore,
   type DataStoreContext,
+  type FakeDataStore,
 } from '@imanouchi/datastore'
 import { loadConfig } from '../config.js'
 import { datasetSpots } from '../data/spot-dataset.js'
@@ -15,7 +16,7 @@ import { seedSpots } from './seed-service.js'
  * ローカル開発と統合テストはこの経路で通しの導線を確認する。
  */
 
-let fake: DataStoreContext | undefined
+let fake: FakeDataStore | undefined
 let fakeSeeded = false
 
 export function resetFakeDataStore(): void {
@@ -25,7 +26,17 @@ export function resetFakeDataStore(): void {
 
 export function getDataStoreContext(): DataStoreContext {
   if (!loadConfig().useFakeDataStore) return createDataStoreContext()
-  if (!fake) fake = createFakeDataStore().ctx
+  if (!fake) fake = createFakeDataStore()
+  return fake.ctx
+}
+
+/**
+ * インメモリ実装の中身。**fake を使っていないときは undefined。**
+ *
+ * ★ 「書かれていないこと」を確かめるために要る。おためし（ゲスト）が
+ * データストアへ書かないことは、レスポンスを見ても分からない。
+ */
+export function fakeDataStore(): FakeDataStore | undefined {
   return fake
 }
 

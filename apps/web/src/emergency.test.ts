@@ -1,6 +1,6 @@
 import type { AreaId, SpotCategory, SpotId, SpotWithDistance } from '@imanouchi/shared'
 import { describe, expect, it } from 'vitest'
-import { LIFELINE_ORDER, hasAccessibilityNote, lifelineGroups } from './emergency.js'
+import { gameElements, LIFELINE_ORDER, hasAccessibilityNote, lifelineGroups } from './emergency.js'
 
 /**
  * 有事モードのライフライン。
@@ -115,5 +115,28 @@ describe('lifelineGroups', () => {
 
     expect(groups).toHaveLength(LIFELINE_ORDER.length)
     expect(groups.every((group) => group.spots.length === 0)).toBe(true)
+  })
+})
+
+describe('gameElements', () => {
+  it('平時はゲーム要素をすべて出す', () => {
+    expect(gameElements(false)).toEqual({
+      points: true,
+      checkin: true,
+      quiz: true,
+      exploration: true,
+    })
+  })
+
+  /*
+   * ★ 有事は**すべて**隠す（FR-08-2）。
+   *
+   * この検査は「1つでも true が残ったら落ちる」形にしてある。
+   * ゲーム要素を足したときにここへ列挙し忘れれば、型が通らない。
+   */
+  it('★ 有事モードではポイント・チェックイン・クイズ・探索をすべて隠す', () => {
+    const hidden = gameElements(true)
+
+    expect(Object.values(hidden).some(Boolean), '有事に残っている要素がある').toBe(false)
   })
 })

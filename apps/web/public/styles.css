@@ -1271,3 +1271,235 @@ button {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* ---------------- チェックイン（FR-03） ---------------- */
+
+.statusbar__points {
+  display: flex;
+  align-items: baseline;
+  gap: 0.15rem;
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--accent);
+}
+
+.statusbar__points-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusbar__points-unit {
+  font-size: 0.7rem;
+}
+
+.checkin {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.checkin__button {
+  width: 100%;
+  /* 歩いてきた人が片手で押せる大きさにする（NFR-08） */
+  min-height: 3rem;
+  font-size: 1rem;
+}
+
+.checkin__note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.checkin__stats {
+  display: flex;
+  gap: 1.2rem;
+  margin: 0;
+}
+
+.checkin__stats dt {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.checkin__stats dd {
+  margin: 0.1rem 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.checkin__quiz {
+  width: 100%;
+  min-height: 2.6rem;
+}
+
+/*
+ * チェックインの演出（FR-03-2）。
+ *
+ * ★ 操作を止めない。数秒で自分から消え、下の地図には指が届く
+ * （pointer-events: none）。閉じる操作を要求すると、歩きながら遊べなくなる。
+ */
+.burst {
+  position: fixed;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  pointer-events: none;
+  max-width: min(88vw, 22rem);
+  padding: 1rem 1.4rem;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  box-shadow: 0 12px 32px rgb(36 31 39 / 22%);
+  text-align: center;
+  animation: burst-in 0.28s ease-out;
+}
+
+@keyframes burst-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* 動きを減らす設定を尊重する（NFR-08）。出ること自体は変えない */
+@media (prefers-reduced-motion: reduce) {
+  .burst {
+    animation: none;
+  }
+}
+
+.burst__points {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.burst__spot {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.burst__breakdown {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.burst__bonus {
+  color: var(--accent);
+}
+
+.burst__note {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---------------- クイズ（FR-04） ---------------- */
+
+.panel--quiz {
+  border-color: var(--accent);
+}
+
+.quiz__options {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.quiz__option {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quiz__option:disabled {
+  cursor: default;
+}
+
+/*
+ * ★ 正解と誤答は色だけで区別しない。色覚によっては同じに見える（NFR-08）。
+ * 左の帯（太い枠）と記号を併せて出す。
+ */
+.quiz__option--answer {
+  border-color: var(--shelter);
+  border-left-width: 6px;
+  background: #f1f8f2;
+  font-weight: 700;
+}
+
+.quiz__option--answer::after {
+  content: ' ○ 正解';
+  font-size: 0.78rem;
+  color: var(--shelter);
+}
+
+.quiz__option--wrong {
+  border-color: var(--danger);
+  border-left-width: 6px;
+  background: #fdf2f2;
+}
+
+.quiz__option--wrong::after {
+  content: ' × 選んだ答え';
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
+.quiz__result {
+  margin-top: 0.7rem;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: var(--chip);
+}
+
+.quiz__result--correct {
+  background: #f1f8f2;
+}
+
+.quiz__result--wrong {
+  background: #fdf2f2;
+}
+
+.quiz__verdict {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.quiz__explanation {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.quiz__reward {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent);
+}

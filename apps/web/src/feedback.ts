@@ -145,3 +145,31 @@ export function notifyWalkGuard(entering: boolean): void {
   playSequence(entering ? [520] : [780], 0.12, 0.18)
   vibrate([60])
 }
+
+/**
+ * チェックインできたときの知らせ（FR-03-2）。
+ *
+ * ★ 上昇する3音にする。歩行中モードでは画面を見ていないので、
+ * **音だけで「入った」と分かる**必要がある。
+ */
+export function notifyCheckin(): void {
+  playSequence([523, 659, 784], 0.11, 0.22)
+  vibrate([80, 60, 120])
+}
+
+/**
+ * クイズの結果の知らせ（FR-04）。
+ *
+ * ★ 不正解でも下降音にしない。ペナルティを与えない設計（FR-04-6・G-7）なので、
+ * 音で叱ってしまうと「間違えたら終わり」という印象だけが残る。
+ * 同じ高さの短い2音にして、**次を促す**合図にする。
+ */
+export function notifyQuizResult(correct: boolean): void {
+  if (correct) {
+    playSequence([659, 880], 0.14, 0.26)
+    vibrate([100, 60, 100])
+    return
+  }
+  playSequence([587, 587], 0.12, 0.16)
+  vibrate([60])
+}

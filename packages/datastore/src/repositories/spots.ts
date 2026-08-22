@@ -116,6 +116,24 @@ export async function putSpot(ctx: DataStoreContext, spot: Spot): Promise<void> 
 }
 
 /**
+ * チェックイン回数を 1 増やす（FR-03-4）。
+ *
+ * ★ データストアに加算（atomic increment）は無いので、読んだ値に足して書き戻す。
+ * 同時にチェックインされると取りこぼしうるが、**回数は表示と貢献度のための目安**で
+ * あり、ポイントや制限の判定には使っていない。取りこぼしても不整合にならない側に
+ * 寄せている。
+ */
+export async function incrementSpotCheckinCount(
+  ctx: DataStoreContext,
+  spot: Spot,
+  updatedAt: string,
+): Promise<Spot> {
+  const next: Spot = { ...spot, checkinCount: spot.checkinCount + 1, updatedAt }
+  await putSpot(ctx, next)
+  return next
+}
+
+/**
  * スポットを1件消す（管理用）。
  *
  * ★ 一括削除は無いので1件ずつになる。**削除もアクセス数を消費する**（制約 E4）ため、

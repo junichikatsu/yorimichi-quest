@@ -155,6 +155,27 @@ describe('styles.css', () => {
     }
   })
 
+  /*
+   * チェックインの演出（FR-03-2）とクイズ（FR-04）。
+   *
+   * ★ どちらも「1行で機能を否定できる」形の崩れがある。
+   */
+  it('★ チェックインの演出は下の操作を通す（地図が触れなくなると歩けない）', () => {
+    expect(ruleBlock(css, '.burst')).toContain('pointer-events: none')
+  })
+
+  it('★ 演出は歩行中の覆いより後ろに出る（覆っている最中に前へ出てはいけない）', () => {
+    expect(zIndexOf(css, '.burst')).toBeLessThan(zIndexOf(css, '.walkguard'))
+  })
+
+  it('★ クイズの正解・誤答は色だけで区別しない（色覚に依存させない）', () => {
+    // 枠の太さと記号を併せて出す。色だけだと同じに見える人がいる（NFR-08）
+    for (const selector of ['.quiz__option--answer', '.quiz__option--wrong']) {
+      expect(ruleBlock(css, selector), `${selector} に枠の差が無い`).toContain('border-left-width')
+      expect(css, `${selector}::after が無い`).toContain(`${selector}::after`)
+    }
+  })
+
   it('有事モードでも文字色と背景を明示する（親の配色が透ける事故を防ぐ）', () => {
     const block = ruleBlock(css, '.app--emergency')
 
