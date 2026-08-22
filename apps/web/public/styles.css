@@ -19,6 +19,9 @@
   --alert: #c2410c;
   --alert-ink: #f7f3ef;
 
+  /* 防災クイズの色（FR-04）。チェックイン（--accent）と別に持つ */
+  --quiz: #2d6ca2;
+
   --shelter: #2f6f3e;
   --aed: #c0392b;
   --accessible_toilet: #2d6ca2;
@@ -1373,10 +1376,28 @@ button {
   }
 }
 
-/* 動きを減らす設定を尊重する（NFR-08）。出ること自体は変えない */
+/*
+ * 動きを減らす設定を尊重する（NFR-08）。
+ *
+ * ★ **出ること自体は変えない。** 動きだけを落とす。点滅で示していたもの
+ * （押せるマーカーの輪）は、静止した形で残す。消すと「押せる場所」が分からなくなる。
+ *
+ * ★ ここ1か所にまとめる。演出ごとに散らすと、新しい演出を足したときに
+ * 落とし忘れる（検査でも1か所であることを固定している）。
+ */
 @media (prefers-reduced-motion: reduce) {
-  .burst {
+  .burst,
+  .mapcheckin,
+  .flash,
+  .walkdigest,
+  .panel--quiz,
+  .quiz__stamp {
     animation: none;
+  }
+
+  .marker--ready {
+    animation: none;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 4px rgb(107 78 143 / 60%);
   }
 }
 
@@ -1502,4 +1523,391 @@ button {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--accent);
+}
+
+/* ---------------- 到着の知らせと出来事の演出（FR-02-10・FR-03-2） ---------------- */
+
+/*
+ * チェックインできるスポットのマーカー。
+ *
+ * ★ `transform` を使わない。マーカーの位置は Mapbox が transform で決めており、
+ * ここで上書きすると**ピンが地図から外れた場所に描かれる**。輪（box-shadow）で示す。
+ *
+ * ★ 光らせるのは**押せるときだけ**である（判定は checkin-view.ts の1か所）。
+ * 遠い・時間をおくといった押せない理由は文言で出しているので、
+ * 「光っているのに押せない」場所を作らない。
+ */
+.marker--ready {
+  animation: marker-ready 1.8s ease-in-out infinite;
+}
+
+@keyframes marker-ready {
+  0% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 0 rgb(107 78 143 / 60%);
+  }
+  70% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 12px rgb(107 78 143 / 0%);
+  }
+  100% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 0 rgb(107 78 143 / 0%);
+  }
+}
+
+/*
+ * 地図の上に出すチェックインボタン（FR-03-1）。
+ *
+ * ★ スポットをタップして詳細を開いてから押す、という経路だけでは
+ * 「タップすれば何かある」ことが画面から分からない。着いたら、押せるボタンを
+ * その場所の上に出す。
+ *
+ * ★ ここも transform を使わない（位置は Mapbox が持っている）。
+ */
+.mapcheckin {
+  z-index: 3;
+  /* 歩いてきた人が片手で押せる大きさ（NFR-08） */
+  min-height: 40px;
+  padding: 0.4rem 0.9rem;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(36 31 39 / 40%);
+  animation: mapcheckin-in 0.24s ease-out;
+}
+
+@keyframes mapcheckin-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 一覧でも「いま押せる」ことを出す。地図が使えない環境でも分かるように */
+.spotlist__item--ready {
+  border-color: var(--accent);
+  background: #f6f2fa;
+}
+
+.spotlist__ready {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/*
+ * 出来事の演出（FR-03-2）。
+ *
+ * ★ チェックインの演出（`.burst`）と同じ約束を守る。数秒で自分から消え、
+ * 下の地図には指が届く（`pointer-events: none`）。閉じる操作を要求しない。
+ */
+.flash {
+  position: fixed;
+  left: 50%;
+  top: 4.2rem;
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+  max-width: min(92vw, 24rem);
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 8px 24px rgb(36 31 39 / 30%);
+  animation: flash-in 0.24s ease-out;
+}
+
+/* 種類ごとに色を変える。ただし色だけに意味を持たせない（文言で書く・NFR-08） */
+.flash--arrival {
+  background: var(--accent);
+}
+
+.flash--area {
+  background: var(--shelter);
+}
+
+.flash--quiz {
+  background: var(--quiz);
+}
+
+.flash__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.flash__detail {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+}
+
+@keyframes flash-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/*
+ * 覆っている間に着いたことの表示（FR-02-9・FR-02-10）。
+ *
+ * ★ ここに「開く」導線を置かない。覆いを外させたら歩きスマホである（NFR-14）。
+ */
+.walkguard__arrival {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem;
+  border: 2px solid #d8cf7a;
+  border-radius: 12px;
+  background: #2a2620;
+  text-align: left;
+}
+
+.walkguard__arrival-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f6efc9;
+}
+
+.walkguard__arrival-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: #f5f2ef;
+}
+
+.walkguard__arrival-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: #cfc8b8;
+}
+
+/*
+ * 覆いが外れたときのまとめ（FR-02-9）。
+ *
+ * ★ 自動で消さない。**見ていなかった間のこと**を渡すためのものなので、
+ * 読む前に消えてはいけない。演出（`.flash`）とは役割が違う。
+ *
+ * ★ 出典表示に重なることがあるが、これは覆いと同じ扱いである。歩いたあとに
+ * 一度だけ出て、閉じれば戻る（常時居座るジョイスティックとは別の話）。
+ */
+.walkdigest {
+  position: fixed;
+  left: 50%;
+  bottom: 0.8rem;
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(92vw, 24rem);
+  max-height: 55dvh;
+  overflow-y: auto;
+  padding: 0.9rem;
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgb(36 31 39 / 30%);
+  animation: digest-in 0.26s ease-out;
+}
+
+@keyframes digest-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.8rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.walkdigest__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.walkdigest__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.walkdigest__close {
+  flex: none;
+  min-height: 40px;
+  min-width: 40px;
+}
+
+.walkdigest__group {
+  margin-top: 0.6rem;
+}
+
+.walkdigest__group-title {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.walkdigest__list {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.walkdigest__list--plain {
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.9rem;
+}
+
+/* 立ち止まって開いた直後なので、ここから記録へ進める（止まっている前提の導線） */
+.walkdigest__spot {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--chip);
+  text-align: left;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walkdigest__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---------------- 防災クイズの主張（FR-04・G-8） ---------------- */
+
+/*
+ * ★ クイズを控えめに置かない。**防災を学ぶことがこのサービスの目的**であり、
+ * チェックインの副産物ではない。ポイントの付くチェックインだけが目立つと、
+ * 点数を集める遊びに読み替えられる（G-2・G-8）。
+ */
+.quizcta {
+  margin-top: 0.2rem;
+  padding: 0.7rem;
+  border: 2px solid var(--quiz);
+  border-radius: 12px;
+  background: #f1f6fb;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.quizcta--done {
+  border-color: var(--line);
+  background: var(--chip);
+}
+
+.quizcta__head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.quizcta__badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--quiz);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quizcta__lead {
+  font-size: 0.85rem;
+}
+
+.quizcta__button {
+  width: 100%;
+}
+
+.quizcta__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.button--quiz {
+  min-height: 3rem;
+  border: 1px solid var(--quiz);
+  background: var(--quiz);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* クイズが開いたことを見せる。回答の操作は待たせない（FR-04-6） */
+.panel--quiz {
+  animation: quiz-in 0.26s ease-out;
+}
+
+@keyframes quiz-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 結果の印。装飾であり、文言（正解です／おしい）だけでも成立させる */
+.quiz__stamp {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid currentColor;
+  font-size: 0.95rem;
+  line-height: 1;
+  vertical-align: -0.35rem;
+  animation: stamp-in 0.3s ease-out;
+}
+
+.quiz__result--correct .quiz__stamp {
+  color: var(--shelter);
+}
+
+.quiz__result--wrong .quiz__stamp {
+  color: var(--danger);
+}
+
+@keyframes stamp-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

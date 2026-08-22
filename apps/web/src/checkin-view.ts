@@ -85,6 +85,17 @@ export function buildCheckinView(input: CheckinViewInput): CheckinView {
   }
 }
 
+/**
+ * いまチェックインできるか。
+ *
+ * ★ 地図と一覧で「押せるスポット」を目立たせるために使う。**押せる条件を
+ * ここ以外で組み立ててはいけない。** 目立たせる条件とボタンの条件がずれると、
+ * 「光っているのに押せない」場所が生まれる。
+ */
+export function isCheckinReady(input: CheckinViewInput): boolean {
+  return buildCheckinView(input).enabled
+}
+
 /** おためしの端末内記録。`guest-store` の形をそのまま受ける（型の重複を避ける） */
 export interface StoredSpotProgress {
   lastCheckinAt: number

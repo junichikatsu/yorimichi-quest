@@ -176,6 +176,68 @@ describe('styles.css', () => {
     }
   })
 
+  /*
+   * 到着の知らせと出来事の演出（FR-02-10・FR-03-2）。
+   *
+   * ★ 覆い（FR-02-9）との関係が要点である。**覆っている最中に前へ出る演出は、
+   * それ自体が歩きスマホを作る。** 1行で壊れるので固定する。
+   */
+  it('★ 出来事の演出は下の操作を通す（地図が触れなくなると歩けない）', () => {
+    expect(ruleBlock(css, '.flash')).toContain('pointer-events: none')
+  })
+
+  it('★ 演出とまとめは歩行中の覆いより後ろに出る', () => {
+    const guard = zIndexOf(css, '.walkguard')
+
+    for (const selector of ['.flash', '.walkdigest']) {
+      expect(guard, `${selector} が覆いより前に出る`).toBeGreaterThan(zIndexOf(css, selector))
+    }
+  })
+
+  it('★ 地図に重ねる要素は transform を使わない（位置は Mapbox が持っている）', () => {
+    /*
+     * マーカーの位置は Mapbox が transform で決めている。CSS 側で transform を
+     * 宣言すると**地図から外れた場所に描かれる**（拡大縮小でずれていく）。
+     * 演出は box-shadow と opacity で表す。
+     */
+    for (const selector of ['.marker--ready', '.mapcheckin']) {
+      expect(ruleBlock(css, selector), `${selector} が transform を宣言している`).not.toContain(
+        'transform:',
+      )
+    }
+  })
+
+  it('★ 動きを減らす設定で、すべての演出の動きが止まる（NFR-08）', () => {
+    const block = mediaBlock(css, '@media (prefers-reduced-motion: reduce)')
+
+    for (const selector of [
+      '.burst',
+      '.marker--ready',
+      '.mapcheckin',
+      '.flash',
+      '.walkdigest',
+      '.panel--quiz',
+      '.quiz__stamp',
+    ]) {
+      expect(block, `${selector} の動きが落ちない`).toContain(selector)
+    }
+  })
+
+  it('★ 動きを落とす指定は1か所にまとめる（足したときの落とし忘れを防ぐ）', () => {
+    const blocks = css.match(/@media \(prefers-reduced-motion/g) ?? []
+
+    expect(blocks).toHaveLength(1)
+  })
+
+  it('★ 押せるマーカーは動きを止めても分かる（点滅が消えても輪が残る）', () => {
+    const block = mediaBlock(css, '@media (prefers-reduced-motion: reduce)')
+    const rule = ruleBlock(block, '.marker--ready')
+
+    // 動きだけを落とす。出ること自体は変えない
+    expect(rule).toContain('animation: none')
+    expect(rule).toContain('box-shadow')
+  })
+
   it('有事モードでも文字色と背景を明示する（親の配色が透ける事故を防ぐ）', () => {
     const block = ruleBlock(css, '.app--emergency')
 

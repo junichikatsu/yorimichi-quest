@@ -44,7 +44,10 @@ export function QuizPanel({
     <section className="panel panel--quiz" aria-label="防災クイズ">
       <div className="panel__head">
         <div>
-          <p className="panel__category">防災クイズ ・ {spotName}</p>
+          {/* ★ クイズであることを目立たせる。チェックインの付属物ではない（FR-04・G-8） */}
+          <p className="panel__category">
+            <span className="quizcta__badge">防災クイズ</span> {spotName}
+          </p>
           <h2 className="panel__title">{quiz.question}</h2>
         </div>
         <button type="button" className="button button--ghost" onClick={onClose} aria-label="閉じる">
@@ -89,7 +92,13 @@ export function QuizPanel({
           className={`quiz__result quiz__result--${result.correct ? 'correct' : 'wrong'}`}
           role="status"
         >
-          <p className="quiz__verdict">{result.correct ? '正解です' : 'おしい、もう一度'}</p>
+          <p className="quiz__verdict">
+            {/* 印は装飾。文言だけでも成立させる（読み上げでは二重に読まない） */}
+            <span className="quiz__stamp" aria-hidden="true">
+              {result.correct ? '◎' : '△'}
+            </span>
+            {result.correct ? '正解です' : 'おしい、もう一度'}
+          </p>
           {/* ★ 正解・不正解のどちらでも解説を出す（FR-04-6） */}
           <p className="quiz__explanation">{result.explanation}</p>
 

@@ -30,6 +30,7 @@ import { CheckinBurst } from './components/CheckinBurst.js'
 import { ConsentGate } from './components/ConsentGate.js'
 import { EmergencyBanner } from './components/EmergencyBanner.js'
 import { EmergencyPanel } from './components/EmergencyPanel.js'
+import { EventFlash, type EventFlashItem, type EventFlashKind } from './components/EventFlash.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
@@ -39,8 +40,14 @@ import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
+import { WalkDigest } from './components/WalkDigest.js'
 import { WalkGuard } from './components/WalkGuard.js'
-import { NO_PROGRESS, progressFromStored, type SpotProgress } from './checkin-view.js'
+import {
+  isCheckinReady,
+  NO_PROGRESS,
+  progressFromStored,
+  type SpotProgress,
+} from './checkin-view.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
 import { gameElements } from './emergency.js'
 import {
@@ -56,10 +63,20 @@ import {
   canPlaySound,
   enableSound,
   notifyAreaUnlocked,
+  notifyArrival,
   notifyCheckin,
   notifyQuizResult,
   notifyWalkGuard,
 } from './feedback.js'
+import { initialNearby, trackNearby } from './nearby.js'
+import {
+  appendWalkEvents,
+  EMPTY_WALK_LOG,
+  namesOf,
+  type WalkEvent,
+  type WalkEventKind,
+  type WalkLog,
+} from './walk-log.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import { useWakeLock } from './hooks/useWakeLock.js'
@@ -79,6 +96,26 @@ type Phase = 'booting' | 'start' | 'logging-in' | 'consent' | 'ready' | 'failed'
 
 /** 使い方。おためしは読み取り専用で、記録は端末の中だけに置く */
 type Mode = 'line' | 'guest'
+
+/**
+ * 出来事の演出に出す見出し（FR-03-2）。
+ *
+ * ★ 文言を1か所に置く。音（`feedback.ts`）と画面で「何が起きたか」の
+ * 呼び名がずれると、鳴った音と出た文字が別のことのように読める。
+ */
+const FLASH_TITLES: Record<WalkEventKind, string> = {
+  arrival: 'チェックインできます',
+  area: '町丁目を歩ききった',
+}
+
+/**
+ * 画面に溜める演出の上限。
+ *
+ * ★ 溜め込まない。まとめて何件も起きたときに古い知らせを出し続けるより、
+ * 新しいものを出す。見ていなかった分は覆いが外れたときにまとめて出す
+ * （`WalkDigest`）ので、ここで捨てても失われない。
+ */
+const FLASH_QUEUE_MAX = 3
 
 /** ログインできない理由。原因ごとに出す案内を変える（同じ文言にすると自己解決できない） */
 const LIFF_MESSAGES: Record<string, string> = {
@@ -121,6 +158,17 @@ export function App(): React.JSX.Element {
   const [walk, setWalk] = useState(initialWalkTracker)
   /** 歩行中の覆いを本人が閉じたか。立ち止まるまで出し直さない */
   const [guardDismissed, setGuardDismissed] = useState(false)
+
+  /**
+   * 覆っている間に起きたこと（FR-02-9・FR-02-10）。
+   *
+   * ★ 覆っている最中は画面に出せない。覆いが外れたときにまとめて出すために積む。
+   */
+  const [walkLog, setWalkLog] = useState<WalkLog>(EMPTY_WALK_LOG)
+  /** 覆いが外れたときに出すまとめ。読み終えるまで消さない */
+  const [digest, setDigest] = useState<WalkLog | undefined>(undefined)
+  /** 数秒で消える演出の待ち行列（FR-03-2）。先頭だけを出す */
+  const [flashes, setFlashes] = useState<EventFlashItem[]>([])
 
   /* ---------------- チェックインとクイズ（FR-03・FR-04） ---------------- */
 
@@ -168,6 +216,43 @@ export function App(): React.JSX.Element {
     mode === 'guest' ? 'local' : 'server',
   )
   const wakeLock = useWakeLock(walkStarted)
+
+  /**
+   * 有事モードで隠すもの（FR-08-2）。判定は emergency.ts に寄せている。
+   *
+   * ★ 知らせと演出もここで止める。有事に「ポイントが増える」知らせを鳴らすのは、
+   * 逃げる最中に点数のために寄り道させることであり、それ自体が危険である（NFR-14）。
+   */
+  const game = gameElements(emergency)
+
+  /** 演出の識別。同じ内容が続けて起きても別物として数えるための採番 */
+  const flashIdRef = useRef(0)
+
+  const pushFlash = useCallback((kind: EventFlashKind, title: string, detail: string) => {
+    flashIdRef.current += 1
+    const item: EventFlashItem = { id: flashIdRef.current, kind, title, detail }
+    setFlashes((current) => [...current, item].slice(-FLASH_QUEUE_MAX))
+  }, [])
+
+  /**
+   * 起きたことを知らせる。
+   *
+   * ★ 覆っている間は画面へ出さずに控えへ積む。**覆いの下に出しても見えない**うえ、
+   * 見せるために覆いを外させたらそれは歩きスマホである（NFR-14）。
+   */
+  const announce = useCallback(
+    (events: readonly WalkEvent[], covered: boolean) => {
+      if (events.length === 0) return
+
+      if (covered) {
+        setWalkLog((log) => appendWalkEvents(log, events))
+        return
+      }
+
+      for (const event of events) pushFlash(event.kind, FLASH_TITLES[event.kind], event.name)
+    },
+    [pushFlash],
+  )
 
   /**
    * 現在地を歩いた記録として積む（FR-02-7）。
@@ -229,7 +314,20 @@ export function App(): React.JSX.Element {
     if (guardShownRef.current === walkGuardVisible) return
     guardShownRef.current = walkGuardVisible
     if (walkStarted) notifyWalkGuard(walkGuardVisible)
-  }, [walkGuardVisible, walkStarted])
+
+    /*
+     * ★ 覆いが外れたら、覆っている間に起きたことをまとめて出す。
+     *
+     * 覆っている最中は音だけで流れていく。音は聞き逃す（車の音・イヤホン無し・
+     * 鞄の中）ので、**立ち止まって開いた人には残っていなければならない。**
+     *
+     * ★ `walkLog` を依存に入れているのは、外れた瞬間に**最新の控え**を読むため。
+     * 変化しても上の一致判定で弾かれるので、ここが何度も走ることはない。
+     */
+    if (walkGuardVisible || walkLog.events.length === 0) return
+    setDigest(walkLog)
+    setWalkLog(EMPTY_WALK_LOG)
+  }, [walkGuardVisible, walkStarted, walkLog])
 
   /**
    * 町丁目が開いたら音で知らせる（FR-02-10）。
@@ -237,9 +335,9 @@ export function App(): React.JSX.Element {
    * ★ 画面ではなく音で出すことが要件である。画面にしか出さないなら、
    * 進捗を見るために歩きながら画面を見ることになる。
    */
-  const unlockedBaselineRef = useRef(0)
+  const unlockedKeysRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const count = exploration.unlockedAreas.length
+    const areas = exploration.unlockedAreas
 
     /*
      * ★ 散歩していない間は基準を追従させるだけで鳴らさない。
@@ -247,14 +345,33 @@ export function App(): React.JSX.Element {
      * 増分をそのまま知らせると、歩いていないのに鳴る。
      */
     if (!walkStarted) {
-      unlockedBaselineRef.current = count
+      unlockedKeysRef.current = new Set(areas.map((area) => area.areaKey))
       return
     }
 
-    if (count <= unlockedBaselineRef.current) return
-    unlockedBaselineRef.current = count
+    /*
+     * ★ 件数ではなく**どの町丁目か**で見る。名前を出すために要る
+     * （「増えました」だけでは、どこを歩ききったのか分からない）。
+     */
+    const known = unlockedKeysRef.current
+    const fresh = areas.filter((area) => !known.has(area.areaKey))
+    if (fresh.length === 0) return
+    unlockedKeysRef.current = new Set(areas.map((area) => area.areaKey))
+
+    // ★ 有事モードでは出さない（FR-08-2）。探索はゲーム要素である
+    if (!game.exploration) return
+
     notifyAreaUnlocked()
-  }, [walkStarted, exploration.unlockedAreas])
+    announce(
+      fresh.map((area) => ({
+        kind: 'area' as const,
+        key: area.areaKey,
+        name: area.name,
+        spotId: undefined,
+      })),
+      walkGuardVisible,
+    )
+  }, [walkStarted, exploration.unlockedAreas, game.exploration, walkGuardVisible, announce])
 
   const handleStartWalk = useCallback(() => {
     // ★ ユーザー操作の中で解錠する。ここを外すと iOS では以降ずっと無音になる
@@ -288,6 +405,13 @@ export function App(): React.JSX.Element {
         setQuiz(undefined)
         setQuizResult(undefined)
         setBurst(undefined)
+        /*
+         * ★ 演出と控えも捨てる。数秒残るだけでも、有事の画面に
+         * 「チェックインできます」が出ることになる（FR-08-2）。
+         */
+        setFlashes([])
+        setWalkLog(EMPTY_WALK_LOG)
+        setDigest(undefined)
       }
       return !current
     })
@@ -543,9 +667,13 @@ export function App(): React.JSX.Element {
   /* ---------------- チェックインとクイズ（FR-03・FR-04） ---------------- */
 
   const cooldownHours = config?.checkinCooldownHours ?? 24
-
-  /** 有事モードで隠すもの（FR-08-2）。判定は emergency.ts に寄せている */
-  const game = gameElements(emergency)
+  /**
+   * チェックインできる半径（m）。
+   *
+   * ★ サーバーから配られる値を**1か所で受ける**。既定値を画面ごとに書くと、
+   * 知らせる半径とボタンを出す半径が食い違う（着いたと鳴ったのに押せない）。
+   */
+  const checkinRadiusM = config?.checkinRadiusM ?? 100
 
   /**
    * 画面が使う「スポットごとの進み」。
@@ -563,6 +691,100 @@ export function App(): React.JSX.Element {
   const totalPoints = mode === 'guest' ? guestProgress.points : (user?.totalPoints ?? 0)
 
   const progressOf = (spotId: SpotId): SpotProgress => progressMap[spotId] ?? NO_PROGRESS
+
+  /* ---------------- 到着の知らせと押せる場所（FR-02-10・FR-03-2） ---------------- */
+
+  /**
+   * いまチェックインできるスポット（近い順）。
+   *
+   * ★ 判定は `isCheckinReady` の1か所だけで行う。目立たせる条件とボタンの条件が
+   * ずれると「光っているのに押せない」場所が生まれる。
+   *
+   * ★ 時刻は組み立てた瞬間のものを使う。待ち時間が明けた瞬間に光らせるための
+   * タイマーは置かない（1秒ごとに 370 件を作り直す意味がない）。測位が届くたびに
+   * 組み直されるので、歩いていれば数秒で追いつく。
+   */
+  const readySpots = useMemo(() => {
+    if (!game.checkin) return []
+    const now = Date.now()
+    return sortedSpots.filter((spot) =>
+      isCheckinReady({
+        distanceM: spot.distanceM,
+        radiusM: checkinRadiusM,
+        progress: progressMap[spot.spotId] ?? NO_PROGRESS,
+        now,
+      }),
+    )
+  }, [game.checkin, sortedSpots, checkinRadiusM, progressMap])
+
+  const readySpotIds = useMemo(() => readySpots.map((spot) => spot.spotId), [readySpots])
+
+  /**
+   * 地図にチェックインボタンを出す1件。
+   *
+   * ★ 圏内の全件には出さない。半径100mには AED だけで何件も入るため、
+   * ボタンを全部出すと地図がボタンで埋まる。`sortedSpots` は近い順なので先頭を採る。
+   */
+  const mapCheckinSpotId = readySpots[0]?.spotId
+
+  /**
+   * チェックインできる圏内に入ったことを知らせる（FR-02-10）。
+   *
+   * ★ 判定は `nearby.ts`（純粋な関数）。圏界で鳴り続けないこと、開いた瞬間に
+   * まとめて鳴らないことをテストで固定している。
+   */
+  const nearbyRef = useRef(initialNearby())
+  useEffect(() => {
+    if (phase !== 'ready') return
+
+    const step = trackNearby(nearbyRef.current, {
+      radiusM: checkinRadiusM,
+      spots: sortedSpots,
+    })
+    nearbyRef.current = step.tracker
+    if (step.arrived.length === 0) return
+
+    /*
+     * ★ 押せない場所では知らせない。時間をおく必要がある場所（FR-03-3）で鳴ると、
+     * 行っても何もできない場所へ呼び出すことになる。
+     */
+    const now = Date.now()
+    const ready = step.arrived.filter((spot) =>
+      isCheckinReady({
+        distanceM: spot.distanceM,
+        radiusM: checkinRadiusM,
+        progress: progressMap[spot.spotId] ?? NO_PROGRESS,
+        now,
+      }),
+    )
+    if (ready.length === 0) return
+
+    /*
+     * ★ 有事モードでは知らせない（FR-08-2）。
+     * 判定より後に置いてある。ここで判定ごと止めると、有事から戻った瞬間に
+     * **その場に居るだけの場所がまとめて「到着」になる。**
+     */
+    if (!game.checkin) return
+
+    notifyArrival()
+    announce(
+      ready.map((spot) => ({
+        kind: 'arrival' as const,
+        key: spot.spotId,
+        name: spot.name,
+        spotId: spot.spotId,
+      })),
+      walkGuardVisible,
+    )
+  }, [
+    phase,
+    sortedSpots,
+    checkinRadiusM,
+    progressMap,
+    game.checkin,
+    walkGuardVisible,
+    announce,
+  ])
 
   /** おためしの記録を更新して端末へ書く。書けなくても画面は進む */
   const updateGuestProgress = useCallback((next: GuestProgress): void => {
@@ -688,6 +910,23 @@ export function App(): React.JSX.Element {
   )
 
   /**
+   * 地図のチェックインボタンから記録する（FR-03-1）。
+   *
+   * ★ 記録と同時にスポット詳細を開く。押した場所が何なのか（出典・設備・
+   * これまでの訪問）を見せないと、**点を集めただけ**になる。このサービスは
+   * 場所を知ってもらうためのものである。
+   */
+  const handleMapCheckin = useCallback(
+    (spotId: SpotId): void => {
+      const spot = sortedSpots.find((item) => item.spotId === spotId)
+      if (!spot) return
+      setSelectedSpotId(spotId)
+      void handleCheckin(spot)
+    },
+    [sortedSpots, handleCheckin],
+  )
+
+  /**
    * クイズの回答（FR-04-3・FR-04-6）。
    *
    * ★ 採点はサーバー。ここは結果を映すだけで、正解の判定は持たない。
@@ -715,6 +954,19 @@ export function App(): React.JSX.Element {
             ? { ...result, pointsEarned: 0 }
             : result
         setQuizResult(rewarded)
+
+        /*
+         * ★ 正解も出来事として演出する（FR-03-2 と同じ扱い）。
+         * チェックインだけが派手だと、**点を取る遊び**として読まれる。
+         * 不正解では出さない。責める演出はしない（FR-04-6・G-7）。
+         */
+        if (result.correct) {
+          pushFlash(
+            'quiz',
+            '防災クイズ 正解',
+            rewarded.pointsEarned > 0 ? `+${rewarded.pointsEarned}pt` : '',
+          )
+        }
 
         if (result.saved) {
           setUser((current) =>
@@ -766,7 +1018,7 @@ export function App(): React.JSX.Element {
         setBusy(false)
       }
     },
-    [quiz, mode, guestProgress, updateGuestProgress],
+    [quiz, mode, guestProgress, updateGuestProgress, pushFlash],
   )
 
   /**
@@ -944,6 +1196,9 @@ export function App(): React.JSX.Element {
             revealRadiusM={config.exploration.revealRadiusM}
             avatar={user?.avatar}
             emergency={emergency}
+            readySpotIds={readySpotIds}
+            checkinSpotId={mapCheckinSpotId}
+            onCheckinSpot={handleMapCheckin}
           />
         ) : (
           <div className="map map--fallback">
@@ -984,7 +1239,7 @@ export function App(): React.JSX.Element {
           {selectedSpot && (
             <SpotPanel
               spot={selectedSpot}
-              checkinRadiusM={config?.checkinRadiusM ?? 100}
+              checkinRadiusM={checkinRadiusM}
               progress={progressOf(selectedSpot.spotId)}
               busy={busy}
               now={Date.now()}
@@ -1055,6 +1310,7 @@ export function App(): React.JSX.Element {
                   spots={sortedSpots}
                   selectedSpotId={selectedSpotId}
                   onSelectSpot={setSelectedSpotId}
+                  readySpotIds={readySpotIds}
                 />
               </section>
             </>
@@ -1069,6 +1325,7 @@ export function App(): React.JSX.Element {
       {walkGuardVisible && (
         <WalkGuard
           speedKmh={speedKmh(walk)}
+          arrivals={namesOf(walkLog, 'arrival')}
           unlockedCount={exploration.unlockedAreas.length}
           soundReady={soundReady && canPlaySound()}
           onDismiss={() => setGuardDismissed(true)}
@@ -1084,6 +1341,32 @@ export function App(): React.JSX.Element {
           result={burst}
           localOnly={mode === 'guest'}
           onDone={() => setBurst(undefined)}
+        />
+      )}
+
+      {/*
+        ★ 出来事の演出（FR-03-2）。先頭の1件だけを出す。
+        同時に重ねると読めない（読めない演出は出していないのと同じ）。
+      */}
+      {flashes[0] && (
+        <EventFlash
+          item={flashes[0]}
+          onDone={() => setFlashes((current) => current.slice(1))}
+        />
+      )}
+
+      {/*
+        ★ 覆っている間のまとめ（FR-02-9）。**自動で消さない。**
+        見ていなかった人に渡すものなので、読む前に消えては意味がない。
+      */}
+      {digest && game.exploration && (
+        <WalkDigest
+          log={digest}
+          onSelectSpot={(spotId) => {
+            setSelectedSpotId(spotId)
+            setDigest(undefined)
+          }}
+          onClose={() => setDigest(undefined)}
         />
       )}
 

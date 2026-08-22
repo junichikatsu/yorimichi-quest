@@ -1,6 +1,13 @@
 interface WalkGuardProps {
   /** 直近の速度（km/h）。歩いていることが伝わるように出す */
   speedKmh: number
+  /**
+   * 覆っている間にチェックインできる圏内へ入った場所（FR-02-10）。
+   *
+   * ★ 出すのは「着いた」ことだけである。**覆いを外させる導線にはしない。**
+   * 外させたらそれは歩きスマホであり、この覆いの存在意義が消える（NFR-14）。
+   */
+  arrivals: readonly string[]
   /** 開放済みの町丁目の数。歩いた成果が「見なくても増えている」ことを示す */
   unlockedCount: number
   /** 音を鳴らせているか。鳴らせないなら知らせが届かないので、そう書く */
@@ -23,6 +30,7 @@ interface WalkGuardProps {
  */
 export function WalkGuard({
   speedKmh,
+  arrivals,
   unlockedCount,
   soundReady,
   onDismiss,
@@ -36,6 +44,24 @@ export function WalkGuard({
           このまま<strong>ポケットに入れて歩けます</strong>。
           歩いたところは記録され続けます。
         </p>
+
+        {/*
+          ★ 着いたことは覆いの上に出す。音は聞き逃す（車の音・イヤホンをしていない
+          ・端末が鞄の中）ので、**立ち止まって見たときに残っている**必要がある。
+        */}
+        {arrivals.length > 0 && (
+          <div className="walkguard__arrival" role="status">
+            <p className="walkguard__arrival-title">チェックインできる場所に着きました</p>
+            <ul className="walkguard__arrival-list">
+              {arrivals.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+            <p className="walkguard__arrival-note">
+              立ち止まると自動で戻ります。<strong>止まってから</strong>記録してください。
+            </p>
+          </div>
+        )}
 
         <dl className="walkguard__stats">
           <div>
