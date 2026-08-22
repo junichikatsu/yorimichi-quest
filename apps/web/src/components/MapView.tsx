@@ -1,4 +1,6 @@
 import {
+  equippedKeys,
+  type Equipment,
   SPOT_CATEGORY_COLORS,
   SPOT_CATEGORY_GLYPHS,
   chomeByCode,
@@ -39,6 +41,8 @@ interface MapViewProps {
   revealRadiusM: number
   /** 現在地に描くキャラクター（FR-02-8）。未取得なら点で描く */
   avatar: Avatar | undefined
+  /** 身につけている道具（FR-07-8）。地図のキャラに反映する */
+  equipment: Equipment | undefined
   /** 有事モードか（FR-08-2） */
   emergency: boolean
   /**
@@ -159,7 +163,11 @@ function createCheckinElement(spot: SpotWithDistance, onClick: () => void): HTML
  *
  * ★ 見た目が未取得のときは点で描く。キャラクターを待って現在地が出ないほうが困る。
  */
-function createMeElement(avatar: Avatar | undefined, condition: Condition): HTMLElement {
+function createMeElement(
+  avatar: Avatar | undefined,
+  equipment: Equipment | undefined,
+  condition: Condition,
+): HTMLElement {
   const el = document.createElement('div')
   el.setAttribute('aria-label', condition === 'wet' ? '現在地（浸水想定区域の中）' : '現在地')
 
@@ -170,10 +178,26 @@ function createMeElement(avatar: Avatar | undefined, condition: Condition): HTML
 
   el.className = 'me me--avatar'
   const canvas = document.createElement('canvas')
-  const scale = 1
+  /*
+   * ★ 3 倍で描く。1 倍は 16×22 画素しかなく、地図の上で「小さな点」に見えていた。
+   * ドット絵なので拡大しても輪郭はぼやけない（imageSmoothingEnabled = false）。
+   */
+  const scale = 3
   canvas.width = SPRITE_WIDTH * scale
   canvas.height = SPRITE_HEIGHT * scale
-  drawSprite(canvas, { avatar, frame: 0, moving: false, direction: 'down', condition }, scale)
+  // ★ 身につけている道具を反映する（FR-07-8）。集めたものが地図の姿に出る
+  drawSprite(
+    canvas,
+    {
+      avatar,
+      ...(equipment ? { equip: equippedKeys(equipment) } : {}),
+      frame: 0,
+      moving: false,
+      direction: 'down',
+      condition,
+    },
+    scale,
+  )
   el.appendChild(canvas)
   return el
 }
@@ -408,6 +432,7 @@ export function MapView({
   unlockedAreas,
   revealRadiusM,
   avatar,
+  equipment,
   emergency,
   condition,
   readySpotIds,
@@ -586,7 +611,7 @@ export function MapView({
     marker.remove()
     meMarkerRef.current = null
     // 次の描画で作り直される（下の効果が position を見て作る）
-  }, [avatar, condition])
+  }, [avatar, equipment, condition])
 
   /** 現在地のマーカーと追従 */
   useEffect(() => {
@@ -600,7 +625,9 @@ export function MapView({
     }
 
     if (!meMarkerRef.current) {
-      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar, condition) })
+      meMarkerRef.current = new mapboxgl.Marker({
+        element: createMeElement(avatar, equipment, condition),
+      })
         .setLngLat([position.lng, position.lat])
         .addTo(map)
     } else {
@@ -615,7 +642,7 @@ export function MapView({
       map.jumpTo({ center: [position.lng, position.lat] })
       centeredRef.current = true
     }
-  }, [position, following, avatar, condition])
+  }, [position, following, avatar, equipment, condition])
 
   /**
    * 有事モードの配色へ切り替える（FR-08-2・FR-08-8）。

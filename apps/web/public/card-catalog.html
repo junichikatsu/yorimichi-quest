@@ -47,6 +47,36 @@
       h2 { font-size: 1rem; margin: 1.6rem 0 0.1rem; }
       .lead { margin: 0 0 0.8rem; font-size: 0.84rem; color: var(--muted); }
       .howto { margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--muted); }
+      /* タブ。カード一覧とドット絵一覧を切り替える */
+      .tabs { display: flex; gap: 0.3rem; margin: 0 0 0.7rem; }
+      .tabs button {
+        /* ★ 幅いっぱいに広げない。切り替えは補助なので、内容より目立たせない */
+        padding: 0.25rem 0.8rem;
+        border: 1px solid var(--line); border-radius: 999px;
+        background: var(--surface); color: var(--muted);
+        font: inherit; font-size: 0.78rem; cursor: pointer;
+      }
+      .tabs button[aria-selected="true"] {
+        border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 700;
+      }
+      .panel-hidden { display: none; }
+
+      /* ドット絵の一覧 */
+      .arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; }
+      .art {
+        display: flex; gap: 0.6rem; align-items: flex-start;
+        padding: 0.5rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+      }
+      .art__canvas {
+        flex: none; width: 3.4rem; height: 3.4rem; display: grid; place-items: center;
+        background: var(--chip);
+      }
+      .art__canvas canvas { height: 100%; width: auto; image-rendering: pixelated; display: block; }
+      .art__label { margin: 0; font-size: 0.74rem; line-height: 1.4; }
+      .art__name { margin: 0.1rem 0 0; font-size: 0.64rem; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+      .art__use { margin: 0.15rem 0 0; font-size: 0.66rem; color: var(--muted); line-height: 1.4; }
+      .art__unused { color: var(--aed); }
+
       .controls {
         position: sticky; top: 0; z-index: 2;
         display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
@@ -102,9 +132,18 @@
         /* ★ これが無いとドット絵がぼやける */
         image-rendering: pixelated;
       }
+      /* 道具カードはキャラクターを描く（縦長） */
+      .card__art canvas.character { aspect-ratio: 16 / 22; }
       .card__kind { margin: 0; font-size: 0.66rem; font-weight: 700; color: var(--cc); }
       .card__title { margin: 0; font-size: 0.84rem; line-height: 1.4; }
       .card__body { margin: 0; font-size: 0.72rem; line-height: 1.5; }
+      /* ★ どのカードがどの絵を使っているかを出す（絵を直すときに探せるように） */
+      .card__art-key {
+        margin: 0;
+        font-size: 0.6rem;
+        color: var(--muted);
+        word-break: break-all;
+      }
       .card--locked { box-shadow: inset 0 0 0 3px var(--line), 4px 4px 0 rgb(0 0 0 / 12%); }
       .card--locked .card__kind { color: var(--muted); }
       .card--locked .card__art { background: var(--line); }
@@ -142,6 +181,16 @@
       このページも自動で追随します。見た目は決定した案（ドット枠 8bit）です。
     </p>
 
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="cards" onclick="showTab('cards')">
+        カードの種類と中身
+      </button>
+      <button role="tab" aria-selected="false" data-tab="arts" onclick="showTab('arts')">
+        ドット絵の一覧
+      </button>
+    </div>
+
+    <div id="tab-cards">
     <div class="controls">
       <button id="state" aria-pressed="true" onclick="toggleState()">状態：達成（中身が見える）</button>
       <span class="lead" style="margin: 0">未達成では中身が消え、達成条件だけが残ります</span>
@@ -149,6 +198,21 @@
 
     <div class="summary" id="summary"></div>
     <div id="sections"></div>
+    </div>
+
+    <div id="tab-arts" class="panel-hidden">
+      <p class="lead">
+        カードに使っている絵と、<strong>どのカードで使われているか</strong>の一覧です。
+        使われていない絵は赤で示します（絵を直すときに影響範囲が分かります）。
+      </p>
+      <div class="arts" id="arts"></div>
+
+      <h2>キャラクター（装備つき・16×22）</h2>
+      <p class="howto">
+        地図の上とキャラメイクで使います。カードには使いません（道具カードは道具そのものの絵です）。
+      </p>
+      <div class="arts" id="avatars"></div>
+    </div>
 
     <h2>裏面</h2>
     <p class="howto">獲得の演出でめくる前に見える面です。</p>
@@ -215,6 +279,51 @@
         })
       }
 
+      /**
+       * キャラクターの絵（道具カード用）。
+       *
+       * ★ 色の当て方は本体（apps/web/src/avatar/sprite.ts）と同じにしてある。
+       * ここがずれると、一覧と本体で別の色のキャラが出る。
+       */
+      const ITEM_COLORS = {
+        helmet: '#e8b93a', zukin: '#c8503f', headlight: '#4a5170', raincoat: '#3f7fbf',
+        gloves: '#e6e0d2', tank: '#3fa9c8', book: '#2f9e6f', whistle: '#e0b24a',
+        potatoilet: '#a9a2b5', radio: '#5a4b40',
+      }
+
+      function drawCharacter(canvas, rows, itemKey) {
+        if (!rows) return
+        const p = catalog.avatarPalette
+        const eq = ITEM_COLORS[itemKey] ?? '#a9a2b5'
+        const map = {
+          o: '#2f2733', s: p.skin, S: shadesOf(p.skin).dark,
+          p: mix(p.skin, '#d8686a', 0.34),
+          h: p.hair, H: shadesOf(p.hair).dark,
+          c: p.cloth, C: shadesOf(p.cloth).dark,
+          e: eq, E: shadesOf(eq).dark,
+          w: '#fbf7f4', k: '#241f27',
+        }
+        const ctx = canvas.getContext('2d')
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        rows.forEach((row, y) => {
+          for (let x = 0; x < row.length; x += 1) {
+            const fill = map[row[x]]
+            if (!fill) continue
+            ctx.fillStyle = fill
+            ctx.fillRect(x, y, 1, 1)
+          }
+        })
+      }
+
+      function mix(a, b, ratio) {
+        const parse = (hex) => {
+          const v = parseInt(hex.slice(1), 16)
+          return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
+        }
+        const A = parse(a), B = parse(b)
+        return '#' + A.map((c, i) => Math.round(c + (B[i] - c) * ratio).toString(16).padStart(2, '0')).join('')
+      }
+
       /* ---------------- 描画 ---------------- */
       let achieved = true
       let catalog = null
@@ -227,13 +336,27 @@
 
       function cardHtml(card) {
         const text = achieved ? card.body : card.condition
+        const itemKey = card.cardId.startsWith('tool:') ? card.cardId.slice('tool:'.length) : ''
+        /*
+         * ★ 道具カードは「その道具を装備したキャラクター」を描く（#66 で決めた形）。
+         * 未達成のときは種類にかかわらず「？」なので、キャラクターは達成時だけ。
+         */
+        const useCharacter = achieved && itemKey && catalog.avatarArt[itemKey]
+        const artKey = achieved
+          ? (useCharacter ? `キャラ＋${itemKey}` : catalog.artKeys[card.cardId] ?? 'mission')
+          : 'locked-unknown'
+        const size = useCharacter
+          ? `width="${catalog.avatarSize.width}" height="${catalog.avatarSize.height}" class="character"`
+          : 'width="24" height="24"'
         return `<article class="card ${achieved ? '' : 'card--locked'}"
           style="${achieved ? `--cc: ${colorVarOf(card)}` : ''}">
-          <div class="card__art"><canvas width="24" height="24"
-            data-art="${catalog.artKeys[card.cardId] ?? 'mission'}" data-color="${colorVarOf(card)}"></canvas></div>
+          <div class="card__art"><canvas ${size}
+            data-art="${artKey}" data-item="${useCharacter ? itemKey : ''}"
+            data-color="${colorVarOf(card)}"></canvas></div>
           <p class="card__kind">${card.kindLabel}</p>
           <h3 class="card__title">${card.title}</h3>
           <p class="card__body">${text}</p>
+          <p class="card__art-key">絵: ${artKey}</p>
         </article>`
       }
 
@@ -278,6 +401,11 @@
         const probe = document.createElement('div')
         document.body.appendChild(probe)
         for (const canvas of document.querySelectorAll('canvas[data-art]')) {
+          const itemKey = canvas.dataset.item
+          if (itemKey) {
+            drawCharacter(canvas, catalog.avatarArt[itemKey], itemKey)
+            continue
+          }
           probe.style.color = canvas.dataset.color
           const color = getComputedStyle(probe).color
           const rows = catalog.art[achieved ? canvas.dataset.art : 'locked-unknown'] ?? []
@@ -288,12 +416,99 @@
 
       function toggleState() { achieved = !achieved; render() }
 
+      function showTab(name) {
+        for (const button of document.querySelectorAll('.tabs button')) {
+          button.setAttribute('aria-selected', String(button.dataset.tab === name))
+        }
+        document.getElementById('tab-cards').classList.toggle('panel-hidden', name !== 'cards')
+        document.getElementById('tab-arts').classList.toggle('panel-hidden', name !== 'arts')
+      }
+
+      /**
+       * ドット絵の一覧。
+       *
+       * ★ **どのカードで使っているか**を併記する。#71 で絵を直すとき、影響するカードが
+       * 分からないと直せない。使われていない絵も出す（消し忘れが分かる）。
+       */
+      function renderArts() {
+        const usedBy = new Map()
+        for (const [cardId, artKey] of Object.entries(catalog.artKeys)) {
+          const list = usedBy.get(artKey) ?? []
+          list.push(cardId)
+          usedBy.set(artKey, list)
+        }
+        // 場所カードは見本しか artKeys に無いので、カテゴリ単位の使用も足す
+        for (const place of catalog.places) {
+          const key = `place-${place.category}`
+          if (!usedBy.has(key)) usedBy.set(key, [`place:（${place.label} ${place.total}件）`])
+        }
+
+        /*
+         * ★ 絵は**使っているカードと同じ色**で描く。一覧だけ別の色にすると、
+         * 直したときの見え方が分からない。複数のカードで使い回している絵は、
+         * 最初に使っているカードの色で描く（色が違う流用は使用欄の枚数で分かる）。
+         */
+        const cardById = new Map()
+        for (const group of catalog.groups) {
+          for (const card of group.cards) cardById.set(card.cardId, card)
+        }
+
+        document.getElementById('arts').innerHTML = Object.keys(catalog.art)
+          .sort()
+          .map((name) => {
+            const cards = usedBy.get(name) ?? []
+            const use = cards.length
+              ? cards.slice(0, 4).join('<br>') +
+                (cards.length > 4 ? `<br>…ほか ${cards.length - 4} 枚` : '')
+              : '<span class="art__unused">どのカードにも使われていません</span>'
+            const owner = cards.map((id) => cardById.get(id)).find(Boolean)
+            const color = owner ? colorVarOf(owner) : 'var(--accent)'
+            const label = catalog.artLabels[name] ?? ''
+            return `<div class="art">
+              <div class="art__canvas"><canvas width="24" height="24"
+                data-art="${name}" data-color="${color}"></canvas></div>
+              <div>
+                <p class="art__label">${label}</p>
+                <p class="art__name">${name}</p>
+                <p class="art__use">${use}</p>
+              </div>
+            </div>`
+          })
+          .join('')
+
+        document.getElementById('avatars').innerHTML = Object.keys(catalog.avatarArt)
+          .map(
+            (key) => `<div class="art">
+              <div class="art__canvas"><canvas width="${catalog.avatarSize.width}"
+                height="${catalog.avatarSize.height}" data-item="${key}"></canvas></div>
+              <div>
+                <p class="art__label">${catalog.itemNames[key] ?? key}を身につけた姿</p>
+                <p class="art__name">キャラ＋${key}</p>
+                <p class="art__use">地図の上・キャラメイク</p>
+              </div>
+            </div>`,
+          )
+          .join('')
+
+        const probe = document.createElement('div')
+        document.body.appendChild(probe)
+        for (const canvas of document.querySelectorAll('#arts canvas')) {
+          probe.style.color = canvas.dataset.color
+          drawArt(canvas, catalog.art[canvas.dataset.art] ?? [], getComputedStyle(probe).color, false)
+        }
+        probe.remove()
+        for (const canvas of document.querySelectorAll('#avatars canvas')) {
+          drawCharacter(canvas, catalog.avatarArt[canvas.dataset.item], canvas.dataset.item)
+        }
+      }
+
       async function load() {
         try {
           const response = await fetch('v1/dev/card-catalog')
           if (!response.ok) throw new Error(String(response.status))
           catalog = await response.json()
           render()
+          renderArts()
         } catch (err) {
           document.getElementById('sections').innerHTML =
             `<p class="error">カードの定義を取得できませんでした（${err.message}）。

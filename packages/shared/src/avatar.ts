@@ -32,30 +32,36 @@ export const CLOTH_COLORS = [
 
 export const SKIN_COLORS = ['#f6d2ab', '#e7b487', '#c88f5f', '#96633f'] as const
 
+/**
+ * 髪型。
+ *
+ * ★ **絵が描けるものだけを並べる。** 16×20 のドット絵では髪に使える面積が
+ * 頭の上4行しかなく、「スパイキー」「くるくる」のような細かい差は表現できない。
+ * 選べるのに見た目が変わらない選択肢は、あるだけで不信を招く。
+ * 絵は `avatar-art.ts` の `AVATAR_HAIR` と**この順番で対応する**。
+ */
 export const HAIR_NAMES = [
   'ショート',
   'ロング',
-  'ポニーテール',
   'ツインテール',
-  'スパイキー',
   'ボブ',
-  'くるくる',
   'キャップ',
-  'フード',
   'はちまき',
 ] as const
 
+/**
+ * 服。
+ *
+ * ★ 髪型と同じ理由で、**胴の4行で差が出るものだけ**にしてある。
+ * 絵は `avatar-art.ts` の `AVATAR_CLOTH` と**この順番で対応する**。
+ */
 export const CLOTH_NAMES = [
-  'チュニック',
+  'Tシャツ',
+  '縞シャツ',
   'パーカー',
-  'ジャケット',
   'レインコート',
-  'セーラー',
-  'ワンピース',
-  'リュック',
-  'はっぴ',
   '防災ベスト',
-  'ローブ',
+  'ワンピース',
 ] as const
 
 export const AVATAR_NAME_MAX_LENGTH = 12
@@ -76,7 +82,7 @@ export interface Avatar {
 
 export const DEFAULT_AVATAR: Avatar = {
   hair: 0,
-  cloth: 3,
+  cloth: 1,
   hairColor: 0,
   clothColor: 1,
   skin: 0,

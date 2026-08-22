@@ -5,6 +5,7 @@ import type {
   CheckinResponse,
   ClientConfigResponse,
   ConsentRequest,
+  Equipment,
   ErrorResponse,
   ExplorationRequest,
   ExplorationResponse,
@@ -166,6 +167,18 @@ export function postExploration(points: ExplorationRequest['points']): Promise<E
   return request<ExplorationUpdateResponse>('/v1/exploration', {
     method: 'POST',
     body: JSON.stringify({ points }),
+  })
+}
+
+/**
+ * 身につけている道具を保存する（FR-07-8）。
+ *
+ * ★ 持っていない道具はサーバーが外す。**画面側の制限は補助**で、最終判定はサーバー。
+ */
+export function saveEquipment(equipment: Equipment): Promise<MeResponse> {
+  return request<MeResponse>('/v1/me/equipment', {
+    method: 'PUT',
+    body: JSON.stringify(equipment),
   })
 }
 

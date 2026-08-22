@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { PIXEL_ART, PIXEL_CHARS, PIXEL_SIZE, pixelArtKeyOf } from './pixel-art.js'
+import {
+  PIXEL_ART,
+  PIXEL_ART_LABELS,
+  PIXEL_CHARS,
+  PIXEL_SIZE,
+  pixelArtKeyOf,
+} from './pixel-art.js'
 
 /**
  * ドット絵の寸法。
@@ -48,6 +54,20 @@ describe('ドット絵', () => {
     const place = pixelArtKeyOf({ kind: 'place', key: 'sample-1', category: 'shelter' })
 
     expect(action).not.toBe(place)
+  })
+
+  it('★ すべての絵に日本語の説明がある', () => {
+    /*
+     * 説明が無いと「この絵を直してほしい」と指示を出すときに、どれを指しているのか
+     * 伝えられない。絵を足したら説明も足すこと。
+     */
+    for (const name of Object.keys(PIXEL_ART)) {
+      expect(PIXEL_ART_LABELS[name], `${name} の説明が無い`).toBeTruthy()
+    }
+    // 逆向き：使われていない説明が残っていないか
+    for (const name of Object.keys(PIXEL_ART_LABELS)) {
+      expect(PIXEL_ART[name], `${name} の絵が無いのに説明がある`).toBeDefined()
+    }
   })
 
   it('絵の無いカードでも名前が返る（穴をあけない）', () => {

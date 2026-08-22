@@ -208,6 +208,19 @@ describe('styles.css', () => {
   })
 
   /*
+   * ★ **実際に壊した。** 道具カードの比率を足したときに `image-rendering` を
+   * 新しい規則の中へ移してしまい、カードの絵が全部ぼやけた（ガラス越しに見えた）。
+   * 見た目の劣化は動作テストに出ないので、宣言があること自体を固定する。
+   */
+  it('★ ドット絵の canvas は補間を切る（無いと絵がぼやける）', () => {
+    for (const selector of ['.cardart__canvas', '.avatar-canvas']) {
+      expect(ruleBlock(css, selector), `${selector} に image-rendering が無い`).toContain(
+        'image-rendering: pixelated',
+      )
+    }
+  })
+
+  /*
    * 到着の知らせと出来事の演出（FR-02-10・FR-03-2）。
    *
    * ★ 覆い（FR-02-9）との関係が要点である。**覆っている最中に前へ出る演出は、

@@ -1,7 +1,10 @@
 import {
   DEFAULT_AVATAR,
+  EMPTY_EQUIPMENT,
   asUserId,
+  equipmentSchema,
   normalizeAvatar,
+  type Equipment,
   type UserId,
   type UserProfile,
 } from '@imanouchi/shared'
@@ -44,6 +47,23 @@ function parseAvatar(value: unknown): ReturnType<typeof normalizeAvatar> {
   }
 }
 
+/**
+ * 身につけている道具。
+ *
+ * ★ avatar と同じく JSON 文字列で持つ（データストアは入れ子のオブジェクトを
+ * 素直に扱えない）。読み出しで検証し、壊れていれば「何も装備していない」へ落とす。
+ * **読めない値でアプリを落とさない**ほうを選んでいる。
+ */
+function parseEquipment(value: unknown): Equipment {
+  if (typeof value !== 'string' || value === '') return EMPTY_EQUIPMENT
+  try {
+    const parsed = equipmentSchema.safeParse(JSON.parse(value))
+    return parsed.success ? parsed.data : EMPTY_EQUIPMENT
+  } catch {
+    return EMPTY_EQUIPMENT
+  }
+}
+
 function toProfile(item: unknown): UserProfile | undefined {
   if (typeof item !== 'object' || item === null) return undefined
   const raw = item as Record<string, unknown>
@@ -56,6 +76,7 @@ function toProfile(item: unknown): UserProfile | undefined {
     displayName: typeof raw['displayName'] === 'string' ? raw['displayName'] : '',
     pictureUrl: typeof raw['pictureUrl'] === 'string' ? raw['pictureUrl'] : '',
     avatar: parseAvatar(raw['avatar']),
+    equipment: parseEquipment(raw['equipment']),
     totalPoints: typeof raw['totalPoints'] === 'number' ? raw['totalPoints'] : 0,
     titles: parseTitles(raw['titles']),
     // 空文字は「未同意」と同じ扱いにする（データストアは undefined を保持できない）
@@ -97,6 +118,7 @@ export async function putUser(ctx: DataStoreContext, profile: UserProfile): Prom
         displayName: profile.displayName,
         pictureUrl: profile.pictureUrl,
         avatar: JSON.stringify(profile.avatar),
+        equipment: JSON.stringify(profile.equipment),
         totalPoints: profile.totalPoints,
         titles: JSON.stringify(profile.titles),
         // undefined は保持できないので空文字に落とす

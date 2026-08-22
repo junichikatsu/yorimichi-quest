@@ -2,6 +2,7 @@ import { distanceMeters, offsetByMeters } from '@imanouchi/core'
 import type {
   Avatar,
   CardsResponse,
+  Equipment,
   CardView,
   CheckinResponse,
   ClientConfigResponse,
@@ -11,11 +12,13 @@ import type {
   SpotWithDistance,
   UserView,
 } from '@imanouchi/shared'
+import { equippedKeys } from '@imanouchi/shared'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   answerQuiz,
   ApiError,
   checkin,
+  saveEquipment,
   devLogin,
   fetchCards,
   fetchClientConfig,
@@ -790,6 +793,20 @@ export function App(): React.JSX.Element {
     [mode, guestProgress, cooldownHours, serverProgress],
   )
 
+  /**
+   * 持っている道具（FR-07-8）。**達成した道具カード**から導く。
+   *
+   * ★ カードの一覧を開いていないと空になる。キャラメイクを開いたときにも取りに行く
+   * （下の useEffect）。
+   */
+  const ownedTools = useMemo(
+    () =>
+      (cards?.cards ?? [])
+        .filter((card) => card.kind === 'tool' && card.achieved)
+        .map((card) => card.cardId.replace('tool:', '')),
+    [cards],
+  )
+
   /** 累計ポイント。おためしは端末の中の値を使う（サーバーは持っていない） */
   const totalPoints = mode === 'guest' ? guestProgress.points : (user?.totalPoints ?? 0)
 
@@ -949,6 +966,12 @@ export function App(): React.JSX.Element {
     setSelectedSpotId(spotId)
     if (spotId !== undefined) setSidebarTab('explore')
   }, [])
+
+  /** キャラメイクを開いたときも、持っている道具を知るためにカードを取る */
+  useEffect(() => {
+    if (!creatorOpen || mode !== 'line' || cards !== undefined) return
+    void loadCards()
+  }, [creatorOpen, mode, cards, loadCards])
 
   /**
    * カードのタブを見ているあいだに、必要なら取りに行く。
@@ -1226,6 +1249,28 @@ export function App(): React.JSX.Element {
     [geo, config?.area.center],
   )
 
+  /**
+   * 身につけている道具を保存する（FR-07-8）。
+   *
+   * ★ おためしは保存できない。画面の中だけで見た目を変える（同意や見た目と同じ扱い）。
+   */
+  const handleSaveEquipment = async (equipment: Equipment): Promise<void> => {
+    if (mode === 'guest') {
+      setUser((current) => (current ? { ...current, equipment } : current))
+      return
+    }
+
+    setBusy(true)
+    try {
+      const response = await saveEquipment(equipment)
+      setUser(response.user)
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : '装備を保存できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** キャラクターの見た目を保存する（FR-01-6） */
   const handleSaveAvatar = async (avatar: Avatar): Promise<void> => {
     // おためしは保存できない。画面の中だけで見た目を変える
@@ -1366,6 +1411,7 @@ export function App(): React.JSX.Element {
             unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
             avatar={user?.avatar}
+            equipment={user?.equipment}
             emergency={emergency}
             condition={game.exploration && hazard.wet ? 'wet' : 'dry'}
             readySpotIds={readySpotIds}
@@ -1408,8 +1454,15 @@ export function App(): React.JSX.Element {
           {creatorOpen && user && (
             <AvatarCreator
               avatar={user.avatar}
+              equipment={user.equipment}
+              /*
+                ★ 持っている道具＝**達成した道具カード**。カードの一覧を開いていない
+                ときは空になるので、キャラメイクを開いたときにも取りに行く。
+              */
+              ownedTools={ownedTools}
               busy={busy}
               onSave={(avatar) => void handleSaveAvatar(avatar)}
+              onSaveEquipment={(equipment) => void handleSaveEquipment(equipment)}
               onClose={() => setCreatorOpen(false)}
             />
           )}
@@ -1523,6 +1576,7 @@ export function App(): React.JSX.Element {
           unlockedCount={exploration.unlockedAreas.length}
           soundReady={soundReady && canPlaySound()}
           avatar={user?.avatar}
+          {...(user ? { equip: equippedKeys(user.equipment) } : {})}
           condition={hazard.wet ? 'wet' : 'dry'}
           onDismiss={() => setGuardDismissed(true)}
         />

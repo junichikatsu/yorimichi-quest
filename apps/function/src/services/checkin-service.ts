@@ -22,6 +22,7 @@ import type {
 } from '@imanouchi/shared'
 import { AppError, notFound, unauthorized } from '../errors.js'
 import { grantCards, grantMissions, placeCardDef, type CardDefinition } from './card-service.js'
+import { autoEquip } from './user-service.js'
 import { withDistance } from './spot-service.js'
 import type { Actor } from './actor.js'
 
@@ -183,10 +184,23 @@ export async function performCheckin(
 
   const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
   if (acquiredCards.length > 0) {
-    acquiredCards.push(
-      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
-    )
+    acquiredCards.push(...(await grantMissions(ctx, userId, input.areaId, nowIso)))
   }
+
+  /*
+   * ★ 手に入れた道具は**空いているスロットにだけ**自動で装備する。
+   * 見た目が変わらないと集めた実感が出ない。一方で、すでに身につけているものを
+   * 置き換えると「選んだ装備が戻る」ことになるので、空きだけを埋める。
+   */
+  const equipped = autoEquip(
+    {
+      ...profile,
+      totalPoints: profile.totalPoints + decision.pointsEarned,
+      lastActiveAt: nowIso,
+    },
+    acquiredCards.map((card) => card.cardId.replace('tool:', '')),
+  )
+  await putUser(ctx, equipped)
 
   const updatedSpot = await incrementSpotCheckinCount(ctx, spot, nowIso)
 

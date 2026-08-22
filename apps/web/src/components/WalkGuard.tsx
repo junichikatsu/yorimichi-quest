@@ -25,6 +25,13 @@ interface WalkGuardProps {
   hazards: readonly string[]
   /** 覆いの上に出すキャラクター。見た目が未取得なら出さない */
   avatar: Avatar | undefined
+  /**
+   * 身につけている道具（FR-07-8）。
+   *
+   * ★ 地図の姿と揃える。**同じキャラクターが画面によって違う姿だと、
+   * 集めたものが身についている実感が消える。**
+   */
+  equip?: readonly string[]
   /** キャラクターの状態。浸水想定区域の中では濡れている */
   condition: Condition
   /** 「今すぐ見る」。歩いていても本人が必要なら開けなければならない */
@@ -50,6 +57,7 @@ export function WalkGuard({
   unlockedCount,
   soundReady,
   avatar,
+  equip,
   condition,
   onDismiss,
 }: WalkGuardProps): React.JSX.Element {
@@ -67,6 +75,7 @@ export function WalkGuard({
             <AvatarCanvas
               avatar={avatar}
               scale={2.4}
+              {...(equip ? { equip } : {})}
               animated
               condition={condition}
               label={condition === 'wet' ? '歩いているキャラクター（足元が濡れている）' : '歩いているキャラクター'}

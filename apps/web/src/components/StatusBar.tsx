@@ -1,5 +1,5 @@
 import type { GeolocationStatus } from '../hooks/useGeolocation.js'
-import type { UserView } from '@imanouchi/shared'
+import { equippedKeys, type UserView } from '@imanouchi/shared'
 import { useEffect, useRef, useState } from 'react'
 import { AvatarCanvas } from './AvatarCanvas.js'
 
@@ -87,7 +87,7 @@ export function StatusBar({
             onClick={onOpenCreator}
             aria-label="キャラクターをつくる"
           >
-            <AvatarCanvas avatar={user.avatar} scale={1} />
+            <AvatarCanvas avatar={user.avatar} equip={equippedKeys(user.equipment)} scale={1} />
           </button>
         ) : (
           <span className="statusbar__avatar statusbar__avatar--blank" aria-hidden="true" />
