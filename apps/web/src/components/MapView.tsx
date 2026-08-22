@@ -181,9 +181,10 @@ function createMeElement(avatar: Avatar | undefined, condition: Condition): HTML
 /**
  * 霧を晴らす形を描く（歩いたところ）。
  *
- * ★ 霧の切り抜きと、ハザードの切り抜きで**同じ形**を使う。二重に持つと
- * 「霧は晴れているのにハザードが出ない」がすぐ起きる。合成のしかた
- * （`destination-out` か `destination-in` か）だけを呼ぶ側が決める。
+ * ★ 外周をぼかす。切り抜きが真円だと「穴」に見えてしまう。
+ *
+ * ★ ハザードはこれを使わない（`addRevealPath` でクリップする）。
+ * ぼかしの半透明なところにハザードが残ると、まだ霧が濃いところに色が見える。
  */
 function paintRevealShapes(
   ctx: CanvasRenderingContext2D,
@@ -193,15 +194,6 @@ function paintRevealShapes(
   revealRadiusM: number,
   width: number,
   height: number,
-  /**
-   * 外周をぼかすか。
-   *
-   * ★ 霧は**ぼかす**（切り抜きが真円だと「穴」に見える）。
-   * ハザードは**ぼかさない**。半透明のところにハザードが半分残ると、
-   * **まだ霧が濃いところに色が見える**（拡大縮小でぼかしの幅が変わるため、
-   * ズームのたびに見え方が変わって「霧の中にハザードが出る」ことになる）。
-   */
-  feather: boolean,
 ): void {
   const zoom = map.getZoom()
 
@@ -260,33 +252,93 @@ function paintRevealShapes(
       continue
     }
 
-    if (feather) {
-      const gradient = ctx.createRadialGradient(
-        point.x,
-        point.y,
-        radius * FOG_FEATHER_START,
-        point.x,
-        point.y,
-        radius,
-      )
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-      ctx.fillStyle = gradient
+    const gradient = ctx.createRadialGradient(
+      point.x,
+      point.y,
+      radius * FOG_FEATHER_START,
+      point.x,
+      point.y,
+      radius,
+    )
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = gradient
 
-      ctx.beginPath()
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-      ctx.fill()
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+/**
+ * 歩いたところを**クリップ領域**として組む（#72）。
+ *
+ * ★ 合成（`destination-in`）でハザードを切り抜くのをやめた理由:
+ * ズームによってハザードが霧の上に全面で出ることがあった。合成は「何をどの順で
+ * 重ねたか」に依存し、1か所でも順序が崩れると**切り抜きが丸ごと効かない**。
+ * クリップなら「この形の外には描けない」ことがブラウザの仕組みとして保証される。
+ *
+ * ★ ぼかさない。霧が**完全に**晴れているところ（ぼかしの内側）だけを対象にする。
+ * 半透明の縁にハザードが残ると、まだ霧が濃いところに色が見える。
+ *
+ * ★ 町丁目の境界の継ぎ目（髪の毛のような隙間）は埋めない。クリップでは線を
+ * 足せないため、隣り合う区画の境に1〜2pxハザードが乗らない筋が出る。
+ * 霧では線でなぞって埋めているが、ここは実害が無い（塗りが少し欠けるだけ）。
+ */
+function addRevealPath(
+  ctx: CanvasRenderingContext2D,
+  map: mapboxgl.Map,
+  areas: readonly UnlockedAreaBounds[],
+  tiles: readonly ExploredTile[],
+  revealRadiusM: number,
+  width: number,
+  height: number,
+): void {
+  const zoom = map.getZoom()
+  ctx.beginPath()
+
+  for (const area of areas) {
+    const chome = chomeByCode(area.areaKey)
+    if (!chome) continue
+
+    const [minLng, minLat, maxLng, maxLat] = chome.bbox
+    const topLeft = map.project([minLng, maxLat])
+    const bottomRight = map.project([maxLng, minLat])
+    if (
+      Math.max(topLeft.x, bottomRight.x) < 0 ||
+      Math.max(topLeft.y, bottomRight.y) < 0 ||
+      Math.min(topLeft.x, bottomRight.x) > width ||
+      Math.min(topLeft.y, bottomRight.y) > height
+    ) {
       continue
     }
 
-    /*
-     * ぼかさない側。**霧が完全に晴れているところ**（ぼかしの内側）だけを塗る。
-     * 半径を縮めるのは、霧の縁とハザードの縁を重ねないためである。
-     */
-    ctx.fillStyle = 'rgba(0, 0, 0, 1)'
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, radius * FOG_FEATHER_START, 0, Math.PI * 2)
-    ctx.fill()
+    for (const ring of chome.rings) {
+      ring.forEach(([lng, lat], index) => {
+        const point = map.project([lng, lat])
+        if (index === 0) ctx.moveTo(point.x, point.y)
+        else ctx.lineTo(point.x, point.y)
+      })
+      ctx.closePath()
+    }
+  }
+
+  for (const tile of tiles) {
+    const point = map.project([tile.lng, tile.lat])
+    // ★ ぼかしの内側だけ。霧が完全に晴れているところに合わせる
+    const radius = metersToPixels(revealRadiusM, tile.lat, zoom) * FOG_FEATHER_START
+    if (
+      point.x < -radius ||
+      point.y < -radius ||
+      point.x > width + radius ||
+      point.y > height + radius
+    ) {
+      continue
+    }
+
+    // arc は新しい下位パスを始めるので、円を並べれば和集合になる
+    ctx.moveTo(point.x + radius, point.y)
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
   }
 }
 
@@ -365,18 +417,16 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const fogRef = useRef<HTMLCanvasElement>(null)
-  /** ハザードを切り抜くための作業用キャンバス（画面には出さない） */
-  const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   /** 霧を晴らす形（外周をぼかす）。画面には出さない */
   const maskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   /**
-   * ハザードを残す形（ぼかさない・少し内側）。画面には出さない。
+   * ハザードのタイルを組み立てる作業用キャンバス。画面には出さない。
    *
-   * ★ 霧と同じ形を使ってはいけない。ぼかしの半透明なところにハザードが
-   * 半分残るため、**まだ霧が濃いところに色が見える**。ぼかしの幅は画面の
-   * ピクセルで決まるので、拡大縮小のたびに見え方が変わる（実機で出た）。
+   * ★ ここへ**透かさずに**描いてから、まとめて薄く重ねる。直接薄く描くと
+   * 洪水と高潮が重なったところで色が混ざり、凡例に無い色になる（深さを誤って
+   * 見せることになる）。
    */
-  const hardMaskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
+  const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   /**
    * 地図に触れている間か（#72）。
    *
@@ -618,54 +668,57 @@ export function MapView({
     ctx.globalAlpha = 1
     ctx.clearRect(0, 0, width, height)
 
-    /* ---------------- 歩いたところ（マスク） ---------------- */
+    /* ---------------- 霧（FR-02-7） ---------------- */
 
     /*
-     * ★ 形は**1枚のキャンバスにまとめてから**当てる（`applyMask` の説明を参照）。
+     * ★ 有事モードでは霧を出さない（FR-08-2）。
+     * 未踏のエリアが霧のままでは、そこにある避難所へ向かえない。
+     * 霧はゲーム要素であり、有事に残しておくと**それ自体が危険**である。
      *
-     * ★ 2枚作る。霧は外周をぼかし、ハザードはぼかさない（少し内側）。
-     * 同じ形を使うと、ぼかしの半透明なところにハザードが半分残り、
-     * **まだ霧が濃いところに色が見える**。
+     * ★ 形は1枚のキャンバスにまとめてから当てる（`applyMask` の説明を参照）。
      */
-    const buildMask = (
-      ref: typeof maskCanvasRef,
-      feather: boolean,
-    ): { canvas: HTMLCanvasElement; ok: boolean } => {
-      const target = ref.current ?? document.createElement('canvas')
-      ref.current = target
-      if (target.width !== canvas.width || target.height !== canvas.height) {
-        target.width = canvas.width
-        target.height = canvas.height
+    if (!emergency) {
+      ctx.fillStyle = FOG_COLOR
+      ctx.fillRect(0, 0, width, height)
+
+      const mask = maskCanvasRef.current ?? document.createElement('canvas')
+      maskCanvasRef.current = mask
+      if (mask.width !== canvas.width || mask.height !== canvas.height) {
+        mask.width = canvas.width
+        mask.height = canvas.height
       }
 
-      const targetCtx = target.getContext('2d')
-      if (!targetCtx) return { canvas: target, ok: false }
-
-      targetCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      targetCtx.globalCompositeOperation = 'source-over'
-      targetCtx.globalAlpha = 1
-      targetCtx.clearRect(0, 0, width, height)
-      paintRevealShapes(
-        targetCtx,
-        map,
-        areasRef.current,
-        tilesRef.current,
-        revealRadiusM,
-        width,
-        height,
-        feather,
-      )
-      return { canvas: target, ok: true }
+      const maskCtx = mask.getContext('2d')
+      if (maskCtx) {
+        maskCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        maskCtx.globalCompositeOperation = 'source-over'
+        maskCtx.globalAlpha = 1
+        maskCtx.clearRect(0, 0, width, height)
+        paintRevealShapes(
+          maskCtx,
+          map,
+          areasRef.current,
+          tilesRef.current,
+          revealRadiusM,
+          width,
+          height,
+        )
+        applyMask(ctx, mask, 'destination-out', width, height)
+      }
     }
-
-    const fogMask = buildMask(maskCanvasRef, true)
-    const hazardMask = buildMask(hardMaskCanvasRef, false)
 
     /* ---------------- ハザード（#72） ---------------- */
 
-    // タイルが届いたら描き直す。ref 越しに最新の描画を呼ぶ（自分自身を依存にしない）
-    const onTileReady = (): void => drawRef.current?.()
-
+    /*
+     * ★ **クリップ領域の中に直接描く。** 合成で切り抜くのはやめた。
+     * 合成は「何をどの順で重ねたか」に依存し、1か所崩れると切り抜きが丸ごと
+     * 効かない（ズームによってハザードが霧の上に全面で出る不具合が実機で出た）。
+     * クリップなら「この形の外には描けない」ことが仕組みとして保証される。
+     *
+     * ★ 有事モードではクリップしない（探索に関係なく全面に出す・FR-08-2）。
+     *
+     * ★ 触れている間は描かない。地図の文字を確かめられるように（`peekRef`）。
+     */
     const hazard = hazardCanvasRef.current ?? document.createElement('canvas')
     hazardCanvasRef.current = hazard
     if (hazard.width !== canvas.width || hazard.height !== canvas.height) {
@@ -673,53 +726,38 @@ export function MapView({
       hazard.height = canvas.height
     }
 
-    // ★ 触れている間は塗らない。押している最中に下の地図と文字を確かめられる
     const hazardCtx = peekRef.current ? null : hazard.getContext('2d')
     if (hazardCtx) {
+      /*
+       * ★ タイルは**いったん別のキャンバスへ、透かさずに**描く。
+       *
+       * 直接薄く描くと、洪水と高潮が重なったところで2つの色が混ざり、
+       * **凡例に無い色＝実際とは違う深さ**に見えてしまう。透かさずに描けば
+       * 後から描いたほうが上に乗り、色は凡例のまま保たれる。
+       * 1px ぶん広げて描いている継ぎ目も、透かさなければ見えない。
+       */
       hazardCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
       hazardCtx.globalCompositeOperation = 'source-over'
       hazardCtx.globalAlpha = 1
       hazardCtx.clearRect(0, 0, width, height)
+      paintHazardTiles(hazardCtx, map, () => drawRef.current?.())
 
-      paintHazardTiles(hazardCtx, map, onTileReady)
+      ctx.save()
 
       /*
-       * ★ 平時は歩いたところだけに残す。
-       * 有事モードでは切り抜かない（探索に関係なく全面に出す・FR-08-2 と同じ理由）。
-       *
-       * ★ マスクを作れなかったときは**塗りを捨てる**。切り抜けないまま出すと、
-       * 歩いていないところの危険まで見せてしまう（漏らすより出さない）。
+       * ★ 有事モードではクリップしない（探索に関係なく全面に出す・FR-08-2）。
        */
       if (!emergency) {
-        if (hazardMask.ok) applyMask(hazardCtx, hazardMask.canvas, 'destination-in', width, height)
-        else hazardCtx.clearRect(0, 0, width, height)
+        addRevealPath(ctx, map, areasRef.current, tilesRef.current, revealRadiusM, width, height)
+        ctx.clip()
       }
-    }
 
-    /* ---------------- 霧（FR-02-7） ---------------- */
-
-    /*
-     * ★ 有事モードでは霧を出さない（FR-08-2）。
-     * 未踏のエリアが霧のままでは、そこにある避難所へ向かえない。
-     * 霧はゲーム要素であり、有事に残しておくと**それ自体が危険**である。
-     */
-    if (!emergency) {
-      ctx.fillStyle = FOG_COLOR
-      ctx.fillRect(0, 0, width, height)
-
-      if (fogMask.ok) applyMask(ctx, fogMask.canvas, 'destination-out', width, height)
-    }
-
-    /*
-     * ハザードを最後に重ねる。
-     *
-     * ★ 地図が読めなくなるほど濃くしない。想定区域は広く、真上から塗りつぶすと
-     * 道も避難所も見えなくなる（有事にそれは危険である）。
-     */
-    if (hazardCtx) {
+      // 地図が読めなくなるほど濃くしない（有事に読めないのは危険である）
       ctx.globalAlpha = HAZARD_ALPHA
       ctx.drawImage(hazard, 0, 0, width, height)
       ctx.globalAlpha = 1
+
+      ctx.restore()
     }
   }, [revealRadiusM, emergency])
 
