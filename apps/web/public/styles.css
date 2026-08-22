@@ -242,12 +242,6 @@ button {
   border-radius: 50%;
   object-fit: cover;
   flex: none;
-  /*
-   * ★ ハザードの知らせ（`.hazardnow`）より前に出す。知らせは状態バーへ重ねるので、
-   * 後ろにするとキャラメイクを開くボタンが隠れる。**重ねても操作を奪わない。**
-   */
-  position: relative;
-  z-index: 2;
 }
 
 .statusbar__avatar--blank {
@@ -849,12 +843,6 @@ button {
   align-items: center;
   gap: 0.5rem;
   flex: none;
-  /*
-   * ★ ハザードの知らせより前に出す。後ろにすると位置情報の表示と有事モードの
-   * 切替が隠れる。どちらも自前の下地を持つので、暗い帯の上でも読める。
-   */
-  position: relative;
-  z-index: 2;
 }
 
 .statusbar__mode {
@@ -3040,19 +3028,44 @@ button {
   position: absolute;
   inset: 0;
   /*
-   * ★ 押せるものより後ろに置く。キャラクター（キャラメイクを開く）と右側の操作
-   * （位置情報・有事モードの切替）は前に出してあるので隠れない。
-   * **隠れるのはタイトルの文字だけである。**
+   * ★ 状態バーの中で**一番上**に出す。下にあるもの（キャラメイクを開く操作・
+   * 位置情報の表示・有事モードの切替）は覆われる。
+   *
+   * ★ 覆う以上、**押して消せる口が必ず要る**（`.hazardnow__dismiss` が帯いっぱいに
+   * 広がっている）。消せない覆いは操作を奪うだけである。
    */
-  z-index: 1;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  /* 左はキャラクター（32px）を避ける。右側の操作は上に乗るので詰めない */
-  padding: 0 0.9rem 0 3.1rem;
+  /* 消す × のぶんだけ右を空ける */
+  padding: 0 2.4rem 0 0.9rem;
   background: #1c2432;
   color: #f2f5fa;
   border-bottom: 1px solid #3c4a63;
+}
+
+/*
+ * 消す口。
+ *
+ * ★ **帯いっぱいに広げる。** × だけを的にすると、歩きながら片手で押すには
+ * 小さすぎる。見えている × は位置の目印で、当たり判定は帯の全面である。
+ *
+ * ★ 透明にする（下の文字を隠さない）。文字はこのボタンの後ろに描かれている。
+ */
+.hazardnow__dismiss {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.7rem;
+  border: 0;
+  background: none;
+  color: #cfe0f2;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 /* 入った瞬間だけ明るくする。文言だけでなく見た目でも段の違いを出す */

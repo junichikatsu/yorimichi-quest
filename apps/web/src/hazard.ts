@@ -231,3 +231,76 @@ export const HAZARD_ENTERED_TITLE = '浸水想定区域に入りました'
 
 /** 区域の中に居るあいだの見出し */
 export const HAZARD_INSIDE_TITLE = '浸水想定区域の中'
+
+/* ------------------------------------------------------------------ *
+ * 知らせを出すかどうか
+ * ------------------------------------------------------------------ */
+
+/**
+ * 消した場所と、そのときの区域。
+ *
+ * ★ **「消した」を単なる真偽値にしてはいけない。** 一度消したら二度と出ないと、
+ * 別の区域へ入っても知らせが出ない（深さの区分が変わっても気づけない）。
+ * どこで何を消したのかを持っておき、状況が変わったら出し直す。
+ */
+export interface HazardDismissal {
+  /** 消したときの区域の内訳（`hazardParts` の結果） */
+  parts: string
+  /**
+   * 消したときの位置。取れていなければ undefined。
+   *
+   * ★ **0,0 や NaN で埋めてはいけない。** 距離の起点が嘘になり、NaN なら比較が
+   * 常に偽になって**二度と出し直せなくなる**。無いことを型で表す。
+   */
+  position: { lat: number; lng: number } | undefined
+}
+
+/**
+ * 消したあと、出し直すまでの距離（m）。
+ *
+ * ★ 判定そのものは約11m ごとに作り直される（`useHazard`）。その粒度で出し直すと
+ * **消しても十数歩で戻ってくる**ので、消せる意味がない。歩いて場所が変わったと
+ * 言える距離まで待つ。
+ *
+ * ★ それでも**永久には黙らない。** 危ない場所に居ることの知らせであり、
+ * 一度消したら二度と出ないのは安全側ではない。
+ */
+export const HAZARD_RESHOW_DISTANCE_M = 100
+
+export interface HazardNoticeVisibilityInput {
+  /** いまの区域の内訳。空文字は区域外 */
+  parts: string
+  /** 消した記録。undefined は消していない */
+  dismissal: HazardDismissal | undefined
+  /** いまの位置。取れていなければ undefined */
+  position: { lat: number; lng: number } | undefined
+  /** 2点間の距離（m）。`@imanouchi/core` の実装を渡す */
+  distanceM: (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => number
+}
+
+/**
+ * 知らせを出すか。
+ *
+ * ★ 判定を純粋な関数にしてあるのは、**「消したのに出る」「消したら二度と出ない」の
+ * どちらも起こりうる**ためである。境界（別の区域へ入った・100m 歩いた）は実際に
+ * 歩いて再現できないので、ここでテストできる形にしておく。
+ */
+export function isHazardNoticeVisible(input: HazardNoticeVisibilityInput): boolean {
+  // 区域外では出さない（消したかどうかに関係ない）
+  if (input.parts === '') return false
+  if (!input.dismissal) return true
+
+  // ★ 区域や深さが変わったら出し直す。同じ場所に居るあいだだけ黙る
+  if (input.dismissal.parts !== input.parts) return true
+
+  /*
+   * 位置が分からないあいだは黙ったまま（動いたと言えないので出し直さない）。
+   * ★ 消したときの位置が無い場合も同じ。**区域が変わったときだけ出し直す**
+   * （上で判定済み）。
+   */
+  if (!input.position || !input.dismissal.position) return false
+
+  return (
+    input.distanceM(input.dismissal.position, input.position) >= HAZARD_RESHOW_DISTANCE_M
+  )
+}

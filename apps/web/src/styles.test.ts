@@ -240,18 +240,25 @@ describe('styles.css', () => {
   /*
    * ハザードの知らせを状態バーへ重ねる（#72）。
    *
-   * ★ 行を増やさないために重ねている。**重ねた結果として押せるものを隠すと、
-   * キャラメイクも有事モードの切替も触れなくなる。** どちらも1行で壊れる。
+   * ★ 一番上に出す（下にあるものを覆う）。**覆う以上、押して消せる口が必ず要る。**
+   * 消せない覆いは操作を奪うだけである。どちらも1行で壊れる。
    */
-  it('★ 重ねても押せるものは隠さない（知らせより前に出す）', () => {
+  it('★ 知らせは状態バーの中で一番上に出る', () => {
     const notice = zIndexOf(css, '.hazardnow')
 
-    for (const selector of ['.statusbar__avatar', '.statusbar__right']) {
-      expect(
-        zIndexOf(css, selector),
-        `${selector} が知らせの裏に隠れる`,
-      ).toBeGreaterThan(notice)
-    }
+    // ポイントの丸（地図の上）より前である必要はないが、状態バーの中では最前面
+    expect(notice).toBeGreaterThan(0)
+  })
+
+  it('★ 消す口は帯いっぱいに広がる（× だけを的にしない）', () => {
+    /*
+     * ★ 知らせは下にある操作（キャラメイク・位置情報・有事モードの切替）を覆う。
+     * 消せなければ操作を奪ったままになる。歩きながら片手で押せる大きさが要る。
+     */
+    const block = ruleBlock(css, '.hazardnow__dismiss')
+
+    expect(block, '帯いっぱいに広がっていない').toContain('inset: 0')
+    expect(block, '押せる形になっていない').toContain('cursor: pointer')
   })
 
   it('★ 知らせは状態バーの高さを変えない（地図が跳ねる）', () => {

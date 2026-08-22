@@ -1,13 +1,17 @@
+import { distanceMeters } from '@imanouchi/core'
 import { describe, expect, it } from 'vitest'
 import {
   classifyPixel,
   DEPTH_LEGEND,
   HAZARD_LAYERS,
+  HAZARD_RESHOW_DISTANCE_M,
   hazardSentence,
   hazardTileUrl,
+  isHazardNoticeVisible,
   tileNorthWest,
   tilePointOf,
   worseSample,
+  type HazardDismissal,
 } from './hazard.js'
 
 /**
@@ -135,5 +139,93 @@ describe('HAZARD_LAYERS', () => {
     expect(hazardTileUrl(layer, 16, 58208, 25813)).toBe(
       'https://disaportaldata.gsi.go.jp/raster/01_flood_l2_shinsuishin/16/58208/25813.png',
     )
+  })
+})
+
+/**
+ * 知らせを出すかどうか（#72）。
+ *
+ * ★ 知らせは状態バーへ重ねて**一番上**に出すので、下にある操作（キャラメイク・
+ * 位置情報・有事モードの切替）を覆う。だから押して消せるようにしてあるが、
+ * **「消したのに出る」「消したら二度と出ない」のどちらも起こりうる。**
+ * 境界（別の区域へ入った・100m 歩いた）は歩いて再現できないので、ここで固定する。
+ */
+describe('isHazardNoticeVisible', () => {
+  const PARTS = '洪水（3〜5m未満）'
+  const AT = { lat: 35.6739, lng: 139.7568 }
+
+  function visible(
+    parts: string,
+    dismissal: HazardDismissal | undefined,
+    position: { lat: number; lng: number } | undefined = AT,
+  ): boolean {
+    return isHazardNoticeVisible({ parts, dismissal, position, distanceM: distanceMeters })
+  }
+
+  it('区域外では出さない', () => {
+    expect(visible('', undefined)).toBe(false)
+  })
+
+  it('★ 区域外では、消したかどうかに関係なく出さない', () => {
+    expect(visible('', { parts: PARTS, position: AT })).toBe(false)
+  })
+
+  it('消していなければ出す', () => {
+    expect(visible(PARTS, undefined)).toBe(true)
+  })
+
+  it('★ 消した直後は出さない（同じ場所・同じ区域）', () => {
+    expect(visible(PARTS, { parts: PARTS, position: AT })).toBe(false)
+  })
+
+  it('★ 別の区域へ入ったら出し直す（深さが変わった場合も）', () => {
+    /*
+     * ★ ここが出し直さないと、**深さの区分が変わっても気づけない。**
+     * 3〜5m の区域で消したまま 10〜20m の区域へ入っても黙ることになる。
+     */
+    expect(visible('洪水（10〜20m未満）', { parts: PARTS, position: AT })).toBe(true)
+    expect(visible('高潮（3〜5m未満）', { parts: PARTS, position: AT })).toBe(true)
+  })
+
+  it('★ 区域を出て入り直したら出し直す', () => {
+    // 出た時点で消した記録は残るが、入り直したときは「消していない区域」になる
+    expect(visible(PARTS, { parts: '', position: AT })).toBe(true)
+  })
+
+  it('★ 少し動いただけでは出し直さない（消せる意味を残す）', () => {
+    /*
+     * ★ 判定は約11m ごとに作り直される。その粒度で出し直すと、
+     * **消しても十数歩で戻ってくる**。
+     */
+    const moved = { lat: AT.lat + 0.0002, lng: AT.lng } // 約22m
+
+    expect(distanceMeters(AT, moved)).toBeLessThan(HAZARD_RESHOW_DISTANCE_M)
+    expect(visible(PARTS, { parts: PARTS, position: AT }, moved)).toBe(false)
+  })
+
+  it('★ 歩いたら出し直す（永久には黙らない）', () => {
+    // 危ない場所に居ることの知らせであり、一度消したら二度と出ないのは安全側ではない
+    const moved = { lat: AT.lat + 0.0015, lng: AT.lng } // 約167m
+
+    expect(distanceMeters(AT, moved)).toBeGreaterThan(HAZARD_RESHOW_DISTANCE_M)
+    expect(visible(PARTS, { parts: PARTS, position: AT }, moved)).toBe(true)
+  })
+
+  it('★ 出し直す距離は判定の粒度より十分に大きい', () => {
+    // 11m 程度で出し直すと消せる意味が無い
+    expect(HAZARD_RESHOW_DISTANCE_M).toBeGreaterThanOrEqual(50)
+  })
+
+  it('位置が取れないあいだは出し直さない（動いたと言えない）', () => {
+    expect(visible(PARTS, { parts: PARTS, position: AT }, undefined)).toBe(false)
+  })
+
+  it('★ 消したときの位置が無くても、区域が変われば出し直す', () => {
+    /*
+     * ★ 位置を 0,0 や NaN で埋めていると、距離の比較が常に偽になって
+     * **二度と出し直せなくなる。** 無いことをそのまま持つ。
+     */
+    expect(visible(PARTS, { parts: PARTS, position: undefined })).toBe(false)
+    expect(visible('高潮（3〜5m未満）', { parts: PARTS, position: undefined })).toBe(true)
   })
 })

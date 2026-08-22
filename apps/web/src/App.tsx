@@ -92,7 +92,12 @@ import {
   notifyQuizResult,
   notifyWalkGuard,
 } from './feedback.js'
-import { HAZARD_CREDITS } from './hazard.js'
+import {
+  HAZARD_CREDITS,
+  hazardParts,
+  isHazardNoticeVisible,
+  type HazardDismissal,
+} from './hazard.js'
 import { useHazard } from './hooks/useHazard.js'
 import { initialNearby, trackNearby } from './nearby.js'
 import {
@@ -293,6 +298,16 @@ export function App(): React.JSX.Element {
   const [accessibleOnly, setAccessibleOnly] = useState(false)
 
   /**
+   * ハザードの知らせを消した記録（#72）。
+   *
+   * ★ **真偽値にしてはいけない。** 知らせは状態バーへ重ねて一番上に出すので、
+   * 下にある操作（キャラメイク・位置情報・有事モードの切替）を覆う。だから消せる
+   * ようにしてあるが、一度消したら二度と出ないと**別の区域へ入っても知らせが
+   * 出ない**（深さの区分が変わっても気づけない）。どこで何を消したのかを持つ。
+   */
+  const [hazardDismissal, setHazardDismissal] = useState<HazardDismissal | undefined>(undefined)
+
+  /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
    * この 1 行が同意画面の意味を担保している。
    */
@@ -319,6 +334,20 @@ export function App(): React.JSX.Element {
    * 逃げる最中に点数のために寄り道させることであり、それ自体が危険である（NFR-14）。
    */
   const game = gameElements(emergency)
+
+  /**
+   * ハザードの知らせを出すか（判定は `hazard.ts`）。
+   *
+   * ★ 消しても永久には黙らない。別の区域へ入ったとき・深さの区分が変わったとき・
+   * 100m 歩いたときに出し直す。**危ない場所に居ることの知らせであり、一度消したら
+   * 二度と出ないのは安全側ではない。**
+   */
+  const hazardNoticeVisible = isHazardNoticeVisible({
+    parts: hazardParts(hazard.here),
+    dismissal: hazardDismissal,
+    position: geo.position,
+    distanceM: distanceMeters,
+  })
 
   /**
    * いま重ねて出す番のもの（判定は `overlay.ts`）。
@@ -1621,7 +1650,19 @@ export function App(): React.JSX.Element {
           ★ **有事モードでも出す。** 消すほうが危険である（キャラクターの演出だけを
           止める）。
         */}
-        <HazardNotice here={hazard.here} withCharacter={game.exploration} />
+        {hazardNoticeVisible && (
+          <HazardNotice
+            here={hazard.here}
+            withCharacter={game.exploration}
+            onDismiss={() =>
+              setHazardDismissal({
+                parts: hazardParts(hazard.here),
+                // ★ 無いことをそのまま持つ（0,0 で埋めると出し直しの起点が嘘になる）
+                position: geo.position,
+              })
+            }
+          />
+        )}
       </div>
 
       {emergency && <EmergencyBanner onExit={handleToggleEmergency} />}
