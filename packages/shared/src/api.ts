@@ -141,6 +141,26 @@ export interface ClientConfigResponse {
    * 画面側でも「デモ表示であり実際の災害情報ではない」ことを常時出す。
    */
   emergencyDemoEnabled: boolean
+  /**
+   * LINE ログインなしの「おためし」を許すか。
+   *
+   * ★ おためしは**読み取り専用**である。歩いた記録・同意・キャラクターは
+   * 端末の中だけに置き、サーバーへは送らない（送れない）。
+   */
+  guestModeEnabled: boolean
+}
+
+/**
+ * おためし利用の開始。
+ *
+ * ★ 本体（LoginResponse）と型を分ける。`registered` のような LINE ログイン固有の
+ * 項目が無く、返すユーザーは**データストアに存在しない**（その場で組み立てた値）。
+ */
+export interface GuestLoginResponse {
+  token: string
+  expiresAt: string
+  /** 画面に出すための仮の利用者。保存されていない */
+  user: UserView
 }
 
 /* ------------------------------------------------------------------ *

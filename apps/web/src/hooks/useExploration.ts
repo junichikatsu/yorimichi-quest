@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchExploration, postExploration } from '../api.js'
 import { buildExplorationView, isInsideUnlockedArea } from '../exploration-view.js'
+import { loadGuestTiles, saveGuestTiles } from '../guest-store.js'
 import type { Position } from './useGeolocation.js'
 
 /**
@@ -51,7 +52,18 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : '探索エリアを記録できませんでした'
 }
 
-export function useExploration(config: ExplorationConfig | undefined): ExplorationState {
+/**
+ * 記録の置き場。
+ *
+ * - `server`: LINE ログイン済み。サーバーへ送って残す
+ * - `local`: おためし利用。**端末の中だけ**に置く（サーバーへ送らない・送れない）
+ */
+export type ExplorationStorage = 'server' | 'local'
+
+export function useExploration(
+  config: ExplorationConfig | undefined,
+  storage: ExplorationStorage = 'server',
+): ExplorationState {
   const [tiles, setTiles] = useState<ExploredTile[]>([])
   const [areas, setAreas] = useState<UnlockedAreaBounds[]>([])
   const [summary, setSummary] = useState<ExplorationSummary | undefined>(undefined)
@@ -104,6 +116,18 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
 
   useEffect(() => {
     if (!config) return
+
+    /*
+     * おためしは端末から読む。
+     * ★ サーバーへは問い合わせない。おためしのセッションでは 403 になる経路であり、
+     * 叩けば画面にエラーが出るだけである。
+     */
+    if (storage === 'local') {
+      for (const tile of loadGuestTiles()) unconfirmedRef.current.set(tile.tileKey, tile)
+      publish()
+      return
+    }
+
     fetchExploration()
       .then((response) => {
         // ★ 初回読み込み専用。記録の応答が先に届いていたらこちらが古いので捨てる
@@ -111,7 +135,7 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
         applyServer(response)
       })
       .catch((err: unknown) => setError(messageOf(err)))
-  }, [config, applyServer])
+  }, [config, storage, applyServer, publish])
 
   // 送信後に自分を再スケジュールするため、型は明示する（自己参照だと推論が循環する）
   const flush: () => Promise<void> = useCallback(async () => {
@@ -121,6 +145,16 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
     const queued = [...pendingRef.current.entries()].slice(0, limit)
     if (queued.length === 0) return
     for (const [key] of queued) pendingRef.current.delete(key)
+
+    /*
+     * おためしは端末へ書く。
+     * ★ 未確定のまま持ち続ける（サーバーが確定させることは無い）。
+     * 表示は `buildExplorationView` が未確定分だけで組み立てられるので、これで足りる。
+     */
+    if (storage === 'local') {
+      saveGuestTiles([...unconfirmedRef.current.values()])
+      return
+    }
 
     sendingRef.current = true
     try {
@@ -156,7 +190,7 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
         }, FLUSH_DELAY_MS)
       }
     }
-  }, [config, applyServer])
+  }, [config, storage, applyServer])
 
   const track = useCallback(
     (position: Position) => {
@@ -191,6 +225,8 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
   const trackPath = useCallback(
     async (points: Position[]): Promise<number> => {
       if (!config) return 0
+      // おためしでは即時送信の経路を使わない（track と flush で端末へ残る）
+      if (storage === 'local') return 0
 
       const fresh = new Map<string, Position>()
       for (const point of points) {
@@ -213,7 +249,7 @@ export function useExploration(config: ExplorationConfig | undefined): Explorati
         return 0
       }
     },
-    [config, applyServer],
+    [config, storage, applyServer],
   )
 
   /**

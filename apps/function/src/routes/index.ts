@@ -4,6 +4,7 @@ import {
   avatarUpdateRequestSchema,
   consentRequestSchema,
   explorationRequestSchema,
+  FALLBACK_AVATAR,
   isSpotId,
   loginRequestSchema,
   purgeQuerySchema,
@@ -14,6 +15,7 @@ import {
   type ClientConfigResponse,
   type ExplorationResponse,
   type ExplorationUpdateResponse,
+  type GuestLoginResponse,
   type HealthResponse,
   type LoginResponse,
   MAX_EXPLORATION_POINTS,
@@ -22,6 +24,7 @@ import {
   type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
+  type UserId,
 } from '@imanouchi/shared'
 import { Hono } from 'hono'
 import { buildInfo, loadConfig, missingConfigKeys } from '../config.js'
@@ -32,7 +35,7 @@ import { rateLimit } from '../middleware/rate-limit.js'
 import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-context.js'
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
 import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
-import { issueSession } from '../services/session.js'
+import { issueSession, newGuestId } from '../services/session.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { ensureUser, setAvatar, setLocationConsent } from '../services/user-service.js'
@@ -103,6 +106,7 @@ export function createRoutes(): Hono<AppEnv> {
       assetVersion: assetVersion(),
       debugMoveEnabled: config.debugMoveEnabled,
       emergencyDemoEnabled: config.emergencyDemoEnabled,
+      guestModeEnabled: config.guestModeEnabled,
       exploration: {
         tileSizeM: config.exploreTileSizeM,
         revealRadiusM: config.exploreRevealRadiusM,
@@ -169,13 +173,63 @@ export function createRoutes(): Hono<AppEnv> {
 
     const ctx = await contextFor()
     const { profile, registered } = await ensureUser(ctx, identity, new Date())
-    const session = issueSession(profile.userId, config.sessionSecret, config.sessionTtlHours)
+    const session = issueSession(
+      { kind: 'line', userId: profile.userId },
+      config.sessionSecret,
+      config.sessionTtlHours,
+    )
 
     const response: LoginResponse = {
       token: session.token,
       expiresAt: session.expiresAt.toISOString(),
       user: toUserView(profile),
       registered,
+    }
+    return c.json(response)
+  })
+
+  /**
+   * おためし利用の開始（LINE ログインなし）。
+   *
+   * LINE を持っていない人・LINE の外で開いた人にも、地図とスポットまでは触れるようにする。
+   *
+   * ★ **データストアには一切触れない。** ユーザーを作らず、読み取り専用の
+   * セッションだけを発行する。使えるパスは許可制で絞っている（middleware/auth.ts）。
+   *
+   * ★ 返すユーザーは**保存されていない**。画面にキャラクターと名前を出すための
+   * 仮の値である。おためしの記録（歩いた跡・同意・見た目）は端末の中だけに置く。
+   */
+  routes.post('/v1/auth/guest', (c) => {
+    const config = loadConfig()
+    if (!config.guestModeEnabled) {
+      throw forbidden('おためし利用は無効になっています')
+    }
+    if (config.sessionSecret === '') {
+      throw new AppError('CONFIG_ERROR', 500, 'サーバー設定が不足しています')
+    }
+
+    const guestId = newGuestId()
+    const session = issueSession(
+      { kind: 'guest', guestId },
+      config.sessionSecret,
+      config.sessionTtlHours,
+    )
+
+    const response: GuestLoginResponse = {
+      token: session.token,
+      expiresAt: session.expiresAt.toISOString(),
+      user: {
+        // ★ 画面に出すためだけの値。データストアには存在しない
+        userId: guestId as unknown as UserId,
+        displayName: 'おためし',
+        pictureUrl: '',
+        avatar: FALLBACK_AVATAR,
+        totalPoints: 0,
+        titles: [],
+        // 同意は端末の中だけで持つ（サーバーへ送れない）
+        locationConsentGiven: false,
+        createdAt: new Date().toISOString(),
+      },
     }
     return c.json(response)
   })
