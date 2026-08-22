@@ -14,7 +14,7 @@ import { useEffect } from 'react'
  * 場所の危険さや近さで変わらない（G-2）。
  */
 
-export type EventFlashKind = 'arrival' | 'area' | 'quiz'
+export type EventFlashKind = 'arrival' | 'area' | 'quiz' | 'hazard'
 
 export interface EventFlashItem {
   /** 表示の識別。同じ内容が続けて起きても別物として数える */

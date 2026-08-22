@@ -5,6 +5,7 @@ import {
   notifyAreaUnlocked,
   notifyArrival,
   notifyCardAcquired,
+  notifyHazard,
   resetFeedback,
   vibrate,
 } from './feedback.js'
@@ -187,5 +188,26 @@ describe('notifyCardAcquired', () => {
     notifyCardAcquired()
 
     expect(ctx.createOscillator).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('notifyHazard', () => {
+  it('★ 音を有効にしていなくても落ちない（無音で通り過ぎる）', () => {
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('navigator', {})
+
+    expect(() => notifyHazard()).not.toThrow()
+  })
+
+  it('★ 祝う音にしない（同じ高さの低い3打で、上昇させない）', async () => {
+    const ctx = fakeAudioContext('running')
+    vi.stubGlobal('window', { AudioContext: vi.fn(() => ctx) })
+    vi.stubGlobal('navigator', {})
+    await enableSound()
+
+    notifyHazard()
+
+    // 3打。開放（2音）・到着（3音だが上昇）・カード（4音）と区別が付く
+    expect(ctx.createOscillator).toHaveBeenCalledTimes(3)
   })
 })

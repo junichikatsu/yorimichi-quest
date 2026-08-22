@@ -4,6 +4,7 @@ import {
   SPRITE_HEIGHT,
   SPRITE_WIDTH,
   drawSprite,
+  type Condition,
   type Direction,
 } from '../avatar/sprite.js'
 
@@ -14,6 +15,8 @@ interface AvatarCanvasProps {
   /** 歩行アニメーションを再生するか */
   animated?: boolean
   direction?: Direction
+  /** 状態（#72）。浸水想定区域の中では濡れた見た目にする */
+  condition?: Condition
   label?: string
 }
 
@@ -31,6 +34,7 @@ export function AvatarCanvas({
   scale,
   animated = false,
   direction = 'down',
+  condition = 'dry',
   label,
 }: AvatarCanvasProps): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -47,9 +51,16 @@ export function AvatarCanvas({
     canvas.style.width = `${SPRITE_WIDTH * scale}px`
     canvas.style.height = `${SPRITE_HEIGHT * scale}px`
 
-    // 静止画なら 1 回描いて終わり。requestAnimationFrame を回し続けない
-    if (!animated) {
-      drawSprite(canvas, { avatar, frame: 0, moving: false, direction }, scale)
+    /*
+     * 静止画なら 1 回描いて終わり。requestAnimationFrame を回し続けない。
+     *
+     * ★ 動きを減らす設定のときも回さない（NFR-08）。**出ること自体は変えず**、
+     * 歩くアニメーションだけを止める。歩行中の覆いの上で回り続けると、
+     * 見せたくない動きが画面の中央で延々と続く。
+     */
+    const still = !animated || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (still) {
+      drawSprite(canvas, { avatar, frame: 0, moving: false, direction, condition }, scale)
       return
     }
 
@@ -58,13 +69,13 @@ export function AvatarCanvas({
 
     const tick = (now: number): void => {
       const frame = Math.floor((now - start) / FRAME_DURATION_MS)
-      drawSprite(canvas, { avatar, frame, moving: true, direction }, scale)
+      drawSprite(canvas, { avatar, frame, moving: true, direction, condition }, scale)
       handle = requestAnimationFrame(tick)
     }
 
     handle = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(handle)
-  }, [avatar, scale, animated, direction])
+  }, [avatar, scale, animated, direction, condition])
 
   return (
     <canvas

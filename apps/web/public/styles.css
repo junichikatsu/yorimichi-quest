@@ -2193,6 +2193,11 @@ button {
   background: var(--quiz);
 }
 
+/* ★ ハザードは祝わない。他と同じ明るい色にしない（#72・G-2） */
+.flash--hazard {
+  background: #3c4a63;
+}
+
 .flash__title {
   margin: 0;
   font-size: 0.95rem;
@@ -2565,4 +2570,116 @@ button {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ---------------- ハザード（浸水想定・#72） ---------------- */
+
+/*
+ * いまいる場所の知らせ。
+ *
+ * ★ 地図の上に置く。**キャラクターの見た目だけに頼らない**（NFR-08）。
+ * 小さい画面や色覚によっては、濡れている絵だけでは伝わらない。
+ *
+ * ★ 操作を奪わない。地図には指が届く（`pointer-events: none`）。
+ * 閉じる操作も要求しない（区域を出れば消える）。
+ *
+ * ★ 危険色（赤）で塗らない。ここは「危ないと学ぶ」ための知らせであって、
+ * 警報ではない。警報に見せると、防災アプリが災害の発生を思わせる画面を
+ * 出すことになる（FR-08-9 と同じ配慮）。
+ */
+.hazardnow {
+  position: absolute;
+  left: 0.6rem;
+  top: 0.6rem;
+  z-index: 3;
+  pointer-events: none;
+  max-width: min(22rem, calc(100% - 5.5rem));
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid #3c4a63;
+  background: rgb(28 36 50 / 92%);
+  color: #f2f5fa;
+}
+
+.hazardnow__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.hazardnow__character {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #cfe0f2;
+}
+
+.hazardnow__note {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  /* 暗い背景なので明度を落としすぎない（NFR-08） */
+  color: #bcc9d9;
+}
+
+/* 確かめ方。書かなければ誰も気づかない */
+.hazardnow__hint {
+  margin: 0.25rem 0 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid #45536b;
+  font-size: 0.72rem;
+  color: #d7e2ef;
+}
+
+/* 見た目が未取得のときの現在地。濡れていることが点でも分かるように */
+.me--wet {
+  background: #4682c3;
+  box-shadow: 0 0 0 4px rgb(70 130 195 / 40%);
+}
+
+/*
+ * 覆いの上のキャラクター（#72）。
+ *
+ * ★ 情報を持たせない。歩いている姿と濡れているかだけを出す。
+ * 進捗をここに出すと、**画面を見に来る動機**になる（NFR-14）。
+ */
+.walkguard__avatar {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 0.6rem;
+}
+
+/*
+ * 覆っている間に通った浸水想定区域。
+ *
+ * ★ 到着の知らせより前に置く（危ないことのほうが先に読まれるべきである）。
+ * ★ ここにも「開く」導線は置かない。覆いを外させたら歩きスマホである。
+ */
+.walkguard__hazard {
+  margin: 0 0 0.7rem;
+  padding: 0.7rem;
+  border: 2px solid #6f88ad;
+  border-radius: 12px;
+  background: #1d2431;
+  text-align: left;
+}
+
+.walkguard__hazard-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #dbe7f5;
+}
+
+.walkguard__hazard-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: #f5f2ef;
+}
+
+.walkguard__hazard-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: #b9c4d3;
 }

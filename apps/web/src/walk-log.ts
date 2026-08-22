@@ -11,13 +11,13 @@ import type { SpotId } from '@imanouchi/shared'
  * 歩きスマホである（NFR-14）。控えは「立ち止まってから読むもの」である。
  */
 
-export type WalkEventKind = 'arrival' | 'area'
+export type WalkEventKind = 'arrival' | 'area' | 'hazard'
 
 export interface WalkEvent {
   kind: WalkEventKind
   /**
    * 同じものを二重に積まないための鍵。
-   * 到着はスポットID、開放は町丁目コードを入れる。
+   * 到着はスポットID、開放は町丁目コード、ハザードは種別を入れる。
    */
   key: string
   /** 画面に出す名前 */

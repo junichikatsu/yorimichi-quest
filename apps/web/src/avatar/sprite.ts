@@ -26,6 +26,18 @@ const LINE_W = 1.4
 
 export type Direction = 'down' | 'up' | 'left' | 'right'
 
+/**
+ * キャラクターの状態（#72）。
+ *
+ * ★ 浸水想定区域の中を通ったことを見た目で示す。**加点も減点もしない。**
+ * 「濡れると何かが得られる」形にしてはいけない（G-2・FR-14-10）。
+ *
+ * ★ 表し方は控えめにする。浸水想定区域には人が住み、店があり、学校がある。
+ * 被災の絵に見える表現や、汚いものとして見せる表現にしてはいけない。
+ * **足元が濡れている**ところまでに留める。
+ */
+export type Condition = 'dry' | 'wet'
+
 export interface SpriteOptions {
   avatar: Avatar
   /**
@@ -37,6 +49,8 @@ export interface SpriteOptions {
   frame: number
   moving: boolean
   direction: Direction
+  /** 状態。省略すると乾いている */
+  condition?: Condition
 }
 
 type Ctx = CanvasRenderingContext2D
@@ -290,6 +304,49 @@ function drawCloth(g: Ctx, style: number, dy: number, cloth: string): void {
  * ------------------------------------------------------------------ */
 
 /** 素体の上に重ねる装備。`dy` は歩行時の上下動 */
+/**
+ * 足元の水（#72）。
+ *
+ * ★ 輪郭線は引かない（`paint` の outline を使わない）。線を足すと「装備」に
+ * 見えてしまう。水は形ではなく**色の重なり**として置く。
+ */
+function paintWet(g: Ctx, dy: number): void {
+  const waterY = 44 + dy * 0.3
+
+  // 水面。足元に浅く広がる
+  ellipse(g, CX, 52, 13, 4.2)
+  g.fillStyle = 'rgba(70, 130, 195, 0.42)'
+  g.fill()
+
+  // 脚が水に入っているところ。水面より下だけを重ねる
+  g.save()
+  g.beginPath()
+  g.rect(CX - 14, waterY, 28, 56 - waterY)
+  g.clip()
+  roundRect(g, CX - 7, waterY, 14, 10, 3)
+  g.fillStyle = 'rgba(70, 130, 195, 0.34)'
+  g.fill()
+  g.restore()
+
+  // 水面の線。ここが水位だと分かるように1本だけ引く
+  g.beginPath()
+  g.moveTo(CX - 12, waterY)
+  g.lineTo(CX + 12, waterY)
+  g.strokeStyle = 'rgba(150, 205, 240, 0.9)'
+  g.lineWidth = 1.1
+  g.stroke()
+
+  // しずく2つ。動いているように見せるためではなく、濡れていると分かるため
+  for (const [x, y] of [
+    [CX - 12.5, 36 + dy],
+    [CX + 12.5, 40 + dy],
+  ] as const) {
+    circle(g, x, y, 1.6)
+    g.fillStyle = 'rgba(140, 200, 240, 0.95)'
+    g.fill()
+  }
+}
+
 function paintChar(g: Ctx, o: SpriteOptions): void {
   const { avatar } = o
   const skin = SKIN_COLORS[avatar.skin] ?? SKIN_COLORS[0]
@@ -323,6 +380,9 @@ function paintChar(g: Ctx, o: SpriteOptions): void {
   roundRect(g, CX + 8, armY - swing * 0.5, 5, 11, 2.5); paint(g, shade(cloth, -0.1))
   circle(g, CX - 10.5, armY + 11 + swing * 0.5, 3); paint(g, skin)
   circle(g, CX + 10.5, armY + 11 - swing * 0.5, 3); paint(g, skin)
+
+  // 足元の水。脚の上・胴の下に来るように、この順で描く
+  if (o.condition === 'wet') paintWet(g, dy)
 
   // 頭
   circle(g, CX, HEAD_CY + dy, HEAD_R); paint(g, skin)

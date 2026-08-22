@@ -262,6 +262,20 @@ describe('styles.css', () => {
     expect(ruleBlock(css, '.sheet--quiz')).toContain('background:')
   })
 
+  /*
+   * ハザード（#72）。
+   *
+   * ★ 知らせであって警報ではない。地図の操作を奪ってはいけないし、
+   * 覆っている最中に前へ出てもいけない。
+   */
+  it('★ ハザードの知らせは地図の操作を通す', () => {
+    expect(ruleBlock(css, '.hazardnow')).toContain('pointer-events: none')
+  })
+
+  it('★ ハザードの知らせは歩行中の覆いより後ろに出る', () => {
+    expect(zIndexOf(css, '.hazardnow')).toBeLessThan(zIndexOf(css, '.walkguard'))
+  })
+
   it('★ 演出が重なったときは強いものが前に出る（点数 → 帯 → カード）', () => {
     /*
      * 同時に出さないのが原則（画面側で順に出している）。それでも重なったときに
