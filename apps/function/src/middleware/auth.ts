@@ -27,6 +27,8 @@ const NO_SESSION_SUFFIXES = [
   '/v1/health',
   '/v1/client-config',
   '/v1/auth/login',
+  // おためしの発行そのものはセッションを要求しない（発行するための入口）
+  '/v1/auth/guest',
   '/v1/admin/seed',
   '/v1/admin/purge',
   '/v1/admin/config',
@@ -34,6 +36,21 @@ const NO_SESSION_SUFFIXES = [
 
 export function skipsSessionGate(path: string): boolean {
   return NO_SESSION_SUFFIXES.some((suffix) => path === suffix || path.endsWith(suffix))
+}
+
+/**
+ * おためし（ゲスト）でも通すパス。**許可制である。**
+ *
+ * ★ 禁止する側を並べてはいけない。ルートを足したときに書き忘れると、
+ * **おためしの利用者がデータストアへ書けてしまう**。ここに書いたものだけを通す。
+ *
+ * 通すのは公開オープンデータの読み取りだけ。ユーザーごとの記録（探索・同意・
+ * キャラクター）はすべて弾く。おためしの記録は端末の中だけに置く設計である。
+ */
+const GUEST_ALLOWED = [/\/v1\/spots$/, /\/v1\/spots\/[^/]+$/]
+
+export function allowsGuest(path: string): boolean {
+  return GUEST_ALLOWED.some((pattern) => pattern.test(path))
 }
 
 export const ADMIN_KEY_HEADER = 'x-admin-key'
@@ -76,7 +93,25 @@ export function userGate(): MiddlewareHandler<AppEnv> {
       throw unauthorized('トークンが不正です')
     }
 
-    c.set('userId', result.userId)
+    if (result.subject.kind === 'guest') {
+      /*
+       * ★ ゲストは「読めるものだけ」を通す。
+       *
+       * 403 を返す理由まで書く。おためしで触れない機能があることは仕様なので、
+       * 画面側が「ログインすれば使える」と案内できる必要がある。
+       */
+      if (!allowsGuest(c.req.path)) {
+        throw new AppError(
+          'FORBIDDEN',
+          403,
+          'おためし利用では使えません（LINEでログインすると使えます）',
+        )
+      }
+      c.set('guestId', result.subject.guestId)
+      return next()
+    }
+
+    c.set('userId', result.subject.userId)
     return next()
   }
 }

@@ -6,6 +6,7 @@ import type {
   ExplorationRequest,
   ExplorationResponse,
   ExplorationUpdateResponse,
+  GuestLoginResponse,
   LoginResponse,
   MeResponse,
   SpotsResponse,
@@ -93,6 +94,16 @@ export function login(idToken: string): Promise<LoginResponse> {
     method: 'POST',
     body: JSON.stringify({ idToken }),
   })
+}
+
+/**
+ * おためし利用を始める（LINE ログインなし）。
+ *
+ * ★ 返るセッションは**読み取り専用**である。書き込みの経路はサーバー側で
+ * 閉じてあり（403）、歩いた記録・同意・見た目は端末の中だけに置く。
+ */
+export function guestLogin(): Promise<GuestLoginResponse> {
+  return request<GuestLoginResponse>('/v1/auth/guest', { method: 'POST' })
 }
 
 export function fetchMe(): Promise<MeResponse> {

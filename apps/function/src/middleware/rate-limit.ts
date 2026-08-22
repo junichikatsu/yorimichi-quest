@@ -25,7 +25,8 @@ export function rateLimit(): MiddlewareHandler<AppEnv> {
     if (skipsSessionGate(c.req.path)) return next()
 
     const limit = loadConfig().rateLimitPerMinute
-    const key = c.get('userId') ?? 'anonymous'
+    // おためしもゲストIDごとに数える。1つの端末の連打で全員が止まらないように
+    const key = c.get('userId') ?? c.get('guestId') ?? 'anonymous'
     const now = Date.now()
 
     const recent = (hits.get(key) ?? []).filter((at) => now - at < WINDOW_MS)
