@@ -131,6 +131,37 @@ describe('styles.css', () => {
   })
 
   /*
+   * 状態バーの折り返し。
+   *
+   * ★ 右側に置くものは増える（位置情報・ポイント・有事モードの切替…）。
+   * 折り返せないと、狭い画面で**左のブランドが潰されて縦に伸びる**。
+   * 日本語はどこでも改行できるため、幅が足りると 1 文字ずつ積まれる。
+   * **実際にそうなった**（スマホで状態バーが画面の1/4を占めた）。
+   */
+  it('★ 状態バーは折り返す（右の要素が増えても左を潰さない）', () => {
+    expect(ruleBlock(css, '.statusbar')).toContain('flex-wrap: wrap')
+  })
+
+  it('★ 状態バーの文字は折り返さずに切り詰める（1文字ずつ縦に積まれない）', () => {
+    for (const selector of ['.statusbar__title', '.statusbar__sub']) {
+      const block = ruleBlock(css, selector)
+      expect(block, `${selector} が折り返す`).toContain('white-space: nowrap')
+      expect(block, `${selector} に省略記号が無い`).toContain('text-overflow: ellipsis')
+    }
+  })
+
+  it('★ 名前の入れ物は最小内容幅より縮められる（日本語の最小幅は1文字）', () => {
+    // min-width: 0 が無いと、幅1文字まで縮んでから縦に伸び続ける
+    expect(ruleBlock(css, '.statusbar__names')).toContain('min-width: 0')
+  })
+
+  it('状態バーのチップは折り返さない', () => {
+    for (const selector of ['.statusbar__geo', '.statusbar__mode', '.statusbar__points']) {
+      expect(ruleBlock(css, selector), selector).toContain('white-space: nowrap')
+    }
+  })
+
+  /*
    * 有事モード（FR-08-7）。
    *
    * ★ 「平時のプレイ経験だけで有事モードを操作できる」ことが要件である。

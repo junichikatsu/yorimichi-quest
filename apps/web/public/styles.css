@@ -155,11 +155,24 @@ button {
   flex-direction: column;
 }
 
+/*
+ * 状態バー。
+ *
+ * ★ 折り返せるようにしておく（`flex-wrap`）。
+ *
+ * 右側に置くものは増える（位置情報・有事モードの切替…）。狭い画面で入り切らないとき、
+ * 折り返せないと**左のブランドが潰されて縦に伸びる**。実際にそうなった：
+ * ポイント（FR-03-2）と有事モード（FR-08-1）が増えた結果、スマホで
+ * 「イ／マ／ノ／ウ／チ」と1文字ずつ改行され、状態バーが画面の1/4を占めた。
+ *
+ * 潰れるより、2段になるほうがよい。
+ */
 .statusbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding: 0.6rem 0.9rem;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
@@ -169,6 +182,18 @@ button {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  /* 余った幅を取る。縮むのは名前だけに限る（下の nowrap で切り詰める） */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * ★ 名前の入れ物には min-width: 0 が必要である。
+ *
+ * フレックスの子は既定で「最小内容幅」より縮まない。**日本語の最小内容幅は
+ * 1文字**なので、これが無いと幅1文字まで縮んでから縦に伸び続ける。
+ */
+.statusbar__names {
   min-width: 0;
 }
 
@@ -185,16 +210,28 @@ button {
   display: inline-block;
 }
 
+/*
+ * ★ 折り返さずに切り詰める。
+ *
+ * 日本語はどこでも改行できるため、幅が足りないと 1 文字ずつ縦に積まれる。
+ * 「…」で切れているほうが、縦に伸びて地図を押しのけるより読める。
+ */
 .statusbar__title {
   margin: 0;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__sub {
   margin: 0;
   font-size: 0.78rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__geo {
@@ -205,6 +242,8 @@ button {
   background: var(--chip);
   color: var(--muted);
   flex: none;
+  /* 「位置情報を利用できません」も1文字ずつ折り返させない */
+  white-space: nowrap;
 }
 
 .statusbar__geo--denied,
@@ -763,6 +802,7 @@ button {
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .statusbar__mode--on {
@@ -1281,6 +1321,9 @@ button {
   align-items: baseline;
   gap: 0.15rem;
   margin-left: auto;
+  /* 数字は切り詰められない。名前より優先して幅を確保する */
+  flex: none;
+  white-space: nowrap;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background: var(--chip);
