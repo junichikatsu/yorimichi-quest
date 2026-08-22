@@ -45,19 +45,48 @@ let initialized = false
  * 未ログインなら LINE のログイン画面へ飛ばす。**この関数は戻ってこない**ことがある
  * （リダイレクトするため）。呼び出し側はそれを前提に書くこと。
  */
-export async function loginAndGetIdToken(liffId: string): Promise<string> {
+/**
+ * 初期化だけを行う（ログインはしない）。
+ *
+ * ★ `isLoggedIn()` は初期化後でないと使えない。「すでにログイン済みか」を
+ * 判断してから画面を出したい場合に、ここだけを先に呼ぶ。
+ *
+ * 二重に呼んでも 1 回しか初期化しない。
+ */
+export async function initLiff(liffId: string): Promise<void> {
   const liff = window.liff
   if (!liff) throw new LiffError('sdk-missing')
   if (liffId === '') throw new LiffError('no-liff-id')
+  if (initialized) return
 
-  if (!initialized) {
-    try {
-      await liff.init({ liffId })
-      initialized = true
-    } catch {
-      throw new LiffError('init-failed')
-    }
+  try {
+    await liff.init({ liffId })
+    initialized = true
+  } catch {
+    throw new LiffError('init-failed')
   }
+}
+
+/**
+ * すでに LINE ログイン済みか。
+ *
+ * ★ 判定できないときは false を返す（初期化に失敗した・SDK が無い等）。
+ * ここで例外を投げると、**開き方を選ぶ画面すら出せずに行き止まりになる**。
+ * false なら選択画面が出るだけで、そこから明示的にログインできる。
+ */
+export async function isLiffLoggedIn(liffId: string): Promise<boolean> {
+  try {
+    await initLiff(liffId)
+    return window.liff?.isLoggedIn() ?? false
+  } catch {
+    return false
+  }
+}
+
+export async function loginAndGetIdToken(liffId: string): Promise<string> {
+  await initLiff(liffId)
+  const liff = window.liff
+  if (!liff) throw new LiffError('sdk-missing')
 
   if (!liff.isLoggedIn()) {
     liff.login()

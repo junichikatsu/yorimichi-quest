@@ -37,6 +37,7 @@ import { canPlaySound, enableSound, notifyAreaUnlocked, notifyWalkGuard } from '
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import { useWakeLock } from './hooks/useWakeLock.js'
+import { shouldOfferStartChoice } from './start-mode.js'
 import { WALK_STALE_MS, initialWalkTracker, speedKmh, trackWalk } from './walking.js'
 import {
   LiffError,
@@ -44,6 +45,7 @@ import {
   forceRelogin,
   hasTriedRelogin,
   isInLineClient,
+  isLiffLoggedIn,
   loginAndGetIdToken,
 } from './liff.js'
 
@@ -348,11 +350,25 @@ export function App(): React.JSX.Element {
         setConfig(loaded)
 
         /*
-         * ★ LINE の外では選ばせる。
-         * ここで自動的にログインへ進むと、PC で開いた人は**何も見ないうちに**
-         * LINE のログイン画面へリダイレクトされる。
+         * ★ 選択画面を出すかは start-mode.ts で決める。
+         *
+         * ミニアプリの中と、すでに LINE ログイン済みの場合は**出さない**。
+         * 逆に、LINE の外で未ログインのときにそのままログインへ進むと、
+         * 開いた人は**何も見ないうちに** LINE のログイン画面へリダイレクトされる。
+         *
+         * ★ `isInClient()` は初期化前でも使える（LIFF の仕様）。
+         * `isLoggedIn()` は初期化後でないと使えないので、内側で初期化している。
+         * 初期化に失敗しても false が返るだけで、選択画面から明示的にログインできる。
          */
-        if (!isInLineClient()) {
+        const inLineClient = isInLineClient()
+        const liffLoggedIn = inLineClient ? true : await isLiffLoggedIn(loaded.liffId)
+        if (cancelled) return
+
+        if (shouldOfferStartChoice({
+          inLineClient,
+          liffLoggedIn,
+          guestModeEnabled: loaded.guestModeEnabled,
+        })) {
           setPhase('start')
           return
         }
