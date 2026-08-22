@@ -10,8 +10,10 @@ import {
 
 interface AvatarCanvasProps {
   avatar: Avatar
-  /** 表示倍率。ベクタで描くため小数でもよい */
+  /** 表示倍率。1 点あたりの画素数になる */
   scale: number
+  /** 身につけている道具（FR-07-8）。地図とキャラメイクで姿に出す */
+  equip?: readonly string[]
   /** 歩行アニメーションを再生するか */
   animated?: boolean
   direction?: Direction
@@ -26,12 +28,16 @@ const FRAME_DURATION_MS = 220
 /**
  * ドット絵キャラクターを描くキャンバス。
  *
- * キャラメイク画面・マイページ・地図上のマーカーで同じ描画を使うため、
+ * キャラメイク画面・ヘッダー・地図上のマーカー・歩行中の覆いで同じ描画を使うため、
  * 拡大率だけを変えて共有している。
+ *
+ * ★ 向きと歩行は**正面の絵を加工して作る**（`faceArt` と上下動）。方向ごとに
+ * 絵を持たない。4方向×4コマを手描きのドット絵で用意すると数百枚になる。
  */
 export function AvatarCanvas({
   avatar,
   scale,
+  equip,
   animated = false,
   direction = 'down',
   condition = 'dry',
@@ -43,13 +49,17 @@ export function AvatarCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // 実ピクセルは devicePixelRatio 倍で確保し、CSS 上の大きさは scale 倍にする。
-    // これをやらないと高精細ディスプレイで輪郭がぼやける。
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = Math.round(SPRITE_WIDTH * scale * dpr)
-    canvas.height = Math.round(SPRITE_HEIGHT * scale * dpr)
+    /*
+     * ★ 実寸は 1 点 = scale 画素で確保する（devicePixelRatio は掛けない）。
+     * ドット絵は点の大きさが揃っていることが要点で、端末ごとに実寸を変えると
+     * 点の境目が不均等になる。
+     */
+    canvas.width = SPRITE_WIDTH * scale
+    canvas.height = SPRITE_HEIGHT * scale
     canvas.style.width = `${SPRITE_WIDTH * scale}px`
     canvas.style.height = `${SPRITE_HEIGHT * scale}px`
+
+    const base = { avatar, direction, condition, ...(equip ? { equip } : {}) }
 
     /*
      * 静止画なら 1 回描いて終わり。requestAnimationFrame を回し続けない。
@@ -60,7 +70,7 @@ export function AvatarCanvas({
      */
     const still = !animated || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     if (still) {
-      drawSprite(canvas, { avatar, frame: 0, moving: false, direction, condition }, scale)
+      drawSprite(canvas, { ...base, frame: 0, moving: false }, scale)
       return
     }
 
@@ -69,13 +79,13 @@ export function AvatarCanvas({
 
     const tick = (now: number): void => {
       const frame = Math.floor((now - start) / FRAME_DURATION_MS)
-      drawSprite(canvas, { avatar, frame, moving: true, direction, condition }, scale)
+      drawSprite(canvas, { ...base, frame, moving: true }, scale)
       handle = requestAnimationFrame(tick)
     }
 
     handle = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(handle)
-  }, [avatar, scale, animated, direction, condition])
+  }, [avatar, scale, equip, animated, direction, condition])
 
   return (
     <canvas

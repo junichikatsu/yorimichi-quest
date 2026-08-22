@@ -20,6 +20,7 @@ import type {
   SurveyAnswerResponse,
   SurveyResponse,
 } from '@imanouchi/shared'
+import { HAIR_NAMES } from '@imanouchi/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app.js'
 import { resetRateLimit } from './middleware/rate-limit.js'
@@ -415,14 +416,20 @@ describe('キャラクター（FR-01-5・FR-01-6）', () => {
 
   it('★ ログインし直しても見た目が保たれる（初期化されない）', async () => {
     const { token, user } = await loginOk()
+    /*
+     * ★ 髪型の番号は選択肢の数より小さいものを使う。
+     * 選択肢は「絵が描けるものだけ」に絞ってあり（HAIR_NAMES）、数は変わりうる。
+     * 固定の大きい番号を書くと、選択肢を減らしたときにこのテストだけが落ちる（実際に落ちた）。
+     */
+    const hair = HAIR_NAMES.length - 1
     await app.request('/v1/me/avatar', {
       method: 'PUT',
       headers: auth(token),
-      body: JSON.stringify({ ...user.avatar, hair: 7 }),
+      body: JSON.stringify({ ...user.avatar, hair }),
     })
 
     const again = await loginOk()
-    expect(again.user.avatar.hair).toBe(7)
+    expect(again.user.avatar.hair).toBe(hair)
   })
 
   it('★ 範囲外の番号は 400（描画側で存在しない髪型を引かせない）', async () => {
@@ -1804,5 +1811,107 @@ describe('POST /v1/auth/dev', () => {
     expect(second.user.userId).toBe(first.user.userId)
     expect(second.registered).toBe(false)
     expect(second.user.totalPoints).toBeGreaterThan(0)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 装備（FR-07-8）
+ * ------------------------------------------------------------------ */
+
+describe('PUT /v1/me/equipment', () => {
+  async function equip(token: string, equipment: Record<string, string | null>): Promise<Response> {
+    return app.request('/v1/me/equipment', {
+      method: 'PUT',
+      headers: auth(token),
+      body: JSON.stringify({ head: null, body: null, hand: null, back: null, ...equipment }),
+    })
+  }
+
+  /**
+   * ヘルメットを手に入れる。
+   *
+   * ★ **入手先はチェックインではなくアンケートである**（FR-12・G-6）。
+   * 近くまで来ただけで道具が手に入ると、立ち止まって設備を見る動機が消えるため、
+   * 道具カードをアンケートへ移した。ここを1か所に寄せておかないと、入手先を
+   * 変えるたびに装備のテストが道連れで落ちる。
+   */
+  async function acquireHelmet(token: string): Promise<void> {
+    // 避難所（日比谷公園）のアンケートに答えるとヘルメットが手に入る
+    const response = await submitSurvey(token, { answers: { ostomate: 'yes' } })
+    expect(response.status).toBe(200)
+  }
+
+  it('★ 持っていない道具は保存されない（申告を信じない）', async () => {
+    const { token } = await loginOk()
+
+    const body = await json<MeResponse>(await equip(token, { head: 'helmet' }))
+    expect(body.user.equipment.head).toBeNull()
+  })
+
+  it('アンケートで手に入れた道具は装備できる', async () => {
+    const { token } = await loginOk()
+    await acquireHelmet(token)
+
+    const body = await json<MeResponse>(await equip(token, { head: 'helmet' }))
+    expect(body.user.equipment.head).toBe('helmet')
+  })
+
+  it('★ 手に入れた道具は空きスロットへ自動で装備される', async () => {
+    const { token } = await loginOk()
+    const body = await json<SurveyAnswerResponse>(
+      await submitSurvey(token, { answers: { ostomate: 'yes' } }),
+    )
+
+    expect(body.acquiredCards.map((card) => card.cardId)).toContain('tool:helmet')
+
+    const me = await json<MeResponse>(await app.request('/v1/me', { headers: auth(token) }))
+    expect(me.user.equipment.head).toBe('helmet')
+  })
+
+  it('★ すでに装備しているスロットは自動装備で置き換えない', async () => {
+    const { token } = await loginOk()
+    await acquireHelmet(token)
+
+    // クイズ正解で防炎ずきん（同じ頭スロット）が手に入る
+    const quiz = await fetchQuiz(token)
+    await answer(token, quiz.quiz.quizId, 0)
+
+    const me = await json<MeResponse>(await app.request('/v1/me', { headers: auth(token) }))
+    expect(me.user.equipment.head).toBe('helmet')
+  })
+
+  it('スロット違いは弾く（頭の道具を手に持たせない）', async () => {
+    const { token } = await loginOk()
+    // ★ 持っていることが前提の検査である（持っていないと理由が別になる）
+    await acquireHelmet(token)
+
+    const body = await json<MeResponse>(await equip(token, { hand: 'helmet' }))
+    expect(body.user.equipment.hand).toBeNull()
+  })
+
+  it('外せる（null を保存できる）', async () => {
+    const { token } = await loginOk()
+    await acquireHelmet(token)
+    await equip(token, { head: 'helmet' })
+
+    const body = await json<MeResponse>(await equip(token, { head: null }))
+    expect(body.user.equipment.head).toBeNull()
+  })
+
+  it('★ おためしでは使えない', async () => {
+    const guest = await json<GuestLoginResponse>(
+      await app.request('/v1/auth/guest', { method: 'POST' }),
+    )
+    expect((await equip(guest.token, { head: 'helmet' })).status).toBe(403)
+  })
+
+  it('知らない道具の名前は 400', async () => {
+    const { token } = await loginOk()
+    const response = await app.request('/v1/me/equipment', {
+      method: 'PUT',
+      headers: auth(token),
+      body: JSON.stringify({ head: 'no-such-item', body: null, hand: null, back: null }),
+    })
+    expect(response.status).toBe(400)
   })
 })

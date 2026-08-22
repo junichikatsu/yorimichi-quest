@@ -14,11 +14,8 @@ import {
   fillFieldCount,
   intentOf,
   isSurveyValue,
-  ITEM_DEFS,
-  SPOT_CATEGORY_LABELS,
   SURVEY_NOTE_MAX_LENGTH,
   surveyFormFor,
-  toCardId,
   type AreaId,
   type CardView,
   type Spot,
@@ -30,7 +27,13 @@ import {
   type SurveyValue,
 } from '@imanouchi/shared'
 import { badRequest, notFound, unauthorized } from '../errors.js'
-import { grantCards, grantMissions, type CardDefinition } from './card-service.js'
+import {
+  grantCards,
+  grantMissions,
+  toolCardDef,
+  type CardDefinition,
+} from './card-service.js'
+import { autoEquip } from './user-service.js'
 import type { Actor } from './actor.js'
 
 /**
@@ -80,22 +83,14 @@ export function pointsFor(spot: Pick<Spot, 'attributes' | 'category'>, rules: Su
  * ★ **チェックインから移してある。** 以前はチェックインで渡していたが、
  * 「立ち止まって現地を見る」ことに報いる先はアンケートである（G-6）。
  * チェックインには場所カードが残る。
+ *
+ * ★ 定義そのものは `card-service.toolCardDef` にある。ここで組み立て直すと、
+ * **一覧と説明文が食い違う**（実際に食い違った）。
  */
 function toolCardForCategory(spot: Spot): CardDefinition | undefined {
   const itemKey = checkinItemFor(spot.category)
   if (itemKey === undefined) return undefined
-
-  const def = ITEM_DEFS[itemKey]
-  return {
-    cardId: toCardId('tool', itemKey),
-    kind: 'tool',
-    title: def.name,
-    condition:
-      def.fromCategory === null
-        ? '現地のクイズに正解して手に入れる'
-        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}で現地のアンケートに答えて手に入れる`,
-    body: def.use,
-  }
+  return toolCardDef(itemKey)
 }
 
 /** 保存の形（`<項目キー>:<値>`）から回答へ戻す */
@@ -284,7 +279,6 @@ export async function submitSurvey(
   await addSurveyAnswers(ctx, spot, nextStats, nowIso)
 
   const totalPoints = profile.totalPoints + pointsEarned
-  await putUser(ctx, { ...profile, totalPoints, lastActiveAt: nowIso })
 
   /*
    * カード（FR-14）。カテゴリに紐づく道具カードをここで渡す。
@@ -298,6 +292,23 @@ export async function submitSurvey(
   if (acquiredCards.length > 0) {
     acquiredCards.push(...(await grantMissions(ctx, userId, input.areaId, nowIso)))
   }
+
+  /*
+   * ★ 手に入れた道具は**空いているスロットにだけ**自動で装備する（FR-07-8）。
+   * 見た目が変わらないと集めた実感が出ない。すでに身につけているものを置き換えると
+   * 「選んだ装備が戻る」ことになるので、空きだけを埋める。
+   *
+   * ★ **カードを渡したあとに1回だけ書く。** 先にポイントだけ書いて、あとで装備を
+   * 書くと putItem が2回になる（制約 E4：アクセス数に月次上限がある）。
+   * 道具の入手先がチェックインからここへ移ったので、装備もここで行う。
+   */
+  await putUser(
+    ctx,
+    autoEquip(
+      { ...profile, totalPoints, lastActiveAt: nowIso },
+      acquiredCards.map((card) => card.cardId.replace('tool:', '')),
+    ),
+  )
 
   return {
     pointsEarned,

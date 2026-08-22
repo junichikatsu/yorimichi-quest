@@ -1,5 +1,6 @@
 import { DEFAULT_AVATAR, type Avatar } from './avatar.js'
 import type { UserId } from './ids.js'
+import { EMPTY_EQUIPMENT, type Equipment } from './item.js'
 
 /**
  * ユーザー（FR-01）。
@@ -23,6 +24,13 @@ export interface UserProfile {
    * 地図上に出し続けるものとしては重い。ゲーム内の姿はこちらで持つ。
    */
   avatar: Avatar
+  /**
+   * 身につけている道具（FR-07-8）。
+   *
+   * ★ 見た目だけで、数値の効果は無い。持っていない道具が入っていても
+   * 表示のときに外すので、古い値で壊れない。
+   */
+  equipment: Equipment
   /**
    * 獲得した称号（FR-01-3）。
    *
@@ -48,6 +56,8 @@ export interface UserView {
   pictureUrl: string
   /** キャラクターの見た目（FR-01-5） */
   avatar: Avatar
+  /** 身につけている道具（FR-07-8）。地図のキャラに反映する */
+  equipment: Equipment
   totalPoints: number
   titles: string[]
   /** 同意済みかどうか。日時そのものは画面で使わないので真偽値に落とす */
@@ -58,12 +68,16 @@ export interface UserView {
 /** 未設定のユーザーには既定の見た目を使う（FR-01-5） */
 export const FALLBACK_AVATAR = DEFAULT_AVATAR
 
+/** 何も装備していない状態 */
+export const FALLBACK_EQUIPMENT = EMPTY_EQUIPMENT
+
 export function toUserView(profile: UserProfile): UserView {
   return {
     userId: profile.userId,
     displayName: profile.displayName,
     pictureUrl: profile.pictureUrl,
     avatar: profile.avatar,
+    equipment: profile.equipment,
     totalPoints: profile.totalPoints,
     titles: profile.titles,
     locationConsentGiven: profile.locationConsentAt !== undefined,

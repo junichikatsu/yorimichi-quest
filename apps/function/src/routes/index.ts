@@ -5,8 +5,10 @@ import {
   avatarUpdateRequestSchema,
   checkinRequestSchema,
   consentRequestSchema,
+  equipmentUpdateRequestSchema,
   explorationRequestSchema,
   FALLBACK_AVATAR,
+  FALLBACK_EQUIPMENT,
   isSpotId,
   loginRequestSchema,
   purgeQuerySchema,
@@ -54,7 +56,12 @@ import { getExploration, recordExploration } from '../services/exploration-servi
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { getSurvey, submitSurvey, type SurveyPointRules } from '../services/survey-service.js'
-import { ensureUser, setAvatar, setLocationConsent } from '../services/user-service.js'
+import {
+  ensureUser,
+  setAvatar,
+  setEquipment,
+  setLocationConsent,
+} from '../services/user-service.js'
 import { assetVersion, sendAsset } from '../static.js'
 import type { AppEnv } from '../types.js'
 
@@ -356,6 +363,7 @@ export function createRoutes(): Hono<AppEnv> {
         displayName: 'おためし',
         pictureUrl: '',
         avatar: FALLBACK_AVATAR,
+        equipment: FALLBACK_EQUIPMENT,
         totalPoints: 0,
         titles: [],
         // 同意は端末の中だけで持つ（サーバーへ送れない）
@@ -403,6 +411,26 @@ export function createRoutes(): Hono<AppEnv> {
 
     const ctx = await contextFor()
     const profile = await setAvatar(ctx, c.get('userId'), avatar, new Date())
+    if (!profile) throw notFound('ユーザーが見つかりません')
+
+    const response: MeResponse = { user: toUserView(profile) }
+    return c.json(response)
+  })
+
+  /**
+   * 身につけている道具の更新（FR-07-8）。
+   *
+   * ★ **持っていない道具は保存しない。** サーバーが達成した道具カードと突き合わせて
+   * 外す。クライアントの申告を信じると、手に入れていない道具を着た姿を保存できる。
+   */
+  routes.put('/v1/me/equipment', async (c) => {
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = equipmentUpdateRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const profile = await setEquipment(ctx, c.get('userId'), body, new Date())
     if (!profile) throw notFound('ユーザーが見つかりません')
 
     const response: MeResponse = { user: toUserView(profile) }

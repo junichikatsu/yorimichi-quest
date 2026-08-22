@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { avatarSchema } from './avatar.js'
+import { equipmentSchema } from './item.js'
 import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
 import type { CardCollectionSummary, CardView, PlaceCardSummary } from './card.js'
 import type { QuizPrompt } from './quiz.js'
@@ -108,6 +109,16 @@ export type ConsentRequest = z.infer<typeof consentRequestSchema>
 export const avatarUpdateRequestSchema = avatarSchema
 
 export type AvatarUpdateRequest = z.infer<typeof avatarUpdateRequestSchema>
+
+/**
+ * 身につけている道具の更新（FR-07-8）。
+ *
+ * ★ 検証は `equipmentSchema` に任せる。加えて**サーバーは達成した道具カードと
+ * 突き合わせて、持っていないものを外す**（クライアントの申告を信じない）。
+ */
+export const equipmentUpdateRequestSchema = equipmentSchema
+
+export type EquipmentUpdateRequest = z.infer<typeof equipmentUpdateRequestSchema>
 
 /* ------------------------------------------------------------------ *
  * 設定

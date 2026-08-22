@@ -1303,6 +1303,8 @@ button {
 
 .avatar-canvas {
   display: block;
+  /* ★ 拡大率が整数でない端末でも補間させない（点の輪郭がにじむ） */
+  image-rendering: pixelated;
 }
 
 .creator__preview {
@@ -1336,34 +1338,138 @@ button {
   font: inherit;
 }
 
-.creator__row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
+/*
+ * キャラメイクの選択肢（FR-01-6）。
+ *
+ * ★ 以前は色ボタンに CSS が無く、**背景色だけ指定された素のボタン**だった。
+ * 大きさが無いので押しにくく、色も見分けられなかった。
+ *
+ * ★ 縦の場所を使わないことを優先する。**この画面には装備の欄が増える予定**であり、
+ * いま2行に折り返していると、増えた時点で地図から遠くなる。
+ * 髪型・服は横1列でスクロール、色は1行に収める。
+ */
+.creator__group {
+  margin-top: 0.8rem;
 }
 
 .creator__label {
-  min-width: 5em;
-  font-size: 0.85rem;
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
   color: var(--muted);
 }
 
-.creator__stepper {
+/*
+ * 髪型・服。**その姿を見て選ぶ。**
+ * 名前を送る形（◀ ▶）だと見た目が想像できず、目当てのものまで何度も押すことになる。
+ */
+.creator__choices {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 0.35rem;
+  /* ★ 折り返さずに横へ流す。はみ出す分はスワイプで見る */
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  /* 端が切れていることが分かるように、少しだけ余白を残す */
+  scroll-padding-inline: 0.35rem;
 }
 
-.creator__value {
-  min-width: 8em;
-  font-size: 0.9rem;
+.choice {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  padding: 0.25rem 0.2rem 0.2rem;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
 }
 
+.choice--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--ink);
+}
+
+.choice__name {
+  font-size: 0.58rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/*
+ * 色見本。
+ *
+ * ★ **1行に収める。** 8個 × 32px なら折り返さない。
+ * ★ 見た目は 32px でも、当たり判定は余白で 44px 相当まで広げる（押し外しを防ぐ）。
+ * ★ 選択中は枠を濃くし、**チェックの記号も出す**。枠の色だけだと、
+ *   見本そのものが濃い色のときに選択が分からない。
+ */
 .creator__swatches {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  gap: 0.15rem;
+  overflow-x: auto;
+}
+
+.swatch {
+  /* 既定は透明。実際の色は表示側が要素に入れる（8色×3種を CSS に二重で持たない） */
+  --swatch: transparent;
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  /* 上下に余白を足して指の当たり判定を広げる（見た目の大きさは変えない） */
+  padding: 0;
+  margin: 6px 2px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--swatch);
+  cursor: pointer;
+}
+
+.swatch::before {
+  /* 当たり判定を広げるための透明な領域 */
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+
+.swatch--on {
+  border-color: var(--ink);
+}
+
+.swatch--on::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  /* 明るい色の上でも読めるように影を付ける */
+  text-shadow: 0 0 2px rgb(0 0 0 / 85%), 0 1px 0 rgb(0 0 0 / 60%);
+}
+
+/* ★ 決定は右下に小さく置く。幅いっぱいの大きなボタンは選び直す作業の邪魔になる */
+.creator__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+}
+
+/*
+ * この画面のボタンだけ小さくする。
+ *
+ * ★ 既定の `.button` は指で押す前提で 44px・余白 0.85rem あるが、**選び直しの
+ * 補助**であるここでは大きすぎて、選択肢より目立ってしまう。
+ */
+.creator__actions .button {
+  min-height: 36px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* ---------------- チェックイン（FR-03） ---------------- */
@@ -2170,7 +2276,11 @@ button {
   height: 100%;
   width: auto;
   aspect-ratio: 1 / 1;
-  /* ★ これが無いとドット絵がぼやけて、拡大した写真のように見える */
+  /*
+   * ★ これが無いとドット絵がぼやけ、ガラス越しのように見える。
+   * 24×24 を CSS で拡大しているので、**補間を切るのはここでしか指定できない。**
+   * `styles.test.ts` が全部のドット絵の canvas に付いていることを見ている。
+   */
   image-rendering: pixelated;
 }
 

@@ -173,10 +173,15 @@ export async function performCheckin(
 
   const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
   if (acquiredCards.length > 0) {
-    acquiredCards.push(
-      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
-    )
+    acquiredCards.push(...(await grantMissions(ctx, userId, input.areaId, nowIso)))
   }
+
+  /*
+   * ★ 自動装備（FR-07-8）はここでは行わない。**チェックインでは道具が手に入らない**
+   * （道具カードはアンケートへ移した）。空振りの `autoEquip` を残すと、
+   * **チェックインごとに putUser が1回増える**（制約 E4：アクセス数に月次上限がある）。
+   * 装備は survey-service と quiz-service で行う。
+   */
 
   const updatedSpot = await incrementSpotCheckinCount(ctx, spot, nowIso)
 
