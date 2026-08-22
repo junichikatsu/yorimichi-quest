@@ -26,6 +26,9 @@ interface HazardNoticeProps {
  *
  * ★ 危ないと知らせるだけで、点数は動かさない（G-2・FR-14-10）。
  * 「濡れると何かが得られる」形にしてはいけない。
+ *
+ * ★ 「押している間は消える」ことを書く。**書かなければ誰も気づかない。**
+ * 塗りは地図の文字の上に重なるので、確かめる手立てがあることを伝える必要がある。
  */
 export function HazardNotice({ here, withCharacter }: HazardNoticeProps): React.JSX.Element | null {
   if (here.length === 0) return null
@@ -40,6 +43,7 @@ export function HazardNotice({ here, withCharacter }: HazardNoticeProps): React.
         <strong>想定です。</strong>いま水が来ていることを示すものではありません。
         色と区分は国土交通省ハザードマップポータルサイトのものです。
       </p>
+      <p className="hazardnow__hint">地図を押している間は塗りを消します。</p>
     </div>
   )
 }

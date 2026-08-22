@@ -2622,6 +2622,15 @@ button {
   color: #bcc9d9;
 }
 
+/* 確かめ方。書かなければ誰も気づかない */
+.hazardnow__hint {
+  margin: 0.25rem 0 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid #45536b;
+  font-size: 0.72rem;
+  color: #d7e2ef;
+}
+
 /* 見た目が未取得のときの現在地。濡れていることが点でも分かるように */
 .me--wet {
   background: #4682c3;

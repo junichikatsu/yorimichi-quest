@@ -85,7 +85,9 @@ const FOG_FEATHER_START = 0.55
  * ★ 濃くすると**地図の文字が読みにくくなる**。この塗りは地図の上に重ねている
  * ため、文字だけを上に出すことができない（地図の中のレイヤとして入れれば
  * 文字は上に来るが、そのときは歩いたところだけに切り抜けなくなる）。
- * 見えることと読めることの折り合いで 0.8 に置いてある。
+ *
+ * ★ そこで**触れている間は塗りを消す**（下の `peekRef`）。濃さは見えるほうへ
+ * 寄せ、読みたいときは押して確かめられるようにしてある。
  *
  * ★ それでも塗りつぶさない。想定区域は広く、完全に覆うと道も避難所も読めなくなる。
  * **有事に地図が読めなくなるのは危険である。** 見えることと読めることの両方を残す。
@@ -94,7 +96,7 @@ const FOG_FEATHER_START = 0.55
  * ラスタから縁を作ると建物ぶんの小さな穴まで縁取ってしまい、地図の文字と
  * 競うほど騒がしくなった。濃さを上げるだけで足りる。
  */
-const HAZARD_ALPHA = 0.8
+const HAZARD_ALPHA = 0.9
 
 /**
  * m からピクセルへの換算。
@@ -346,6 +348,15 @@ export function MapView({
   const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   /** 歩いたところの形。霧とハザードで**同じ1枚**を使う（画面には出さない） */
   const maskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
+  /**
+   * 地図に触れている間か（#72）。
+   *
+   * ★ 触れている間はハザードの塗りを消す。濃く出さないと地図の色に埋もれるが、
+   * 濃くすると**地図の文字が読めない**。この塗りは地図の上に重ねているので
+   * 文字だけを上に出すことはできない。**押して確かめられるようにする**ことで
+   * 折り合いを付けている（霧は消さない。あれはゲームの仕掛けである）。
+   */
+  const peekRef = useRef(false)
   const markersRef = useRef<Map<SpotId, mapboxgl.Marker>>(new Map())
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   /** 地図上のチェックインボタン。出しているスポットも一緒に覚える */
@@ -612,7 +623,8 @@ export function MapView({
       hazard.height = canvas.height
     }
 
-    const hazardCtx = hazard.getContext('2d')
+    // ★ 触れている間は塗らない。押している最中に下の地図と文字を確かめられる
+    const hazardCtx = peekRef.current ? null : hazard.getContext('2d')
     if (hazardCtx) {
       hazardCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
       hazardCtx.globalCompositeOperation = 'source-over'
@@ -654,6 +666,36 @@ export function MapView({
       ctx.globalAlpha = 1
     }
   }, [revealRadiusM, emergency])
+
+  /**
+   * 地図に触れている間はハザードを消す（#72）。
+   *
+   * ★ 離すのは `window` で拾う。地図の外で指を離すと `pointerup` が地図には
+   * 来ないため、**押したまま外へ抜けると塗りが戻らない**。
+   */
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const setPeek = (peeking: boolean) => (): void => {
+      if (peekRef.current === peeking) return
+      peekRef.current = peeking
+      drawRef.current?.()
+    }
+
+    const hide = setPeek(true)
+    const show = setPeek(false)
+
+    container.addEventListener('pointerdown', hide)
+    window.addEventListener('pointerup', show)
+    window.addEventListener('pointercancel', show)
+
+    return () => {
+      container.removeEventListener('pointerdown', hide)
+      window.removeEventListener('pointerup', show)
+      window.removeEventListener('pointercancel', show)
+    }
+  }, [])
 
   /** 最新の描画関数。タイルが遅れて届いたときに呼ぶ */
   const drawRef = useRef<(() => void) | undefined>(undefined)
