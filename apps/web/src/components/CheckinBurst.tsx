@@ -1,5 +1,5 @@
 import type { CheckinResponse } from '@imanouchi/shared'
-import { useEffect } from 'react'
+import { useAutoDismiss } from '../hooks/useAutoDismiss.js'
 
 interface CheckinBurstProps {
   result: CheckinResponse
@@ -44,10 +44,12 @@ export function CheckinBurst({
   hasNext,
   onDone,
 }: CheckinBurstProps): React.JSX.Element {
-  useEffect(() => {
-    const timer = setTimeout(onDone, hasNext ? VISIBLE_MS_WITH_NEXT : VISIBLE_MS)
-    return () => clearTimeout(timer)
-  }, [onDone, result, hasNext])
+  /*
+   * ★ 時計は `useAutoDismiss` に任せる。ここで `setTimeout` を張って依存に
+   * `onDone` を入れると、**親が描き直されるたびに数え直しになる**（実機では
+   * 測位が1秒ごとに届くので永久に終わらない）。数え直すのは新しい記録が来たときだけ。
+   */
+  useAutoDismiss(onDone, hasNext ? VISIBLE_MS_WITH_NEXT : VISIBLE_MS, result)
 
   return (
     <div className="burst" role="status" aria-live="polite">

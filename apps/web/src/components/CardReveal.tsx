@@ -1,5 +1,6 @@
 import { CARD_KIND_LABELS, type CardView } from '@imanouchi/shared'
 import { useEffect } from 'react'
+import { useAutoDismiss } from '../hooks/useAutoDismiss.js'
 import { notifyCardAcquired } from '../feedback.js'
 import { CardArt, cardColorStyle } from './CardArt.js'
 
@@ -39,10 +40,8 @@ export function CardReveal({ cards, onDone }: CardRevealProps): React.JSX.Elemen
     notifyCardAcquired()
   }, [cards])
 
-  useEffect(() => {
-    const timer = setTimeout(onDone, VISIBLE_MS)
-    return () => clearTimeout(timer)
-  }, [onDone, cards])
+  // ★ 時計は `useAutoDismiss` に任せる（親の描き直しで数え直さない）
+  useAutoDismiss(onDone, VISIBLE_MS, cards)
 
   return (
     <div

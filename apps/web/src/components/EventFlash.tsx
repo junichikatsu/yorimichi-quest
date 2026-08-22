@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useAutoDismiss } from '../hooks/useAutoDismiss.js'
 
 /**
  * 出来事の演出（FR-03-2・FR-14-8）。
@@ -35,13 +35,12 @@ interface EventFlashProps {
 
 export function EventFlash({ item, onDone }: EventFlashProps): React.JSX.Element {
   /*
-   * ★ id を依存に入れる。中身が同じ知らせが続いたときに、タイマーを張り替えないと
+   * ★ 数え直しの合図は id にする。中身が同じ知らせが続いたときに張り替えないと
    * **2件目が一瞬で消える**（1件目の残り時間で終わる）。
+   *
+   * ★ 時計は `useAutoDismiss` に任せる（親の描き直しで数え直さない）。
    */
-  useEffect(() => {
-    const timer = setTimeout(onDone, VISIBLE_MS)
-    return () => clearTimeout(timer)
-  }, [item.id, onDone])
+  useAutoDismiss(onDone, VISIBLE_MS, item.id)
 
   return (
     <div className={`flash flash--${item.kind}`} role="status" aria-live="polite">

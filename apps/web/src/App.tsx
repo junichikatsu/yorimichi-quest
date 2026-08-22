@@ -374,6 +374,18 @@ export function App(): React.JSX.Element {
    */
   const burstHasNext = hasNextAfterBurst(overlay)
 
+  /*
+   * 演出を閉じる処理。
+   *
+   * ★ **毎回新しい関数を渡さない。** 演出側（`useAutoDismiss`）は親の関数の
+   * 同一性に依存しない作りにしてあるが、渡す側でも固定しておく。無駄な描き直しが
+   * 減るうえ、**同じ不具合を別の場所で作りにくくなる**（実機で演出が消えなくなった
+   * 原因はここだった）。
+   */
+  const dismissBurst = useCallback(() => setBurst(undefined), [])
+  const dismissReveal = useCallback(() => setRevealCards([]), [])
+  const dismissFlash = useCallback(() => setFlashes((current) => current.slice(1)), [])
+
   /** 演出の識別。同じ内容が続けて起きても別物として数えるための採番 */
   const flashIdRef = useRef(0)
 
@@ -1944,7 +1956,7 @@ export function App(): React.JSX.Element {
           result={burst}
           localOnly={mode === 'guest'}
           hasNext={burstHasNext}
-          onDone={() => setBurst(undefined)}
+          onDone={dismissBurst}
         />
       )}
 
@@ -2052,7 +2064,7 @@ export function App(): React.JSX.Element {
         値の有無で待つと永久に出てこない）。
       */}
       {step === 'cards' && (
-        <CardReveal cards={revealCards} onDone={() => setRevealCards([])} />
+        <CardReveal cards={revealCards} onDone={dismissReveal} />
       )}
 
       {/*
@@ -2066,7 +2078,7 @@ export function App(): React.JSX.Element {
       {flashes[0] && step === 'none' && (
         <EventFlash
           item={flashes[0]}
-          onDone={() => setFlashes((current) => current.slice(1))}
+          onDone={dismissFlash}
         />
       )}
 
