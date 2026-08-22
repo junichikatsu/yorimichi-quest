@@ -64,7 +64,7 @@ import {
 } from './checkin-view.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
 import { gameElements } from './emergency.js'
-import { overlayStep } from './overlay.js'
+import { hasNextAfterBurst, overlayStep, type OverlayInput } from './overlay.js'
 import {
   clearGuestData,
   EMPTY_GUEST_PROGRESS,
@@ -308,12 +308,19 @@ export function App(): React.JSX.Element {
    * 別々に書いていたため、ポイントの演出とアンケートが重なって出て、読んでいる
    * 最中に点数の表示が消えていた（「忙しない」）。ここを見る形にそろえてある。
    */
-  const step = overlayStep({
+  const overlay: OverlayInput = {
     hasBurst: burst !== undefined,
     hasCards: revealCards.length > 0,
     hasPendingSurvey: pendingSurveySpotId !== undefined,
     game,
-  })
+  }
+  const step = overlayStep(overlay)
+  /*
+   * ★ 後ろに続きがあるときは、ポイントの演出を短く切り上げる。
+   * 重ねないために順番にしたので、**足した待ち時間がそのままアンケートに
+   * 着くまでの遅れになる**（初回訪問はカードも挟むため一番長い）。
+   */
+  const burstHasNext = hasNextAfterBurst(overlay)
 
   /** 演出の識別。同じ内容が続けて起きても別物として数えるための採番 */
   const flashIdRef = useRef(0)
@@ -1728,6 +1735,7 @@ export function App(): React.JSX.Element {
         <CheckinBurst
           result={burst}
           localOnly={mode === 'guest'}
+          hasNext={burstHasNext}
           onDone={() => setBurst(undefined)}
         />
       )}

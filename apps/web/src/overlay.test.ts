@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { gameElements } from './emergency.js'
-import { overlayStep, type OverlayInput } from './overlay.js'
+import { hasNextAfterBurst, overlayStep, type OverlayInput } from './overlay.js'
 
 /**
  * 重ねて出すものの順番（FR-03-2・FR-12-3・FR-14-8）。
@@ -89,5 +89,51 @@ describe('overlayStep', () => {
 
     expect(overlayStep(input({ hasBurst: true, hasPendingSurvey: true, game }))).toBe('burst')
     expect(overlayStep(input({ hasPendingSurvey: true, game }))).toBe('none')
+  })
+})
+
+/**
+ * ポイントの演出の長さ（FR-03-2）。
+ *
+ * ★ 重ねないために順番にした結果、**足した待ち時間がそのままアンケートに着くまでの
+ * 遅れになる**（初回訪問はカードも挟むので一番長い）。続きがあるときだけ短くする。
+ */
+describe('hasNextAfterBurst', () => {
+  it('後ろに何も無ければ、ゆっくり読ませる（短くしない）', () => {
+    expect(hasNextAfterBurst(input({ hasBurst: true }))).toBe(false)
+  })
+
+  it('カードが続くなら短くする', () => {
+    expect(hasNextAfterBurst(input({ hasBurst: true, hasCards: true }))).toBe(true)
+  })
+
+  it('アンケートが続くなら短くする', () => {
+    expect(hasNextAfterBurst(input({ hasBurst: true, hasPendingSurvey: true }))).toBe(true)
+  })
+
+  it('★ 隠れているものを「続き」と数えない（続きが無いのに短くしない）', () => {
+    /*
+     * ★ 有事モードで隠されているものは出てこない。それを続きと数えると、
+     * **このあと何も出ないのに演出だけ短く消える**（読む時間が理由なく削られる）。
+     * 判定を `overlayStep` の使い回しにしてあるので、隠す規則がそのまま効く。
+     */
+    const game = gameElements(true)
+
+    expect(
+      hasNextAfterBurst(input({ hasBurst: true, hasCards: true, hasPendingSurvey: true, game })),
+    ).toBe(false)
+  })
+
+  it('カードだけ隠れていてもアンケートが続くなら短くする', () => {
+    const game = { ...gameElements(false), cards: false }
+
+    expect(hasNextAfterBurst(input({ hasBurst: true, hasCards: true, hasPendingSurvey: true, game }))).toBe(
+      true,
+    )
+  })
+
+  it('★ 自分（ポイントの演出）を続きと数えない', () => {
+    // hasBurst だけが真のときに true を返すと、常に短くなってしまう
+    expect(hasNextAfterBurst(input({ hasBurst: true }))).toBe(false)
   })
 })

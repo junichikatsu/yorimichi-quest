@@ -55,3 +55,19 @@ export function overlayStep(input: OverlayInput): OverlayStep {
   if (input.hasPendingSurvey && input.game.survey) return 'survey'
   return 'none'
 }
+
+/**
+ * ポイントの演出のあとに、まだ続くものがあるか。
+ *
+ * ★ **続くときは演出を短くする**ために要る。順番に出す形にした結果、初回訪問では
+ * ポイント → 場所カード → アンケートで、アンケートに着くまでが長くなった。
+ * 待たせたいのではなく、重ねたくないだけである。後ろが空いているときは
+ * ゆっくり読ませ、続きがあるときは切り上げる。
+ *
+ * ★ 判定は `overlayStep` を使い回す。**「後ろに何があるか」を別の式で書いてはいけない。**
+ * 有事モードで隠されているものは飛ばす、という規則もそのまま効かせたい
+ * （隠れているものを「続き」と数えると、続きが無いのに演出だけ短くなる）。
+ */
+export function hasNextAfterBurst(input: OverlayInput): boolean {
+  return overlayStep({ ...input, hasBurst: false }) !== 'none'
+}
