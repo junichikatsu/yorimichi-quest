@@ -1,386 +1,142 @@
-import { CLOTH_COLORS, HAIR_COLORS, SKIN_COLORS, type Avatar } from '@imanouchi/shared'
+import {
+  AVATAR_ART_HEIGHT,
+  AVATAR_ART_WIDTH,
+  CLOTH_COLORS,
+  composeAvatarArt,
+  HAIR_COLORS,
+  ITEM_COLORS,
+  isItemKey,
+  SKIN_COLORS,
+  type Avatar,
+} from '@imanouchi/shared'
 
 /**
- * キャラクターの描画。
+ * キャラクターの描画（FR-01-5・FR-02-8）。
  *
- * `battle-prototype` はドット絵だったが、こちらは**2頭身のなめらかな2Dキャラクター**として描く。
- * 幅広い年齢層に親しみを持ってもらうことを狙っており（設計原則 G-3）、
- * 角の立ったドットより丸みのある形のほうが目的に合う。
+ * ★ **ドット絵で描く。** カードを 8bit のドット絵にしたので、キャラだけ滑らかだと
+ * 世界観がずれる。以前はなめらかなベクタで描いており、コメントにもその判断が
+ * 書かれていたが、**カードの見た目を決めた時点で前提が変わった**ため置き換えた。
  *
- * 座標は 48×56 の論理単位で、拡大は drawSprite が行う。
- * ベクタで描いているため、どの倍率でも輪郭がぼやけない。
+ * ★ 絵は `packages/shared/src/avatar-art.ts` に層で持つ。ここは
+ * **文字を色に置き換えて打つだけ**にする。髪・服・肌の色は利用者が選ぶので、
+ * 色を焼き込んだ絵を組み合わせぶん持つことはできない（256通りになる）。
+ *
+ * ★ 拡大は canvas の実寸ではなく `imageSmoothingEnabled = false` と倍率で行う。
+ * 大きな canvas に太い四角を描くと、端末の拡大率で点の大きさが揃わない。
  */
 
-export const SPRITE_WIDTH = 48
-export const SPRITE_HEIGHT = 56
-
-/** 体の中心 X。すべてのパーツはここを基準に置く */
-const CX = 24
-/** 顔の中心 Y と半径。2頭身に見せるため頭を大きく取る */
-const HEAD_CY = 17
-const HEAD_R = 13
+export const SPRITE_WIDTH = AVATAR_ART_WIDTH
+export const SPRITE_HEIGHT = AVATAR_ART_HEIGHT
 
 /** 線画の色。真っ黒にすると硬くなるので、少し紫に寄せた濃色にする */
-const LINE = '#40323f'
-const LINE_W = 1.4
-
-export type Direction = 'down' | 'up' | 'left' | 'right'
+const LINE = '#2f2733'
+/** 目の白 */
+const EYE_WHITE = '#fbf7f4'
+/** 瞳 */
+const EYE_DARK = '#241f27'
 
 export interface SpriteOptions {
   avatar: Avatar
   /**
-   * 歩行アニメーションのコマ。4 コマ周期
+   * 身につけている道具（FR-07-8）。
    *
-   * ★ 装備（道具を身につけた見た目）は持たせていない。道具そのものが
-   * まだ無いため（FR-07・FR-14）。入れるときは描画の最後に重ねる層を足す。
+   * ★ カードの絵では「その道具だけを装備した姿」を描くために使う。
+   * 装備を選んで保存する機能そのものは別（#66 の B）。
    */
-  frame: number
-  moving: boolean
-  direction: Direction
+  equip?: readonly string[]
 }
 
-type Ctx = CanvasRenderingContext2D
+function shade(hex: string, amount: number): string {
+  const value = Number.parseInt(hex.slice(1), 16)
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255]
 
-/* ------------------------------------------------------------------ *
- * 描画ヘルパー
- * ------------------------------------------------------------------ */
+  const mixed = channels.map((channel) =>
+    amount > 0
+      ? Math.round(channel + (255 - channel) * amount)
+      : Math.round(channel * (1 + amount)),
+  )
 
-function shade(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  let r = (n >> 16) & 255
-  let g = (n >> 8) & 255
-  let b = n & 255
-  if (amt > 0) {
-    r += (255 - r) * amt
-    g += (255 - g) * amt
-    b += (255 - b) * amt
-  } else {
-    r *= 1 + amt
-    g *= 1 + amt
-    b *= 1 + amt
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
+/** 2色を混ぜる。頬のように「肌に少し寄せた色」を作るために使う */
+function blend(a: string, b: string, ratio: number): string {
+  const parse = (hex: string): number[] => {
+    const value = Number.parseInt(hex.slice(1), 16)
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
   }
-  return `#${((1 << 24) + ((r & 255) << 16) + ((g & 255) << 8) + ((b | 0) & 255)).toString(16).slice(1)}`
+
+  const [ar, ag, ab] = parse(a)
+  const [br, bg, bb] = parse(b)
+  const mix = (x: number, y: number): number => Math.round(x + (y - x) * ratio)
+
+  return `#${[mix(ar!, br!), mix(ag!, bg!), mix(ab!, bb!)]
+    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
-/** 塗り＋輪郭。輪郭を省くと地図の上で背景に溶ける */
-function paint(g: Ctx, fill: string, outline = true): void {
-  g.fillStyle = fill
-  g.fill()
-  if (!outline) return
-  g.strokeStyle = LINE
-  g.lineWidth = LINE_W
-  g.lineJoin = 'round'
-  g.stroke()
+/** 装備の主色。複数持っているときは最初のものに合わせる（層は別々に塗れない） */
+function equipColor(equip: readonly string[] | undefined): string {
+  const key = equip?.find((value) => isItemKey(value))
+  return key && isItemKey(key) ? ITEM_COLORS[key] : '#a9a2b5'
 }
 
-function circle(g: Ctx, cx: number, cy: number, r: number): void {
-  g.beginPath()
-  g.arc(cx, cy, r, 0, Math.PI * 2)
-}
+export function drawSprite(
+  target: HTMLCanvasElement,
+  options: SpriteOptions,
+  scale: number,
+): void {
+  const context = target.getContext('2d')
+  if (!context) return
 
-function ellipse(g: Ctx, cx: number, cy: number, rx: number, ry: number): void {
-  g.beginPath()
-  g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-}
+  const { avatar } = options
+  const skin = SKIN_COLORS[avatar.skin] ?? SKIN_COLORS[0]!
+  const hair = HAIR_COLORS[avatar.hairColor] ?? HAIR_COLORS[0]!
+  const cloth = CLOTH_COLORS[avatar.clothColor] ?? CLOTH_COLORS[0]!
+  const equip = equipColor(options.equip)
 
-function roundRect(g: Ctx, x: number, y: number, w: number, h: number, r: number): void {
-  g.beginPath()
-  g.roundRect(x, y, w, h, r)
-}
+  const palette: Record<string, string> = {
+    o: LINE,
+    s: skin,
+    S: shade(skin, -0.18),
+    // ★ 頬は肌に赤みを混ぜる。固定のピンクにすると濃い肌色で浮く
+    p: blend(skin, '#d8686a', 0.34),
+    h: hair,
+    H: shade(hair, -0.22),
+    c: cloth,
+    C: shade(cloth, -0.2),
+    e: equip,
+    E: shade(equip, -0.24),
+    w: EYE_WHITE,
+    k: EYE_DARK,
+  }
 
-/** 頭の丸の内側だけに描くためのクリップ */
-function withHeadClip(g: Ctx, dy: number, draw: () => void): void {
-  g.save()
-  circle(g, CX, HEAD_CY + dy, HEAD_R)
-  g.clip()
-  draw()
-  g.restore()
-}
+  const art = composeAvatarArt({
+    hair: avatar.hair,
+    cloth: avatar.cloth,
+    ...(options.equip ? { equip: options.equip } : {}),
+  })
 
-/* ------------------------------------------------------------------ *
- * 髪型
- * ------------------------------------------------------------------ */
+  const size = target.width / SPRITE_WIDTH || scale
+  context.imageSmoothingEnabled = false
+  context.clearRect(0, 0, target.width, target.height)
 
-/** 頭の丸の上半分を覆う基本の髪。すべての髪型の土台になる */
-function hairCap(g: Ctx, dy: number, hair: string): void {
-  g.beginPath()
-  g.arc(CX, HEAD_CY + dy, HEAD_R, Math.PI, Math.PI * 2)
-  g.lineTo(CX + HEAD_R, HEAD_CY + dy - 1)
-  g.quadraticCurveTo(CX, HEAD_CY + dy + 3, CX - HEAD_R, HEAD_CY + dy - 1)
-  g.closePath()
-  paint(g, hair)
-}
+  for (const [y, row] of art.entries()) {
+    for (let x = 0; x < row.length; x += 1) {
+      const ch = row[x]
+      if (ch === undefined || ch === '.') continue
 
-function drawHair(g: Ctx, style: number, dy: number, hair: string, cloth: string): void {
-  const y = HEAD_CY + dy
-  const hi = shade(hair, 0.28)
-  const sh = shade(hair, -0.22)
+      const fill = palette[ch]
+      if (!fill) continue
 
-  switch (style) {
-    case 0: // ショート
-      hairCap(g, dy, hair)
-      ellipse(g, CX - 11, y + 1, 3.2, 5); paint(g, sh)
-      ellipse(g, CX + 11, y + 1, 3.2, 5); paint(g, sh)
-      break
-
-    case 1: // ロング
-      ellipse(g, CX - 12, y + 8, 4.5, 12); paint(g, sh)
-      ellipse(g, CX + 12, y + 8, 4.5, 12); paint(g, sh)
-      hairCap(g, dy, hair)
-      break
-
-    case 2: // ポニーテール
-      ellipse(g, CX + 15, y + 8, 4.5, 9); paint(g, sh)
-      hairCap(g, dy, hair)
-      circle(g, CX + 12, y - 1, 3); paint(g, hi)
-      break
-
-    case 3: // ツインテール
-      circle(g, CX - 15, y + 6, 5.5); paint(g, sh)
-      circle(g, CX + 15, y + 6, 5.5); paint(g, sh)
-      hairCap(g, dy, hair)
-      circle(g, CX - 12, y - 2, 3); paint(g, hi)
-      circle(g, CX + 12, y - 2, 3); paint(g, hi)
-      break
-
-    case 4: { // スパイキー
-      g.beginPath()
-      g.moveTo(CX - 13, y - 3)
-      for (let i = 0; i < 5; i += 1) {
-        const x0 = CX - 13 + i * 6.5
-        g.lineTo(x0 + 3.2, y - 15 + (i % 2) * 3)
-        g.lineTo(x0 + 6.5, y - 3)
-      }
-      g.closePath()
-      paint(g, hair)
-      hairCap(g, dy, hair)
-      break
+      context.fillStyle = fill
+      /*
+       * ★ 端を整数に丸める。丸めないと拡大率が小数のときに点の間に隙間が出て、
+       * 背景の色が線になって見える。
+       */
+      const left = Math.round(x * size)
+      const top = Math.round(y * size)
+      context.fillRect(left, top, Math.round((x + 1) * size) - left, Math.round((y + 1) * size) - top)
     }
-
-    case 5: // ボブ
-      ellipse(g, CX, y + 3, HEAD_R + 2.5, HEAD_R + 1); paint(g, hair)
-      withHeadClip(g, dy, () => {
-        ellipse(g, CX, y + 12, HEAD_R, 8)
-        g.fillStyle = SKIN_COLORS[0]
-        g.fill()
-      })
-      hairCap(g, dy, hair)
-      break
-
-    case 6: // くるくる
-      for (let i = 0; i < 7; i += 1) {
-        const a = Math.PI + (Math.PI / 6) * i
-        circle(g, CX + Math.cos(a) * (HEAD_R - 1), y + Math.sin(a) * (HEAD_R - 1), 4)
-        paint(g, i % 2 === 0 ? hair : hi)
-      }
-      break
-
-    case 7: // キャップ
-      hairCap(g, dy, hair)
-      g.beginPath()
-      g.arc(CX, y, HEAD_R + 1, Math.PI, Math.PI * 2)
-      g.closePath()
-      paint(g, cloth)
-      roundRect(g, CX - 2, y - HEAD_R - 3, 4, 4, 2); paint(g, shade(cloth, -0.2))
-      ellipse(g, CX + 2, y - 1, 11, 3.5); paint(g, shade(cloth, -0.12))
-      break
-
-    case 8: { // フード
-      const hd = shade(cloth, -0.05)
-      ellipse(g, CX, y + 1, HEAD_R + 4, HEAD_R + 3); paint(g, hd)
-      withHeadClip(g, dy, () => {
-        circle(g, CX, y + 2, HEAD_R)
-        g.fillStyle = SKIN_COLORS[0]
-        g.fill()
-      })
-      circle(g, CX, y + 1, HEAD_R + 0.5)
-      g.strokeStyle = LINE
-      g.lineWidth = LINE_W
-      g.stroke()
-      break
-    }
-
-    case 9: // はちまき
-      hairCap(g, dy, hair)
-      roundRect(g, CX - HEAD_R - 1, y - 6, HEAD_R * 2 + 2, 4.5, 2); paint(g, '#e0574a')
-      circle(g, CX - HEAD_R - 1, y - 4, 2.4); paint(g, '#e0574a')
-      break
-
-    default:
-      hairCap(g, dy, hair)
-      break
   }
-}
-
-/* ------------------------------------------------------------------ *
- * 服
- * ------------------------------------------------------------------ */
-
-const BODY_X = CX - 9
-const BODY_Y = 29
-const BODY_W = 18
-const BODY_H = 16
-
-function drawCloth(g: Ctx, style: number, dy: number, cloth: string): void {
-  const y = BODY_Y + dy
-  const hi = shade(cloth, 0.22)
-  const sh = shade(cloth, -0.2)
-
-  switch (style) {
-    case 0: // チュニック
-      roundRect(g, CX - 0.8, y + 2, 1.6, BODY_H - 4, 0.8); paint(g, sh, false)
-      break
-    case 1: // パーカー
-      ellipse(g, CX, y + 2, 8, 3.5); paint(g, sh)
-      roundRect(g, CX - 5, y + 9, 10, 5, 2.5); paint(g, sh, false)
-      break
-    case 2: // ジャケット
-      g.beginPath(); g.moveTo(CX, y + 1); g.lineTo(CX - 5, y + 3); g.lineTo(CX, y + 9); g.closePath()
-      paint(g, '#f3efe4', false)
-      g.beginPath(); g.moveTo(CX, y + 1); g.lineTo(CX + 5, y + 3); g.lineTo(CX, y + 9); g.closePath()
-      paint(g, '#f3efe4', false)
-      break
-    case 3: // レインコート
-      roundRect(g, BODY_X - 1, y - 1, BODY_W + 2, BODY_H + 2, 7); paint(g, '#f0d75a')
-      roundRect(g, CX - 0.8, y + 1, 1.6, BODY_H, 0.8); paint(g, '#cba933', false)
-      break
-    case 4: // セーラー
-      g.beginPath(); g.moveTo(CX - 8, y + 1); g.lineTo(CX, y + 8); g.lineTo(CX + 8, y + 1); g.closePath()
-      paint(g, '#f5f2e8')
-      circle(g, CX, y + 7, 2.2); paint(g, '#e0574a')
-      break
-    case 5: // ワンピース
-      g.beginPath()
-      g.moveTo(BODY_X + 1, y + 7)
-      g.lineTo(BODY_X - 3, y + BODY_H + 3)
-      g.lineTo(BODY_X + BODY_W + 3, y + BODY_H + 3)
-      g.lineTo(BODY_X + BODY_W - 1, y + 7)
-      g.closePath()
-      paint(g, hi)
-      break
-    case 6: // リュック
-      roundRect(g, CX - 7, y + 1, 3, BODY_H - 3, 1.5); paint(g, '#8a6a44', false)
-      roundRect(g, CX + 4, y + 1, 3, BODY_H - 3, 1.5); paint(g, '#8a6a44', false)
-      break
-    case 7: // はっぴ
-      roundRect(g, CX - 1, y, 2, BODY_H, 1); paint(g, '#f7f4ea', false)
-      roundRect(g, BODY_X, y + BODY_H - 5, BODY_W, 2.5, 1); paint(g, '#3a4256', false)
-      break
-    case 8: // 防災ベスト
-      roundRect(g, BODY_X + 1, y + 1, BODY_W - 2, BODY_H - 2, 5); paint(g, '#ffd45c')
-      roundRect(g, BODY_X + 1, y + 5, BODY_W - 2, 2, 1); paint(g, '#f4f6ef', false)
-      roundRect(g, BODY_X + 1, y + 10, BODY_W - 2, 2, 1); paint(g, '#f4f6ef', false)
-      break
-    case 9: // ローブ
-      g.beginPath()
-      g.moveTo(BODY_X + 1, y + 5)
-      g.lineTo(BODY_X - 4, y + BODY_H + 9)
-      g.lineTo(BODY_X + BODY_W + 4, y + BODY_H + 9)
-      g.lineTo(BODY_X + BODY_W - 1, y + 5)
-      g.closePath()
-      paint(g, sh)
-      break
-    default:
-      break
-  }
-}
-
-/* ------------------------------------------------------------------ *
- * 装備
- * ------------------------------------------------------------------ */
-
-/** 素体の上に重ねる装備。`dy` は歩行時の上下動 */
-function paintChar(g: Ctx, o: SpriteOptions): void {
-  const { avatar } = o
-  const skin = SKIN_COLORS[avatar.skin] ?? SKIN_COLORS[0]
-  const hair = HAIR_COLORS[avatar.hairColor] ?? HAIR_COLORS[0]
-  const cloth = CLOTH_COLORS[avatar.clothColor] ?? CLOTH_COLORS[0]
-
-  const f = o.frame | 0
-  // 歩くと上下に弾む。丸い体を跳ねさせると一気に生き物らしくなる
-  const dy = o.moving ? ([0, -1.5, 0, -0.6][f % 4] ?? 0) : 0
-  const swing = o.moving ? ([0, 2.2, 0, -2.2][f % 4] ?? 0) : 0
-
-  // 影。跳ねている間は小さくして浮いて見せる
-  ellipse(g, CX, 53, 11 - Math.abs(dy) * 1.2, 3.2 - Math.abs(dy) * 0.4)
-  g.fillStyle = 'rgba(40, 44, 60, 0.22)'
-  g.fill()
-
-  // 脚
-  const legY = BODY_Y + dy + BODY_H - 2
-  roundRect(g, CX - 6, legY, 5, 8 + swing * 0.4, 2.5); paint(g, shade(cloth, -0.42))
-  roundRect(g, CX + 1, legY, 5, 8 - swing * 0.4, 2.5); paint(g, shade(cloth, -0.42))
-  ellipse(g, CX - 3.5, legY + 8 + swing * 0.4, 3.4, 2.4); paint(g, '#4a3f39')
-  ellipse(g, CX + 3.5, legY + 8 - swing * 0.4, 3.4, 2.4); paint(g, '#4a3f39')
-
-  // 胴
-  roundRect(g, BODY_X, BODY_Y + dy, BODY_W, BODY_H, 7); paint(g, cloth)
-  drawCloth(g, avatar.cloth, dy, cloth)
-
-  // 腕。丸い手先まで含めて短く描くと幼い印象になる
-  const armY = BODY_Y + dy + 3
-  roundRect(g, CX - 13, armY + swing * 0.5, 5, 11, 2.5); paint(g, shade(cloth, -0.1))
-  roundRect(g, CX + 8, armY - swing * 0.5, 5, 11, 2.5); paint(g, shade(cloth, -0.1))
-  circle(g, CX - 10.5, armY + 11 + swing * 0.5, 3); paint(g, skin)
-  circle(g, CX + 10.5, armY + 11 - swing * 0.5, 3); paint(g, skin)
-
-  // 頭
-  circle(g, CX, HEAD_CY + dy, HEAD_R); paint(g, skin)
-
-  const y = HEAD_CY + dy
-  if (o.direction === 'up') {
-    // 後ろ姿。顔は描かず、髪だけで見せる
-    circle(g, CX, y, HEAD_R - 0.5)
-    g.fillStyle = hair
-    g.fill()
-  } else {
-    const ex = o.direction === 'left' ? -2.2 : o.direction === 'right' ? 2.2 : 0
-
-    // ほお。目より先に置いて、目の下に薄く残す
-    ellipse(g, CX - 8 + ex * 0.5, y + 4.5, 3.2, 2); g.fillStyle = 'rgba(240, 150, 150, 0.5)'; g.fill()
-    ellipse(g, CX + 8 + ex * 0.5, y + 4.5, 3.2, 2); g.fillStyle = 'rgba(240, 150, 150, 0.5)'; g.fill()
-
-    // 目。大きめの楕円にハイライトを 2 つ入れる
-    const eye = (x: number): void => {
-      ellipse(g, x, y + 1.5, 3, 3.6)
-      g.fillStyle = '#3b3140'
-      g.fill()
-      circle(g, x - 0.9, y + 0.2, 1.1); g.fillStyle = '#ffffff'; g.fill()
-      circle(g, x + 1, y + 2.6, 0.6); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fill()
-    }
-    eye(CX - 5.5 + ex)
-    eye(CX + 5.5 + ex)
-
-    // 口。小さな弧にとどめる
-    g.beginPath()
-    g.arc(CX + ex, y + 6, 2.2, 0.15 * Math.PI, 0.85 * Math.PI)
-    g.strokeStyle = LINE
-    g.lineWidth = 1.1
-    g.lineCap = 'round'
-    g.stroke()
-  }
-
-  drawHair(g, avatar.hair, dy, hair, cloth)
-}
-
-/**
- * キャンバスへキャラクターを描く。
- *
- * ベクタで描くため、`scale` は整数でなくてもよい（ドット絵と違ってにじまない）。
- * 高精細ディスプレイでぼやけないよう、呼び出し側が devicePixelRatio を掛けた
- * 大きさのキャンバスを渡してもそのまま扱える。
- */
-export function drawSprite(target: HTMLCanvasElement, options: SpriteOptions, scale: number): void {
-  const ctx = target.getContext('2d')
-  if (!ctx) return
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.clearRect(0, 0, target.width, target.height)
-
-  // 論理座標（48×56）で描けるように、キャンバスの実寸へ合わせて拡大する
-  const usedScale = target.width / SPRITE_WIDTH || scale
-  ctx.scale(usedScale, usedScale)
-  ctx.imageSmoothingEnabled = true
-
-  paintChar(ctx, options)
 }

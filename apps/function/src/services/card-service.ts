@@ -5,16 +5,24 @@ import {
   type DataStoreContext,
 } from '@imanouchi/datastore'
 import {
+  AVATAR_ART_HEIGHT,
+  AVATAR_ART_WIDTH,
   CARD_KIND_LABELS,
   CARD_KINDS,
   CARD_KIND_ORDER,
+  CLOTH_COLORS,
+  composeAvatarArt,
+  DEFAULT_AVATAR,
+  HAIR_COLORS,
   ITEM_DEFS,
   ITEM_ORDER,
+  SKIN_COLORS,
   MISSION_DEFS,
   SPOT_CATEGORIES,
   SPOT_CATEGORY_LABELS,
   parseCardId,
   PIXEL_ART,
+  PIXEL_ART_LABELS,
   pixelArtKeyOf,
   toCardId,
   type AreaId,
@@ -363,6 +371,20 @@ export interface CardCatalog {
   art: Record<string, string[]>
   /** カードIDごとの絵の名前 */
   artKeys: Record<string, string>
+  /** 絵が何を描いたものかの説明（日本語）。一覧ページがそのまま出す */
+  artLabels: Record<string, string>
+  /** 道具の名前（キャラクターの絵の見出しに使う） */
+  itemNames: Record<string, string>
+  /**
+   * 道具カードの絵（**その道具を装備したキャラクター**）。
+   *
+   * ★ 道具はアイコンではなくキャラクターで見せる（#66 で決めた形）。層を重ねた
+   * 結果を返すので、一覧のページは合成の手順を知らなくてよい。
+   */
+  avatarArt: Record<string, string[]>
+  avatarSize: { width: number; height: number }
+  /** キャラクターの絵に当てる色（既定の見た目のぶん） */
+  avatarPalette: { skin: string; hair: string; cloth: string }
 }
 
 /**
@@ -438,11 +460,29 @@ export async function buildCatalog(
     }
   }
 
+  const avatarArt: Record<string, string[]> = {}
+  for (const key of ITEM_ORDER) {
+    avatarArt[key] = composeAvatarArt({
+      hair: DEFAULT_AVATAR.hair,
+      cloth: DEFAULT_AVATAR.cloth,
+      equip: [key],
+    })
+  }
+
   return {
     groups,
     places,
     total: groups.reduce((sum, group) => sum + group.total, 0),
     art: PIXEL_ART,
     artKeys,
+    artLabels: PIXEL_ART_LABELS,
+    itemNames: Object.fromEntries(ITEM_ORDER.map((key) => [key, ITEM_DEFS[key].name])),
+    avatarArt,
+    avatarSize: { width: AVATAR_ART_WIDTH, height: AVATAR_ART_HEIGHT },
+    avatarPalette: {
+      skin: SKIN_COLORS[DEFAULT_AVATAR.skin] ?? SKIN_COLORS[0]!,
+      hair: HAIR_COLORS[DEFAULT_AVATAR.hairColor] ?? HAIR_COLORS[0]!,
+      cloth: CLOTH_COLORS[DEFAULT_AVATAR.clothColor] ?? CLOTH_COLORS[0]!,
+    },
   }
 }

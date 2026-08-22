@@ -1,4 +1,6 @@
 import {
+  equippedKeys,
+  type Equipment,
   SPOT_CATEGORY_COLORS,
   SPOT_CATEGORY_GLYPHS,
   chomeByCode,
@@ -29,6 +31,8 @@ interface MapViewProps {
   revealRadiusM: number
   /** 現在地に描くキャラクター（FR-02-8）。未取得なら点で描く */
   avatar: Avatar | undefined
+  /** 身につけている道具（FR-07-8）。地図のキャラに反映する */
+  equipment: Equipment | undefined
   /** 有事モードか（FR-08-2） */
   emergency: boolean
 }
@@ -78,7 +82,7 @@ function createMarkerElement(spot: SpotWithDistance, selected: boolean): HTMLEle
  *
  * ★ 見た目が未取得のときは点で描く。キャラクターを待って現在地が出ないほうが困る。
  */
-function createMeElement(avatar: Avatar | undefined): HTMLElement {
+function createMeElement(avatar: Avatar | undefined, equipment: Equipment | undefined): HTMLElement {
   const el = document.createElement('div')
   el.setAttribute('aria-label', '現在地')
 
@@ -89,10 +93,15 @@ function createMeElement(avatar: Avatar | undefined): HTMLElement {
 
   el.className = 'me me--avatar'
   const canvas = document.createElement('canvas')
-  const scale = 1
+  /*
+   * ★ 3 倍で描く。1 倍は 16×22 画素しかなく、地図の上で「小さな点」に見えていた。
+   * ドット絵なので拡大しても輪郭はぼやけない（imageSmoothingEnabled = false）。
+   */
+  const scale = 3
   canvas.width = SPRITE_WIDTH * scale
   canvas.height = SPRITE_HEIGHT * scale
-  drawSprite(canvas, { avatar, frame: 0, moving: false, direction: 'down' }, scale)
+  // ★ 身につけている道具を反映する（FR-07-8）。集めたものが地図の姿に出る
+  drawSprite(canvas, equipment ? { avatar, equip: equippedKeys(equipment) } : { avatar }, scale)
   el.appendChild(canvas)
   return el
 }
@@ -114,6 +123,7 @@ export function MapView({
   unlockedAreas,
   revealRadiusM,
   avatar,
+  equipment,
   emergency,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -212,7 +222,7 @@ export function MapView({
     marker.remove()
     meMarkerRef.current = null
     // 次の描画で作り直される（下の効果が position を見て作る）
-  }, [avatar])
+  }, [avatar, equipment])
 
   /** 現在地のマーカーと追従 */
   useEffect(() => {
@@ -226,7 +236,7 @@ export function MapView({
     }
 
     if (!meMarkerRef.current) {
-      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar) })
+      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar, equipment) })
         .setLngLat([position.lng, position.lat])
         .addTo(map)
     } else {
@@ -241,7 +251,7 @@ export function MapView({
       map.jumpTo({ center: [position.lng, position.lat] })
       centeredRef.current = true
     }
-  }, [position, following, avatar])
+  }, [position, following, avatar, equipment])
 
   /**
    * 有事モードの配色へ切り替える（FR-08-2・FR-08-8）。

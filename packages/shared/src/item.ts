@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { SpotCategory } from './spot.js'
 
 /**
@@ -128,6 +129,25 @@ export const ITEM_DEFS: Record<ItemKey, ItemDef> = {
   },
 }
 
+/**
+ * 道具の色。
+ *
+ * ★ ドット絵の主色に使う。実物の印象に寄せる（ヘルメットは黄、軍手は白、
+ * ラジオは黒など）。**カードの枠の色（茶）とは別物**で、こちらは絵の中の色である。
+ */
+export const ITEM_COLORS: Record<ItemKey, string> = {
+  helmet: '#e8b93a',
+  zukin: '#c8503f',
+  headlight: '#4a5170',
+  raincoat: '#3f7fbf',
+  gloves: '#e6e0d2',
+  tank: '#3fa9c8',
+  book: '#2f9e6f',
+  whistle: '#e0b24a',
+  potatoilet: '#a9a2b5',
+  radio: '#5a4b40',
+}
+
 /** コレクション画面の並び順。スロット順に並べると見た目の対応が分かりやすい */
 export const ITEM_ORDER: readonly ItemKey[] = ITEM_KEYS
 
@@ -140,8 +160,57 @@ export function checkinItemFor(category: SpotCategory): ItemKey | undefined {
   return ITEM_KEYS.find((key) => ITEM_DEFS[key].fromCategory === category)
 }
 
-/*
- * ★ 装備（手に入れた道具を身につけて見た目に反映する）はここには置かない。
- * FR-07-8 の装備機能は #66 の範囲であり、**使わないコードを先に持ち込むと、
- * 実装されているのかどうかが読み手に分からなくなる。**
+/* ------------------------------------------------------------------ *
+ * 装備（身につける）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 身につけている道具。スロットごとに1つ、無いときは null。
+ *
+ * ★ **数値の効果は持たせない。見た目だけである**（FR-14-11・#67）。
+ * 「手に入れても見た目が変わらないと集めた実感が出ない」ことへの対処であり、
+ * 強さの管理ではない。
+ *
+ * ★ どの要件にも書かれていない追加機能である（FR-01-5/-6 は見た目の保持と作成画面、
+ * FR-07-8 はアイテムの付与と一覧まで）。
  */
+export const equipmentSchema = z.object({
+  head: z.enum(ITEM_KEYS).nullable(),
+  body: z.enum(ITEM_KEYS).nullable(),
+  hand: z.enum(ITEM_KEYS).nullable(),
+  back: z.enum(ITEM_KEYS).nullable(),
+})
+
+export type Equipment = z.infer<typeof equipmentSchema>
+
+export const EMPTY_EQUIPMENT: Equipment = { head: null, body: null, hand: null, back: null }
+
+/**
+ * 装備を整える。
+ *
+ * ★ **持っていない道具とスロット違いを外す。** クライアントの申告を信じると、
+ * 手に入れていない道具を着た姿を保存できてしまう。読み出し側でも通すので、
+ * 過去に不正な値が入っていても表示が壊れない。
+ */
+export function sanitizeEquipment(
+  equipment: Equipment,
+  owned: ReadonlySet<string>,
+): Equipment {
+  const result: Equipment = { ...EMPTY_EQUIPMENT }
+
+  for (const slot of ITEM_SLOTS) {
+    const key = equipment[slot]
+    if (key === null) continue
+    if (!owned.has(key)) continue
+    // スロットの取り違え（頭の道具を手に持つ等）も外す
+    if (ITEM_DEFS[key].slot !== slot) continue
+    result[slot] = key
+  }
+
+  return result
+}
+
+/** 装備している道具のキーだけを取り出す（絵を重ねる順に使う） */
+export function equippedKeys(equipment: Equipment): string[] {
+  return ITEM_SLOTS.map((slot) => equipment[slot]).filter((key): key is ItemKey => key !== null)
+}

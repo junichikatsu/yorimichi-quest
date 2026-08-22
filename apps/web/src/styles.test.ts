@@ -176,6 +176,19 @@ describe('styles.css', () => {
     }
   })
 
+  /*
+   * ★ **実際に壊した。** 道具カードの比率を足したときに `image-rendering` を
+   * 新しい規則の中へ移してしまい、カードの絵が全部ぼやけた（ガラス越しに見えた）。
+   * 見た目の劣化は動作テストに出ないので、宣言があること自体を固定する。
+   */
+  it('★ ドット絵の canvas は補間を切る（無いと絵がぼやける）', () => {
+    for (const selector of ['.cardart__canvas', '.avatar-canvas']) {
+      expect(ruleBlock(css, selector), `${selector} に image-rendering が無い`).toContain(
+        'image-rendering: pixelated',
+      )
+    }
+  })
+
   it('有事モードでも文字色と背景を明示する（親の配色が透ける事故を防ぐ）', () => {
     const block = ruleBlock(css, '.app--emergency')
 

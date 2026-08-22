@@ -1,5 +1,6 @@
 import {
   DEFAULT_AVATAR,
+  EMPTY_EQUIPMENT,
   asAreaId,
   asSpotId,
   asUserId,
@@ -47,6 +48,7 @@ function profile(userId = USER, overrides: Partial<UserProfile> = {}): UserProfi
     displayName: '山田 太郎',
     pictureUrl: 'https://example.com/a.png',
     avatar: DEFAULT_AVATAR,
+    equipment: EMPTY_EQUIPMENT,
     totalPoints: 10,
     titles: ['はじめの一歩'],
     locationConsentAt: '2026-08-20T00:00:00.000Z',

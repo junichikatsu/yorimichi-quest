@@ -11,6 +11,7 @@ import type { AreaId, CardView, ItemKey, QuizAnswerResponse, QuizResponse, SpotI
 import { quizSource, toPrompt } from '../data/quiz-bank.js'
 import { badRequest, notFound, unauthorized } from '../errors.js'
 import { grantCards, grantMissions, type CardDefinition } from './card-service.js'
+import { autoEquip } from './user-service.js'
 import type { Actor } from './actor.js'
 
 /**
@@ -169,7 +170,6 @@ export async function answerQuiz(
   const nowIso = new Date(input.now).toISOString()
   const totalPoints = profile.totalPoints + input.correctPoints
 
-  await putUser(ctx, { ...profile, totalPoints, lastActiveAt: nowIso })
 
   /*
    * ★ チェックイン前にクイズへ正解した場合、`lastCheckinAt` は**空のまま**にする。
@@ -202,10 +202,17 @@ export async function answerQuiz(
 
   const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
   if (acquiredCards.length > 0) {
-    acquiredCards.push(
-      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
-    )
+    acquiredCards.push(...(await grantMissions(ctx, userId, input.areaId, nowIso)))
   }
+
+  // ★ 手に入れた道具は空いているスロットにだけ自動で装備する（checkin と同じ扱い）
+  await putUser(
+    ctx,
+    autoEquip(
+      { ...profile, totalPoints, lastActiveAt: nowIso },
+      acquiredCards.map((card) => card.cardId.replace('tool:', '')),
+    ),
+  )
 
   return {
     correct: true,

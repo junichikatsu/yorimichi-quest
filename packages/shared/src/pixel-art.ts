@@ -99,35 +99,38 @@ export const PIXEL_ART: Record<string, string[]> = {
   ]),
 
   /**
-   * バリアフリートイレ：車いす（人＋大きな車輪）。
+   * バリアフリートイレ：車いすマーク（座った人と大きな車輪）。
    *
    * ★ ここは左右対称にできない。横向きの姿でないと車いすに見えないためである。
+   *
+   * ★ **車輪は影の色（`d`）で、人は主色（`m`）で描く。** 同じ色だと1点の隙間では
+   * 塊に見え、何の記号か読めなくなる。
    */
   'place-accessible_toilet': [
     '........................',
-    '........................',
-    '.........oooo...........',
-    '........ossssoo.........',
-    '........ossssso.........',
-    '........ossssso.........',
-    '.........ooooo..........',
-    '..........ooo...........',
-    '........ooommoo.........',
-    '.......ommmmmmmoo.......',
-    '......ommmmmmmmmmo......',
-    '.....ommmoooooommmo.....',
-    '.....ommo......ommmo....',
-    '.....ommo.......oooo....',
-    '.....ommo...............',
-    '....oooooooooo..........',
-    '...oo........oo.........',
-    '..og..oooooo..go........',
-    '..og.ogggggggo.go.......',
-    '..og.og.oooo.go.go......',
-    '..ogg.og....go.ggo......',
-    '...ogg.oooooo.ggo.......',
-    '....ooooooooooo.........',
-    '........................',
+    '......oooo..............',
+    '.....ommmmo.............',
+    '.....ommmmo.............',
+    '.....ommmmo.............',
+    '.....ommmmo.............',
+    '......oooo..............',
+    '.....ommmo..............',
+    '.....ommmooooooo........',
+    '.....ommmoddddddo.......',
+    '.....ommmooooooodo......',
+    '.....ommmmmmmmmoddo.....',
+    '.....ommmmmmmmmooodo....',
+    '.....ooommmmmmmmmodo....',
+    '....oddooooooommmodo....',
+    '....odo......ommmooo....',
+    '....odo......ommmmmmo...',
+    '....oddo.....ommmmmmo...',
+    '....oddo......oooooo....',
+    '....odddo......odddo....',
+    '.....odddoo..oodddo.....',
+    '......oddddooddddo......',
+    '.......oddddddddo.......',
+    '........oooooooo........',
   ],
 
   /** 給水スポット：水滴。左上に反射を置く */
@@ -442,56 +445,66 @@ export const PIXEL_ART: Record<string, string[]> = {
 
   /* ---------------- 行動（場面を表す） ---------------- */
 
-  /** 揺れたら頭を守る：頭と、上にかざした両手 */
+  /**
+   * 揺れたら頭を守る：机の下に隠れる姿。
+   *
+   * ★ **頭を抱える腕は描かない。** 腕の形が読めず、何をしているか分からなかった。
+   * 机という物と組み合わせると、姿勢を描き込まずに行動が伝わる。
+   */
   'action-shake': mirror([
     E,
-    '.o..........',
-    '..o...oo....',
-    '...o.oyyo...',
-    '....o.oo....',
-    '.....ooooooo',
-    '....osssssss',
-    '...ossssssss',
-    '...osswwsssd',
-    '...osssssssd',
-    '....osssssss',
-    '.....ooooooo',
-    '....oooooooo',
-    '...ommmmmmmm',
-    '..ommmmmmmmm',
-    '..ommmmmmmmm',
-    '..ommmmmmmmm',
-    '..oddddddddd',
-    '..oooooooooo',
     E,
     E,
+    E,
+    '.ooooooooooo',
+    'ommmmmmmmmmm',
+    'ommmmmmmmmmm',
+    'ommmmmmmmmmm',
+    '.odddooooooo',
+    '.odddo..ooss',
+    '.odddo..osss',
+    '.odddo..osss',
+    '.odddo..osss',
+    '.odddo..osss',
+    '.odddoooosss',
+    '.odddoolllll',
+    '.odddoolllll',
+    '.odddoolllll',
+    '.odddoolllll',
+    '.odddoolllll',
+    '..ooo.oooooo',
     E,
     E,
     E,
   ]),
 
-  /** 冠水した道：水面の下に見えない足元。上に波 */
+  /**
+   * 冠水した道：半分沈んだ標識。水面から上だけ出ている。
+   *
+   * ★ **水に入った人ではなく、沈んだものを描く。** 人の姿では「浸かっている」ことも
+   * 「どこまで来ているか」も読めない。標識なら**深さ**が一目で伝わる。
+   */
   'action-flood': [
     '........................',
-    '........................',
-    '.........oooo...........',
-    '........osssso..........',
-    '........osssso..........',
-    '.........oooo...........',
-    '..........oo............',
-    '.......ooooooooo........',
-    '......ommmmmmmmmo.......',
-    '......ommmmmmmmmo.......',
-    '..oooooommmmmmmoooooo...',
-    '.owwwwwwwwwwwwwwwwwwo...',
-    '.odwwwwoowwwwoowwwwwdo..',
-    '.oddddddddddddddddddo...',
-    '..oooooddddddddoooooo...',
-    '......oddddddddo........',
-    '......oddddddddo........',
-    '......oddo..oddo........',
-    '......oddo..oddo........',
-    '.....ooooo..ooooo.......',
+    '......oooooooooooo......',
+    '.....ollllllllllllo.....',
+    '.....ollllllllllllo.....',
+    '.....ollllloolllllo.....',
+    '.....ollllloolllllo.....',
+    '.....ollllloolllllo.....',
+    '.....ollllloolllllo.....',
+    '.....ollllllllllllo.....',
+    '.....ollllloolllllo.....',
+    '.....ollllloolllllo.....',
+    '......oooooggooooo......',
+    '..........oggo..........',
+    'mmm...mmm.ogmmm...mmm...',
+    'mmmmmmmmmmmmmmmmmmmmmmmm',
+    'llllllllllllllllllllllll',
+    'mmmmmmmmmmmmmmmmmmmmmmmm',
+    'mmmmmmmmmmmmmmmmmmmmmmmm',
+    'llllllllllllllllllllllll',
+    'mmmmmmmmmmmmmmmmmmmmmmmm',
     '........................',
     '........................',
     '........................',
@@ -526,26 +539,31 @@ export const PIXEL_ART: Record<string, string[]> = {
     E,
   ]),
 
-  /** 倒れた人を助ける：横たわる人と胸に置いた手 */
+  /**
+   * 倒れた人を助ける：心臓を横切る心電図。
+   *
+   * ★ **横たわる人は描かない。** 24×24 では倒れた人と寝ている人の区別が付かない。
+   * 心臓と拍動なら、助ける行為そのものを指せる。
+   */
   'action-rescue': [
     '........................',
     '........................',
     '........................',
-    '..............oo........',
-    '.............orro.......',
-    '............orrrro......',
-    '.............orro.......',
-    '..............oo........',
-    '.....oooo....oooo.......',
-    '....osssso..ossso.......',
-    '....ossssoooosssoo......',
-    '....ossssssssssssoo.....',
-    '.....oossssssssssso.....',
-    '.......ommmmmmmmmmmoo...',
-    '......ommmmmmmmmmmmmmo..',
-    '.....ommmmmmmmmmmmmmmo..',
-    '.....odddddddddddddddo..',
-    '......ooooooooooooooo...',
+    '......oooo....oooo......',
+    '.....orrrro..orrrro.....',
+    '....orrrrrroorrrrrro....',
+    '...orrrrrrrrrrrrrrrro...',
+    '...orrrrrwwwrrrrrrrro...',
+    '...orrrrrwrwrrrrrrrro...',
+    '...orrrrrwrwrrrrrrrro...',
+    '....owwwwwrwrwwwwwwo....',
+    '.....orrrrrwrwrrrro.....',
+    '......orrrrwrwrrro......',
+    '.......orrrwwwrro.......',
+    '........orrrrrro........',
+    '.........orrrro.........',
+    '..........orro..........',
+    '...........oo...........',
     '........................',
     '........................',
     '........................',
@@ -554,33 +572,38 @@ export const PIXEL_ART: Record<string, string[]> = {
     '........................',
   ],
 
-  /** いざという時に備えて確かめる時刻：時計 */
-  'action-clock': mirror([
-    E,
-    E,
-    '.......ooooo',
-    '.....oommmmm',
-    '....ommmmmmm',
-    '...ommwwwwww',
-    '...ommwwwwww',
-    '..ommwwwoooo',
-    '..ommwwwo...',
-    '..ommwwwo...',
-    '..ommwwwo...',
-    '..ommwwwooo.',
-    '..ommwwwwwww',
-    '...ommwwwwww',
-    '...ommmmmmmm',
-    '....oddddddd',
-    '.....ooddddd',
-    '.......ooooo',
-    E,
-    E,
-    E,
-    E,
-    E,
-    E,
-  ]),
+  /**
+   * 24時間使えるか：太い時計。針は2本だけ。
+   *
+   * ★ **人の姿は描かない。** 24×24 では姿勢が読めず、何をしている絵か伝わらない。
+   * 場面を表す絵は「その場面を一目で指す記号」にする（時計・机・心臓）。
+   */
+  'action-clock': [
+    '........................',
+    '........................',
+    '........oooooooo........',
+    '.......ommmmmmmmo.......',
+    '.....oommmmmmmmmmoo.....',
+    '....ommmmllllllmmmmo....',
+    '....ommlllloollllmmo....',
+    '...ommllllloolllllmmo...',
+    '..ommmllllloolllllmmmo..',
+    '..ommlllllloollllllmmo..',
+    '..ommlllllloollllllmmo..',
+    '..ommllllllooooooolmmo..',
+    '..ommllllllooooooolmmo..',
+    '..ommllllllllllllllmmo..',
+    '..ommllllllllllllllmmo..',
+    '..ommmllllllllllllmmmo..',
+    '...ommllllllllllllmmo...',
+    '....ommllllllllllmmo....',
+    '....ommmmllllllmmmmo....',
+    '.....oommmmmmmmmmoo.....',
+    '.......ommmmmmmmo.......',
+    '........oooooooo........',
+    '........................',
+    '........................',
+  ],
 
   /** 生活用水を確保する：蛇口から容器へ溜める */
   'action-water': mirror([
@@ -728,4 +751,38 @@ export function pixelArtKeyOf(input: {
   }
 
   return 'mission'
+}
+
+/**
+ * 絵が何を描いたものかの説明（日本語）。
+ *
+ * ★ **絵の定義と同じ場所に置く。** 開発用の一覧ページがこれを出すためにある。
+ * 説明が無いと「この絵を直してほしい」と指示を出すときに、どれを指しているのか
+ * 伝えられない（実際に伝えられなかった）。
+ *
+ * ★ 直したら説明も直すこと。説明と絵が食い違うと、一覧が嘘をつく。
+ */
+export const PIXEL_ART_LABELS: Record<string, string> = {
+  'place-shelter': '三角屋根の家。窓が2つとドア（避難所）',
+  'place-aed': '白い十字が入った機器の箱と、下に据え置きの台（AED）',
+  'place-accessible_toilet': '車いすマーク。座った人と大きな車輪',
+  'place-water': '水滴。左上に光の反射',
+  'tool-helmet': 'ヘルメット。半球とつば、両端にあご紐',
+  'tool-zukin': '防炎ずきん。顔の穴があいたかぶりもの',
+  'tool-headlight': 'ヘッドライト。バンドと前の明かり（黄色）',
+  'tool-raincoat': 'レインコート。フードと袖のある上着',
+  'tool-gloves': '軍手。親指の出た手袋が左右2枚',
+  'tool-tank': '給水タンク。取っ手つきの角型と水位の線',
+  'tool-book': 'ハザードマップ手帳。開いた本と地図の面',
+  'tool-whistle': '防災ホイッスル。筒と玉、下にひもの輪',
+  'tool-potatoilet': '携帯トイレ。口を閉じた袋',
+  'tool-radio': '防災ラジオ。スピーカーとつまみ、伸ばしたアンテナ',
+  'action-shake': '机の下に隠れる人（揺れたら頭を守る）',
+  'action-flood': '半分沈んだ標識。水面から上だけ出ている（冠水した道）',
+  'action-check': '貼り紙にチェック（開設されているか確かめる）',
+  'action-rescue': '心臓を横切る心電図（倒れた人を助ける）',
+  'action-clock': '太い時計（24時間使える場所かを確かめる）',
+  'action-water': '蛇口から水を溜める容器（生活用水の確保）',
+  mission: '旗。ポールと台座（ミッションの達成）',
+  'locked-unknown': '「？」。まだ手に入れていないカードに出す',
 }
