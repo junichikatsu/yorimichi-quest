@@ -1467,6 +1467,7 @@ button {
   .walkdigest,
   .sheet__body,
   .quiz__stamp,
+  .survey__stamp,
   .reveal__flip,
   .statusbar__points--bumped,
   .sidetabs__new {
@@ -1611,6 +1612,249 @@ button {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--accent);
+}
+
+/* ---------------- 現地確認アンケート（FR-12） ---------------- */
+
+/*
+ * ★ クイズと見た目を分ける。**同じ見た目にすると「またクイズか」と読まれる。**
+ * こちらは答えを当てる面ではなく、目の前のものを見て教える面である。
+ */
+.panel--survey {
+  border-color: var(--shelter);
+}
+
+.survey__badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--shelter);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.survey__lead {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: var(--chip);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.survey__fields {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.survey__field {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.survey__field:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.survey__question {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.survey__why {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/*
+ * 「行政データに無い項目」であることの印（FR-12-3）。
+ *
+ * ★ 色だけで区別しない。文言そのものが意味を持つようにしてある（NFR-08）。
+ */
+.survey__tag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: 0.1rem;
+}
+
+.survey__tag--fill {
+  background: #f3ecf9;
+  color: var(--accent);
+}
+
+.survey__tag--verify {
+  background: var(--chip);
+  color: var(--muted);
+}
+
+/*
+ * 選択肢は3つ（はい／いいえ／わからない）。
+ *
+ * ★ 3つを**等幅で横に並べる**。「わからない」を小さくしたり下に置いたりすると、
+ * 選びにくい選択肢になる。それは「分からないのに断定する」ほうへ人を寄せることで
+ * あり、公開データの誤りをこちらから作ることになる。
+ */
+.survey__choices {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.3rem;
+}
+
+.survey__choice {
+  min-height: 3rem;
+  padding: 0.5rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+/*
+ * ★ 選んだものは色だけで示さない（NFR-08）。太い枠と印を併せて出す。
+ * 押し間違いに気づけないと、間違った答えがそのまま公開データに入る。
+ */
+.survey__choice--picked {
+  border-color: var(--shelter);
+  border-width: 2px;
+  background: #f1f8f2;
+  font-weight: 700;
+}
+
+.survey__choice--picked::after {
+  content: ' ✓';
+  color: var(--shelter);
+}
+
+.survey__noteLabel {
+  display: block;
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.survey__note {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+  resize: vertical;
+}
+
+/* ★ 上限を数字で見せる。黙って切られると、書いた人は気づけない */
+.survey__noteCount {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.survey__submit {
+  width: 100%;
+  min-height: 3.2rem;
+  margin-top: 0.7rem;
+}
+
+/*
+ * ★ スキップの出口。**押しにくくはするが、隠さない。**
+ * 答えられない場所・答えたくない場所はある。答えないと進めない形にすると、
+ * 歩行中モード（FR-02-9）や高齢者の利用（NFR-08）で詰まる。
+ */
+.survey__skip {
+  width: 100%;
+  min-height: 2.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.survey__next {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 0.7rem;
+}
+
+.survey__result {
+  margin-top: 0.7rem;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: #f1f8f2;
+}
+
+.survey__verdict {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* 印は装飾。文言だけでも成立させる（クイズの `.quiz__stamp` と同じ扱い） */
+.survey__stamp {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid currentColor;
+  color: var(--shelter);
+  font-size: 0.95rem;
+  line-height: 1;
+  vertical-align: -0.35rem;
+  animation: stamp-in 0.3s ease-out;
+}
+
+.survey__reward {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.survey__verified {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--shelter);
+  line-height: 1.5;
+}
+
+/* 回答済みのときに見せる自分の回答（読み取り専用） */
+.survey__mine {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.survey__mineValue {
+  margin: 0.2rem 0 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  background: var(--chip);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 /* ---------------- カードコレクション（FR-14） ---------------- */
@@ -2372,6 +2616,39 @@ button {
   gap: 0.45rem;
 }
 
+/*
+ * 現地確認アンケートの入口（FR-12-3）。
+ *
+ * ★ クイズの入口（`.quizcta`）と**同じ強さ**にする。控えめにしてはいけない。
+ * このサービスが集めているデータは、アンケートの面でしか増えない。
+ * 色はクイズ（青）と分けて、別のことを頼まれていると分かるようにする。
+ */
+.surveycta {
+  margin-top: 0.2rem;
+  padding: 0.7rem;
+  border: 2px solid var(--shelter);
+  border-radius: 12px;
+  background: #f1f8f2;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.surveycta__head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.surveycta__lead {
+  font-size: 0.85rem;
+}
+
+.surveycta__button {
+  width: 100%;
+}
+
 .quizcta--done {
   border-color: var(--line);
   background: var(--chip);
@@ -2509,9 +2786,24 @@ button {
   background: rgb(20 16 22 / 55%);
 }
 
+/*
+ * 現地確認アンケート（FR-12）。
+ *
+ * ★ クイズと同じく暗幕を敷く。**このサービスが集めているデータは、この面でしか
+ * 増えない。** 外を触って消えてしまうと、チェックインしただけで何も残らない。
+ *
+ * ★ 前後の関係はスポット詳細 < アンケート < クイズ。流れがそのまま重なりの順に
+ * なっている（詳細 → チェックイン → アンケート → クイズ）。
+ */
+.sheet--survey {
+  z-index: 24;
+  background: rgb(20 16 22 / 55%);
+}
+
 @media (min-width: 900px) {
   /* 広い画面のクイズは中央。下寄せにする理由（親指）が無い */
-  .sheet--quiz {
+  .sheet--quiz,
+  .sheet--survey {
     align-items: center;
   }
 

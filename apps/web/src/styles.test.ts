@@ -233,7 +233,7 @@ describe('styles.css', () => {
    * 逆に演出を隠すことになる。
    */
   it('★ 重ねる板は演出より後ろ、トーストより前に出る', () => {
-    for (const selector of ['.sheet--spot', '.sheet--quiz']) {
+    for (const selector of ['.sheet--spot', '.sheet--survey', '.sheet--quiz']) {
       const sheet = zIndexOf(css, selector)
 
       // 点数とカードの演出は板の上に出る（板の裏で祝われては伝わらない）
@@ -243,8 +243,34 @@ describe('styles.css', () => {
       expect(sheet, `${selector} が知らせを隠す`).toBeLessThan(zIndexOf(css, '.toast'))
     }
 
-    // クイズはスポット詳細の上に出る（詳細から開くもの）
-    expect(zIndexOf(css, '.sheet--spot')).toBeLessThan(zIndexOf(css, '.sheet--quiz'))
+    /*
+     * 流れの順に重なる（詳細 → チェックイン → アンケート → クイズ）。
+     * ここが逆だと、アンケートを開いた瞬間にクイズが前に出て**アンケートが
+     * 飛ばされる**（このサービスが集めているデータは、そこでしか増えない）。
+     */
+    expect(zIndexOf(css, '.sheet--spot')).toBeLessThan(zIndexOf(css, '.sheet--survey'))
+    expect(zIndexOf(css, '.sheet--survey')).toBeLessThan(zIndexOf(css, '.sheet--quiz'))
+  })
+
+  it('★ アンケートも暗幕で受け止める（外を触って消させない）', () => {
+    // ここで消えると、チェックインしただけでデータが1件も増えないまま終わる
+    expect(ruleBlock(css, '.sheet--survey')).toContain('background:')
+  })
+
+  it('★ アンケートの3つの選択肢は等幅（「わからない」を選びにくくしない）', () => {
+    /*
+     * ★ 「わからない」を小さくしたり下に置いたりすると、**分からないのに断定する**
+     * ほうへ人を寄せる。それは公開データの誤りをこちらから作ることであり、
+     * 車いす利用者がそれを見て出かける。1行で壊れるので固定する。
+     */
+    expect(ruleBlock(css, '.survey__choices')).toContain('grid-template-columns: repeat(3, 1fr)')
+  })
+
+  it('★ 選んだ選択肢は色だけで示さない（押し間違いに気づけるように）', () => {
+    const block = ruleBlock(css, '.survey__choice--picked')
+
+    expect(block, '枠の差が無い').toContain('border-width')
+    expect(css, '.survey__choice--picked::after が無い').toContain('.survey__choice--picked::after')
   })
 
   it('★ スポット詳細は地図を隠さない（暗幕を敷かず、外側は地図に触れる）', () => {

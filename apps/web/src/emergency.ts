@@ -30,6 +30,14 @@ export interface GameElements {
   checkin: boolean
   /** クイズの出題・回答（FR-04） */
   quiz: boolean
+  /**
+   * 現地確認アンケート（FR-12）。
+   *
+   * ★ 有事に出してはいけない。逃げる最中に設備の有無を記録させることは、
+   * **点数のためにその場へ留まらせる**ことである（NFR-14）。平時に集めたものを
+   * 有事に使うのがこのサービスの形で、有事に集めさせる形ではない。
+   */
+  survey: boolean
   /** 探索率と霧（FR-02-7） */
   exploration: boolean
   /** カードの一覧と獲得の演出（FR-14） */
@@ -42,6 +50,7 @@ export function gameElements(emergency: boolean): GameElements {
     points: visible,
     checkin: visible,
     quiz: visible,
+    survey: visible,
     exploration: visible,
     cards: visible,
   }

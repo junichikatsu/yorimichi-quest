@@ -17,6 +17,8 @@ import type {
   QuizResponse,
   SeedResponse,
   SpotsResponse,
+  SurveyAnswerResponse,
+  SurveyResponse,
 } from '@imanouchi/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app.js'
@@ -1219,6 +1221,273 @@ describe('おためしのチェックイン・クイズ', () => {
     expect(right.saved).toBe(false)
     expect(dump('fake-user-spot-state')).toEqual([])
   })
+
+  it('★ アンケートに答えても集計へは足されない（公開データに混ぜない）', async () => {
+    const token = await guestToken()
+    const body = await json<SurveyAnswerResponse>(
+      await submitSurvey(token, { answers: { ostomate: 'yes' } }),
+    )
+
+    expect(body.pointsEarned).toBeGreaterThan(0)
+    expect(body.saved).toBe(false)
+    expect(body.verifiedFieldKeys).toEqual([])
+    /*
+     * ★ おためしは身元を持たないので、同じ端末から何度でも送れる。それを集計へ
+     * 混ぜると**検証済み（FR-06-2）という表示が意味を失う。**
+     */
+    expect(dump('fake-user-spot-state')).toEqual([])
+    expect(surveyTally(SHELTER_SPOT_ID, 'ostomate', 'yes')).toBe(0)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 現地確認アンケート（FR-12）
+ * ------------------------------------------------------------------ */
+
+async function fetchSurvey(token: string, spotId = SHELTER_SPOT_ID): Promise<SurveyResponse> {
+  const response = await app.request(`/v1/spots/${spotId}/survey`, { headers: auth(token) })
+  expect(response.status).toBe(200)
+  return json<SurveyResponse>(response)
+}
+
+async function submitSurvey(
+  token: string,
+  body: { answers: Record<string, string>; note?: string },
+  spotId = SHELTER_SPOT_ID,
+): Promise<Response> {
+  return app.request(`/v1/spots/${spotId}/survey`, {
+    method: 'POST',
+    headers: auth(token),
+    body: JSON.stringify(body),
+  })
+}
+
+/** スポットの行に事前計算されている件数を直接見る（集計クエリが無いため） */
+function surveyTally(spotId: string, fieldKey: string, value: string): number {
+  const row = dump('fake-spots').find((item) => item['spotId'] === spotId)
+  const count = row?.[`sv_${fieldKey}_${value}`]
+  return typeof count === 'number' ? count : 0
+}
+
+/**
+ * 別の LINE 利用者でログインする。
+ *
+ * ★ 合意（FR-06-2）は**独立した2人**が同じ答えを出したときに成立する。
+ * 1人で越えられないことを固定するには、2人目が要る。
+ */
+async function loginAsOther(): Promise<LoginResponse> {
+  mockLineVerify(validPayload({ sub: 'Ufedcba9876543210fedcba9876543210', name: '鈴木 花子' }))
+  const response = await app.request('/v1/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ idToken: 'dummy-id-token' }),
+  })
+  expect(response.status).toBe(200)
+  return json<LoginResponse>(response)
+}
+
+describe('GET /v1/spots/:spotId/survey', () => {
+  it('カテゴリごとのデータ辞書から設問を返す（FR-12-1）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchSurvey(token)
+
+    expect(body.spotName).toContain('日比谷公園')
+    expect(body.fields.length).toBe(3)
+    expect(body.fields.every((field) => field.question !== '')).toBe(true)
+    expect(body.alreadyAnswered).toBe(false)
+  })
+
+  it('★ 行政データの記載の有無で「確かめる／埋める」が切り替わる（FR-12-2）', async () => {
+    /*
+     * 日比谷公園（サンプル）の属性は ['スロープ等', '車椅子使用者対応トイレ']。
+     * 段差は記載があるので**確かめる**設問、オストメイトは記載が無いので
+     * **埋める**設問になる。ここが逆になると、行政データに既にある項目を
+     * 集めに行くことになり FR-12 の原則に反する。
+     */
+    const { token } = await loginOk()
+    const body = await fetchSurvey(token)
+
+    expect(body.fields.find((field) => field.fieldKey === 'step_free')?.intent).toBe('verify')
+    expect(body.fields.find((field) => field.fieldKey === 'ostomate')?.intent).toBe('fill')
+  })
+
+  it('★ 属性が1件も無い AED は満額になる（欠損の多いほうが得・要点P-1）', async () => {
+    const { token } = await loginOk()
+    const shelter = await fetchSurvey(token)
+    const aed = await fetchSurvey(token, 'sample-toranomon-aed')
+
+    // AED は3問すべてが「埋める」側、避難所は1問が「確かめる」側
+    expect(aed.fields.every((field) => field.intent === 'fill')).toBe(true)
+    expect(aed.pointsIfAnswered).toBeGreaterThan(shelter.pointsIfAnswered)
+  })
+
+  it('まだ誰も答えていない項目は empty で返る（FR-12-2 の未取得）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchSurvey(token)
+
+    expect(body.fields.every((field) => field.consensus.status === 'empty')).toBe(true)
+  })
+
+  it('存在しないスポットは 404', async () => {
+    const { token } = await loginOk()
+    const response = await app.request('/v1/spots/sample-does-not-exist/survey', {
+      headers: auth(token),
+    })
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('POST /v1/spots/:spotId/survey', () => {
+  it('回答が集計と本人の記録の両方に入り、ポイントが付く', async () => {
+    const { token } = await loginOk()
+    const body = await json<SurveyAnswerResponse>(
+      await submitSurvey(token, {
+        answers: { step_free: 'yes', ostomate: 'no', pet_ok: 'unknown' },
+        note: '入口は北側だけ開いている',
+      }),
+    )
+
+    expect(body.saved).toBe(true)
+    expect(body.recordedCount).toBe(3)
+    expect(body.pointsEarned).toBeGreaterThan(0)
+    expect(body.totalPoints).toBe(body.pointsEarned)
+
+    expect(surveyTally(SHELTER_SPOT_ID, 'step_free', 'yes')).toBe(1)
+    expect(surveyTally(SHELTER_SPOT_ID, 'ostomate', 'no')).toBe(1)
+    // ★ 「わからない」も数える。不明であること自体が情報である
+    expect(surveyTally(SHELTER_SPOT_ID, 'pet_ok', 'unknown')).toBe(1)
+
+    const row = dump('fake-user-spot-state')[0]
+    expect(row?.['surveyNote']).toBe('入口は北側だけ開いている')
+  })
+
+  it('★ ポイントは答えの中身で変わらない（断定させる動機を作らない）', async () => {
+    /*
+     * ★ ここが崩れると公開データの精度がそのまま落ちる。「はい／いいえ」に
+     * 加点して「わからない」に加点しない形にすると、**見ていないのに断定する**
+     * ほうが得になる。倍率はスポット側の欠損数だけで決めている。
+     */
+    const first = await loginOk()
+    const decided = await json<SurveyAnswerResponse>(
+      await submitSurvey(first.token, { answers: { step_free: 'yes', ostomate: 'yes' } }),
+    )
+
+    const second = await loginAsOther()
+    const unsure = await json<SurveyAnswerResponse>(
+      await submitSurvey(second.token, { answers: { step_free: 'unknown', ostomate: 'unknown' } }),
+    )
+
+    expect(unsure.pointsEarned).toBe(decided.pointsEarned)
+  })
+
+  it('★ 同じ人は2回答えられない（1人で閾値を越えられないため）', async () => {
+    const { token } = await loginOk()
+    expect((await submitSurvey(token, { answers: { ostomate: 'yes' } })).status).toBe(200)
+
+    const again = await submitSurvey(token, { answers: { ostomate: 'yes' } })
+    expect(again.status).toBe(400)
+    // 集計は増えていない
+    expect(surveyTally(SHELTER_SPOT_ID, 'ostomate', 'yes')).toBe(1)
+  })
+
+  it('★ 独立した2人が同じ答えを出して初めて検証済みになる（FR-06-2）', async () => {
+    const first = await loginOk()
+    const one = await json<SurveyAnswerResponse>(
+      await submitSurvey(first.token, { answers: { ostomate: 'yes' } }),
+    )
+    // 1人目では確定させない
+    expect(one.verifiedFieldKeys).toEqual([])
+    expect((await fetchSurvey(first.token)).fields.find((f) => f.fieldKey === 'ostomate')?.consensus.status).toBe(
+      'reported',
+    )
+
+    const second = await loginAsOther()
+    const two = await json<SurveyAnswerResponse>(
+      await submitSurvey(second.token, { answers: { ostomate: 'yes' } }),
+    )
+    expect(two.verifiedFieldKeys).toEqual(['ostomate'])
+
+    const view = await fetchSurvey(second.token)
+    const field = view.fields.find((f) => f.fieldKey === 'ostomate')
+    expect(field?.consensus.status).toBe('verified')
+    expect(field?.consensus.value).toBe('yes')
+  })
+
+  it('★ 「わからない」が2件でも検証済みにならない（不明は確定ではない）', async () => {
+    const first = await loginOk()
+    await submitSurvey(first.token, { answers: { ostomate: 'unknown' } })
+    const second = await loginAsOther()
+    const body = await json<SurveyAnswerResponse>(
+      await submitSurvey(second.token, { answers: { ostomate: 'unknown' } }),
+    )
+
+    expect(body.verifiedFieldKeys).toEqual([])
+    expect(
+      (await fetchSurvey(second.token)).fields.find((f) => f.fieldKey === 'ostomate')?.consensus.status,
+    ).toBe('reported')
+  })
+
+  it('回答済みなら自分の回答が読み取り専用で返る', async () => {
+    const { token } = await loginOk()
+    await submitSurvey(token, { answers: { ostomate: 'no' } })
+
+    const body = await fetchSurvey(token)
+    expect(body.alreadyAnswered).toBe(true)
+    expect(body.myAnswers).toEqual({ ostomate: 'no' })
+  })
+
+  it('★ 別カテゴリの項目キーは 400（集計を膨らませられない）', async () => {
+    const { token } = await loginOk()
+    // handrail はバリアフリートイレの設問。避難所には無い
+    const response = await submitSurvey(token, { answers: { handrail: 'yes' } })
+
+    expect(response.status).toBe(400)
+    expect(surveyTally(SHELTER_SPOT_ID, 'handrail', 'yes')).toBe(0)
+  })
+
+  it('★ 選択肢の値は3値だけ（真偽値を受け付けない）', async () => {
+    const { token } = await loginOk()
+    const response = await submitSurvey(token, { answers: { ostomate: 'maybe' } })
+    expect(response.status).toBe(400)
+  })
+
+  it('★ 自由記述は上限を超えると 400（そのまま公開できない文を長く受けない）', async () => {
+    const { token } = await loginOk()
+    const response = await submitSurvey(token, {
+      answers: { ostomate: 'yes' },
+      note: 'あ'.repeat(121),
+    })
+    expect(response.status).toBe(400)
+  })
+
+  it('アンケート回答で道具カードが手に入る（チェックインから移した報酬）', async () => {
+    const { token } = await loginOk()
+    const body = await json<SurveyAnswerResponse>(
+      await submitSurvey(token, { answers: { ostomate: 'yes' } }),
+    )
+
+    // 避難所ではヘルメットが手に入る
+    expect(body.acquiredCards.map((card) => card.cardId)).toContain('tool:helmet')
+  })
+
+  it('★ チェックインの状態を消さない（初回ボーナスと制限を壊さない）', async () => {
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+    await submitSurvey(token, { answers: { ostomate: 'yes' } })
+
+    // アンケートのあとでも再チェックインは制限されたままである
+    const again = await checkin(token, AT_SPOT)
+    expect(again.status).toBe(409)
+    expect((await json<ErrorResponse>(again)).error.code).toBe('COOLDOWN')
+  })
+
+  it('★ 認証なしでは呼べない', async () => {
+    const response = await app.request(`/v1/spots/${SHELTER_SPOT_ID}/survey`, {
+      method: 'POST',
+      body: JSON.stringify({ answers: { ostomate: 'yes' } }),
+    })
+    expect(response.status).toBe(401)
+  })
 })
 
 /* ------------------------------------------------------------------ *
@@ -1396,16 +1665,26 @@ describe('GET /v1/cards', () => {
 })
 
 describe('カードの達成（FR-14-4・FR-14-5・FR-14-6）', () => {
-  it('チェックインで場所カードと道具カードが達成される', async () => {
+  it('チェックインで場所カードが達成される', async () => {
     const { token } = await loginOk()
     const body = await json<CheckinResponse>(await checkin(token, AT_SPOT))
 
     const ids = body.acquiredCards.map((card) => card.cardId)
     expect(ids).toContain(`place:${SHELTER_SPOT_ID}`)
-    // 避難所のチェックインではヘルメットが手に入る
-    expect(ids).toContain('tool:helmet')
     // ★ 達成したカードは中身が入っている（演出でそのまま見せる）
     expect(body.acquiredCards.every((card) => card.body !== undefined)).toBe(true)
+  })
+
+  it('★ チェックインでは道具カードを渡さない（アンケートへ移した・G-6）', async () => {
+    /*
+     * ★ 「近くまで来た」だけで道具が手に入ると、立ち止まって設備を見る動機が
+     * 消える。集めたいデータはアンケート（FR-12）の側にあるので、報酬もそちらへ
+     * 寄せてある。ここが戻ると**アンケートを飛ばしても損をしなくなる。**
+     */
+    const { token } = await loginOk()
+    const body = await json<CheckinResponse>(await checkin(token, AT_SPOT))
+
+    expect(body.acquiredCards.map((card) => card.cardId)).not.toContain('tool:helmet')
   })
 
   it('★ 2回目のチェックインではカードが増えない（達成は一度だけ）', async () => {

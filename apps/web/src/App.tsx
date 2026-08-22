@@ -9,6 +9,9 @@ import type {
   QuizResponse,
   SpotId,
   SpotWithDistance,
+  SurveyAnswerResponse,
+  SurveyResponse,
+  SurveyValue,
   UserView,
 } from '@imanouchi/shared'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -28,6 +31,8 @@ import {
   saveAvatar,
   setLocationConsent,
   setToken,
+  fetchSurvey,
+  submitSurvey,
 } from './api.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { CardPanel } from './components/CardPanel.js'
@@ -46,6 +51,7 @@ import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
 import { Sheet } from './components/Sheet.js'
 import { SpotPanel } from './components/SpotPanel.js'
+import { SurveyPanel } from './components/SurveyPanel.js'
 import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
 import { WalkDigest } from './components/WalkDigest.js'
@@ -233,6 +239,16 @@ export function App(): React.JSX.Element {
   /** 開いているクイズと、その回答結果（FR-04） */
   const [quiz, setQuiz] = useState<{ spotId: SpotId; response: QuizResponse } | undefined>(undefined)
   const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
+
+  /**
+   * 開いている現地確認アンケートと、その結果（FR-12）。
+   *
+   * ★ クイズと別に持つ。**アンケートはクイズの前に出す**（設備を目の前にしている
+   * うちに聞く。クイズは知識なのでどこでも答えられる）。1つの状態にまとめると、
+   * 「アンケートを閉じたのにクイズも消える」といった取り違えが起きる。
+   */
+  const [survey, setSurvey] = useState<SurveyResponse | undefined>(undefined)
+  const [surveyResult, setSurveyResult] = useState<SurveyAnswerResponse | undefined>(undefined)
 
   /**
    * 有事モード（FR-08）。
@@ -926,6 +942,26 @@ export function App(): React.JSX.Element {
   )
 
   /**
+   * 現地確認アンケートを開く（FR-12-3）。
+   *
+   * ★ 取得に失敗したら**クイズへ進める**。行き止まりにしてはいけない。
+   * アンケートは大事だが、それが取れないことで現地の体験が止まるほうが悪い。
+   */
+  const openSurvey = useCallback(
+    async (spotId: SpotId): Promise<void> => {
+      try {
+        const response = await fetchSurvey(spotId)
+        setSurvey(response)
+        setSurveyResult(undefined)
+      } catch {
+        // 知らせは出さない（チェックインの演出と重なる）。クイズへ進める
+        await openQuiz(spotId)
+      }
+    },
+    [openQuiz],
+  )
+
+  /**
    * カードの一覧を開く（FR-14）。
    *
    * ★ 取得に失敗しても行き止まりにしない。読み込み中の表示のまま閉じられる。
@@ -1033,8 +1069,15 @@ export function App(): React.JSX.Element {
           })
         }
 
-        // ★ チェックインしたらその場で出題する（FR-04-1）
-        await openQuiz(spot.spotId)
+        /*
+         * ★ チェックインしたら、**まず現地確認アンケートを出す**（FR-12-3）。
+         *
+         * クイズ（FR-04-1）はそのあと。順番はこの向きでなければならない。
+         * アンケートは目の前の設備を見て答えるもので、離れたら答えられない。
+         * クイズは知識なのでどこでも答えられる。**途中で離脱されたときに残って
+         * ほしいのはデータの側である。**
+         */
+        await openSurvey(spot.spotId)
       } catch (err) {
         if (err instanceof ApiError) {
           setMessage(err.message)
@@ -1062,7 +1105,7 @@ export function App(): React.JSX.Element {
         setBusy(false)
       }
     },
-    [geo.position, guestProgress, openQuiz, updateGuestProgress],
+    [geo.position, guestProgress, openSurvey, updateGuestProgress],
   )
 
   /**
@@ -1083,6 +1126,85 @@ export function App(): React.JSX.Element {
       void handleCheckin(spot)
     },
     [sortedSpots, handleCheckin, selectSpot],
+  )
+
+  /**
+   * アンケートの回答（FR-12）。
+   *
+   * ★ ポイントはサーバーが決める。ここは結果を映すだけである。
+   *
+   * ★ 失敗しても回答を消さない。書き直させるのは、現地で3問答えた人に対して
+   * いちばんやってはいけないことである（`setSurveyResult` を触らずに戻る）。
+   */
+  const handleSurveySubmit = useCallback(
+    async (answers: Record<string, SurveyValue>, note: string): Promise<void> => {
+      if (!survey) return
+
+      setBusy(true)
+      try {
+        const result = await submitSurvey(survey.spotId, { answers, note })
+
+        setSurveyResult(result)
+
+        // 手に入れたカードは結果の上に重ねて見せる（FR-14-8）
+        if (result.acquiredCards.length > 0) {
+          setRevealCards(result.acquiredCards)
+          setUnseenCards((count) => count + result.acquiredCards.length)
+        }
+
+        /*
+         * ★ 「データが増えた」ことを出来事として演出する（FR-03-2 と同じ扱い）。
+         * チェックインとクイズだけが派手だと、**アンケートは作業として読まれる。**
+         * このサービスが集めたいものは、ここでしか増えない。
+         */
+        if (result.acquiredCards.length === 0 && result.recordedCount > 0) {
+          pushFlash(
+            'quiz',
+            '地図の情報が増えました',
+            result.pointsEarned > 0 ? `+${result.pointsEarned}pt` : '',
+          )
+        }
+
+        if (result.saved) {
+          // カードが増えたので、次に一覧を開くときは取り直す
+          if (result.acquiredCards.length > 0) setCards(undefined)
+          setUser((current) =>
+            current ? { ...current, totalPoints: result.totalPoints } : current,
+          )
+          return
+        }
+
+        /*
+         * ★ おためしはサーバーが累計を持たないので、ここで足す。
+         * 集計には入らないため、加点を抑える必要はない（1スポット1回の制限も
+         * サーバーに無い。破られても他人の見るデータには影響しない）。
+         */
+        updateGuestProgress({
+          ...guestProgress,
+          points: guestProgress.points + result.pointsEarned,
+        })
+      } catch (err) {
+        setMessage(err instanceof ApiError ? err.message : '回答を送れませんでした。')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [survey, guestProgress, updateGuestProgress, pushFlash],
+  )
+
+  /**
+   * アンケートを閉じてクイズへ進む（FR-12 → FR-04）。
+   *
+   * ★ アンケートを先に閉じる。両方を重ねると暗幕が二重になり、閉じる操作も
+   * 二度になる。
+   */
+  const goToQuiz = useCallback(
+    async (spotId: SpotId): Promise<void> => {
+      setSurvey(undefined)
+      setSurveyResult(undefined)
+      await openQuiz(spotId)
+    },
+    [openQuiz],
   )
 
   /**
@@ -1553,7 +1675,7 @@ export function App(): React.JSX.Element {
         ★ クイズを開いている間は出さない。両方を重ねると暗幕が二重になり、
         閉じる操作も二度になる。クイズを閉じれば、この詳細が下から現れる。
       */}
-      {selectedSpot && !(quiz && game.quiz) && (
+      {selectedSpot && !(quiz && game.quiz) && !(survey && game.survey) && (
         <Sheet kind="spot" label="スポット詳細">
           <SpotPanel
             spot={selectedSpot}
@@ -1563,8 +1685,38 @@ export function App(): React.JSX.Element {
             now={Date.now()}
             actionsVisible={game.checkin}
             onCheckin={() => void handleCheckin(selectedSpot)}
+            onOpenSurvey={() => void openSurvey(selectedSpot.spotId)}
             onOpenQuiz={() => void openQuiz(selectedSpot.spotId)}
             onClose={() => setSelectedSpotId(undefined)}
+          />
+        </Sheet>
+      )}
+
+      {/*
+        ★ 現地確認アンケートは、チェックインの直後・クイズの前に出す（FR-12-3）。
+
+        ★ **この画面だけが、このサービスの集めているデータを増やす。** チェックインと
+        クイズは行政データを1件も増やさない。だから順番を入れ替えてはいけない
+        （設備を目の前にしているうちに聞く。クイズは知識なのでどこでも答えられる）。
+
+        ★ クイズと同じく暗幕を敷く。ただし**必ずスキップの出口を置く**（`SurveyPanel`
+        側）。答えないと進めない形にすると、歩行中モード（FR-02-9）や高齢者の利用
+        （NFR-08）で詰まる。
+      */}
+      {survey && game.survey && (
+        <Sheet kind="survey" label="現地確認アンケート">
+          <SurveyPanel
+            survey={survey}
+            result={surveyResult}
+            busy={busy}
+            localOnly={mode === 'guest'}
+            onSubmit={(answers, note) => void handleSurveySubmit(answers, note)}
+            onSkip={() => void goToQuiz(survey.spotId)}
+            onNext={() => void goToQuiz(survey.spotId)}
+            onClose={() => {
+              setSurvey(undefined)
+              setSurveyResult(undefined)
+            }}
           />
         </Sheet>
       )}

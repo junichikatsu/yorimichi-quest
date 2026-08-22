@@ -4,8 +4,9 @@ interface SheetProps {
    *
    * - `spot`: スポット詳細。**地図を隠さない**（暗幕を敷かず、外側は地図に触れる）
    * - `quiz`: 防災クイズ。答えるための面なので暗幕を敷いて他を触らせない
+   * - `survey`: 現地確認アンケート（FR-12）。クイズと同じく暗幕を敷く
    */
-  kind: 'spot' | 'quiz'
+  kind: 'spot' | 'quiz' | 'survey'
   /** 読み上げ用の名前 */
   label: string
   children: React.ReactNode
@@ -37,7 +38,7 @@ export function Sheet({ kind, label, children }: SheetProps): React.JSX.Element 
        * ★ 暗幕を敷く板だけ aria-modal を立てる。スポット詳細は外側の地図を
        * そのまま触れるので、閉じ込めていると伝えるのは嘘になる。
        */
-      aria-modal={kind === 'quiz' ? true : undefined}
+      aria-modal={kind === 'spot' ? undefined : true}
       aria-label={label}
     >
       <div className="sheet__body">{children}</div>

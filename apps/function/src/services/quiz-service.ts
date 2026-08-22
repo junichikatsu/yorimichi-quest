@@ -179,6 +179,13 @@ export async function answerQuiz(
     lastCheckinAt: state?.lastCheckinAt,
     visitCount: state?.visitCount ?? 0,
     quizClearedAt: input.now,
+    /*
+     * ★ アンケートの回答状態も引き継ぐ（FR-12）。落とすと**同じ人がスポット側の
+     * 集計を何度でも増やせる**（＝1人で検証済みの閾値を越えられる）。
+     */
+    surveyAnsweredAt: state?.surveyAnsweredAt,
+    surveyAnswers: state?.surveyAnswers ?? [],
+    surveyNote: state?.surveyNote ?? '',
   })
 
   /*

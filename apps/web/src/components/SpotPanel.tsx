@@ -19,6 +19,14 @@ interface SpotPanelProps {
    */
   actionsVisible: boolean
   onCheckin: () => void
+  /**
+   * 現地確認アンケートを開く（FR-12-3）。
+   *
+   * ★ チェックイン後は自動で開くが、**スキップされたときの戻り道が必要**である
+   * （FR-12-11 でスキップを許しているので、ここが無いと二度と開けない）。
+   * このサービスが集めているデータは、この面でしか増えない。
+   */
+  onOpenSurvey: () => void
   /** クイズを開く（FR-04-1）。チェックイン後は自動で開くので、ここは見直し用 */
   onOpenQuiz: () => void
   onClose: () => void
@@ -39,6 +47,7 @@ export function SpotPanel({
   now,
   actionsVisible,
   onCheckin,
+  onOpenSurvey,
   onOpenQuiz,
   onClose,
 }: SpotPanelProps): React.JSX.Element {
@@ -114,6 +123,30 @@ export function SpotPanel({
             <dd>{spot.checkinCount}</dd>
           </div>
         </dl>
+
+        {/*
+          ★ 現地確認アンケート（FR-12-3）。チェックイン後に自動で開くが、
+          **スキップされたときの戻り道**としてここにも置く（FR-12-11）。
+
+          ★ クイズより先に置く。画面の並びも「アンケート → クイズ」にそろえる。
+          このサービスが集めているデータは、この面でしか増えない。
+        */}
+        <div className="surveycta">
+          <p className="surveycta__head">
+            <span className="survey__badge">現地チェック</span>
+            <span className="surveycta__lead">
+              見て分かることを教えてください。行政データに無い情報が地図に増えます
+            </span>
+          </p>
+          <button
+            type="button"
+            className="button button--primary surveycta__button"
+            onClick={onOpenSurvey}
+          >
+            この場所のことを教える
+          </button>
+          <p className="quizcta__note">分からない項目は「わからない」で大丈夫です。</p>
+        </div>
 
         {/*
           ★ クイズはチェックイン後に自動で開く（FR-04-1）。

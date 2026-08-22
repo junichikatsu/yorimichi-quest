@@ -25,6 +25,7 @@ function spot(
     source: 'test',
     fetchedAt: '2026-08-20',
     checkinCount: 0,
+    surveyStats: {},
     updatedAt: '2026-08-20T00:00:00.000Z',
     ...overrides,
   }
@@ -124,6 +125,7 @@ describe('gameElements', () => {
       points: true,
       checkin: true,
       quiz: true,
+      survey: true,
       exploration: true,
       cards: true,
     })
