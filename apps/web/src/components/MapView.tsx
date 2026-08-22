@@ -31,6 +31,21 @@ interface MapViewProps {
   avatar: Avatar | undefined
   /** 有事モードか（FR-08-2） */
   emergency: boolean
+  /**
+   * いまチェックインできるスポット。マーカーを目立たせる（FR-03-2）。
+   *
+   * ★ **押せるときだけ**目立たせる。遠い・時間をおくといった押せない理由は
+   * 文言で出しているので、光らせる意味が無い（光っているのに押せない、が最悪）。
+   */
+  readySpotIds: readonly SpotId[]
+  /**
+   * チェックインボタンを地図上に出す1件。
+   *
+   * ★ 圏内の全件には出さない。半径100mにはAEDだけで何件も入るため、
+   * ボタンを全部出すと地図がボタンで埋まる。**いちばん近い1件だけ**に出す。
+   */
+  checkinSpotId: SpotId | undefined
+  onCheckinSpot: (spotId: SpotId) => void
 }
 
 /**
@@ -70,6 +85,33 @@ function createMarkerElement(spot: SpotWithDistance, selected: boolean): HTMLEle
   el.textContent = SPOT_CATEGORY_GLYPHS[spot.category]
   el.setAttribute('aria-label', spot.name)
   el.title = spot.name
+  return el
+}
+
+/**
+ * 地図の上に出すチェックインボタン。
+ *
+ * ★ スポットをタップして詳細を開いてから押す、という経路だけにしてはいけない。
+ * 「タップすれば何かある」ことは画面から分からない。**押せる場所に着いたら、
+ * 押せるボタンをその場所の上に出す。**
+ *
+ * ★ 文字は `textContent` で入れる（スポット名はオープンデータ由来の外部文字列）。
+ */
+function createCheckinElement(spot: SpotWithDistance, onClick: () => void): HTMLElement {
+  const el = document.createElement('button')
+  el.type = 'button'
+  el.className = 'mapcheckin'
+  el.textContent = 'チェックイン'
+  // 読み上げでは「どこに」が要る。見た目に名前を入れると地図が名前で埋まる
+  el.setAttribute('aria-label', `${spot.name} にチェックインする`)
+  el.title = spot.name
+
+  el.addEventListener('click', (event) => {
+    // 地図まで伝わると、選択した直後に閉じてしまう（マーカーと同じ理由）
+    event.stopPropagation()
+    onClick()
+  })
+
   return el
 }
 
@@ -115,12 +157,29 @@ export function MapView({
   revealRadiusM,
   avatar,
   emergency,
+  readySpotIds,
+  checkinSpotId,
+  onCheckinSpot,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const fogRef = useRef<HTMLCanvasElement>(null)
   const markersRef = useRef<Map<SpotId, mapboxgl.Marker>>(new Map())
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  /** 地図上のチェックインボタン。出しているスポットも一緒に覚える */
+  const checkinMarkerRef = useRef<{ spotId: SpotId; marker: mapboxgl.Marker } | null>(null)
+
+  /**
+   * 押されたときに呼ぶ処理。
+   *
+   * ★ ref に持つ。ボタンの要素は作り直さない（押した瞬間に作り替わると取りこぼす）
+   * ため、生成時に閉じ込めた関数は古くなる。**古い現在地でチェックインを送る**
+   * ことになるので、呼ぶ側を常に最新にしておく。
+   */
+  const checkinHandlerRef = useRef(onCheckinSpot)
+  useEffect(() => {
+    checkinHandlerRef.current = onCheckinSpot
+  }, [onCheckinSpot])
   // 地図のイベントから毎フレーム読むので、再購読が要らない ref に持つ
   const tilesRef = useRef<ExploredTile[]>(exploredTiles)
   const areasRef = useRef<UnlockedAreaBounds[]>(unlockedAreas)
@@ -156,6 +215,8 @@ export function MapView({
       markersRef.current.clear()
       meMarkerRef.current?.remove()
       meMarkerRef.current = null
+      checkinMarkerRef.current?.marker.remove()
+      checkinMarkerRef.current = null
       map.remove()
       mapRef.current = null
     }
@@ -167,6 +228,7 @@ export function MapView({
     if (!map) return
 
     const alive = new Set(spots.map((spot) => spot.spotId))
+    const ready = new Set(readySpotIds)
 
     for (const spot of spots) {
       const existing = markersRef.current.get(spot.spotId)
@@ -174,12 +236,14 @@ export function MapView({
         existing.setLngLat([spot.lng, spot.lat])
         const el = existing.getElement()
         el.classList.toggle('marker--selected', spot.spotId === selectedSpotId)
+        el.classList.toggle('marker--ready', ready.has(spot.spotId))
         continue
       }
 
-      const marker = new mapboxgl.Marker({
-        element: createMarkerElement(spot, spot.spotId === selectedSpotId),
-      })
+      const element = createMarkerElement(spot, spot.spotId === selectedSpotId)
+      element.classList.toggle('marker--ready', ready.has(spot.spotId))
+
+      const marker = new mapboxgl.Marker({ element })
         .setLngLat([spot.lng, spot.lat])
         .addTo(map)
 
@@ -198,7 +262,45 @@ export function MapView({
         markersRef.current.delete(spotId)
       }
     }
-  }, [spots, selectedSpotId, onSelectSpot])
+  }, [spots, selectedSpotId, onSelectSpot, readySpotIds])
+
+  /**
+   * 地図上のチェックインボタン（FR-03-1・FR-03-2）。
+   *
+   * ★ 出しているスポットが変わらない限り**作り直さない**。押した瞬間に作り替わると
+   * クリックが取りこぼされる（要素が入れ替わると click が発火しない）。
+   */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const spot = checkinSpotId ? spots.find((item) => item.spotId === checkinSpotId) : undefined
+    const current = checkinMarkerRef.current
+
+    if (!spot) {
+      current?.marker.remove()
+      checkinMarkerRef.current = null
+      return
+    }
+
+    if (current?.spotId === spot.spotId) {
+      current.marker.setLngLat([spot.lng, spot.lat])
+      return
+    }
+
+    current?.marker.remove()
+
+    const marker = new mapboxgl.Marker({
+      element: createCheckinElement(spot, () => checkinHandlerRef.current(spot.spotId)),
+      // ピンの上に出す。重ねるとピンが押せなくなる
+      anchor: 'bottom',
+      offset: [0, -22],
+    })
+      .setLngLat([spot.lng, spot.lat])
+      .addTo(map)
+
+    checkinMarkerRef.current = { spotId: spot.spotId, marker }
+  }, [checkinSpotId, spots])
 
   /**
    * 現在地の見た目（FR-02-8）。

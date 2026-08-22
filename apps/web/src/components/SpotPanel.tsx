@@ -118,10 +118,25 @@ export function SpotPanel({
         {/*
           ★ クイズはチェックイン後に自動で開く（FR-04-1）。
           この導線は「解説をもう一度読みたい」「あとで挑戦したい」ための入口である。
+
+          ★ 控えめな見た目にしない。**防災クイズはこのサービスの目的そのもの**
+          （FR-04・G-8）であり、チェックインの副産物ではない。ポイントの付く
+          チェックインだけが目立つと、点数を集める遊びに読み替えられる。
         */}
-        <button type="button" className="button button--ghost checkin__quiz" onClick={onOpenQuiz}>
-          {progress.quizCleared ? '防災クイズをもう一度見る' : '防災クイズに挑戦する'}
-        </button>
+        <div className={progress.quizCleared ? 'quizcta quizcta--done' : 'quizcta'}>
+          <p className="quizcta__head">
+            <span className="quizcta__badge">防災クイズ</span>
+            <span className="quizcta__lead">
+              {progress.quizCleared
+                ? '正解済み。解説はいつでも読み直せます'
+                : 'この場所で出る1問。正解するとポイントが増えます'}
+            </span>
+          </p>
+          <button type="button" className="button button--quiz quizcta__button" onClick={onOpenQuiz}>
+            {progress.quizCleared ? 'クイズと解説をもう一度見る' : 'クイズに挑戦する'}
+          </button>
+          <p className="quizcta__note">まちがえてもポイントは減りません。</p>
+        </div>
       </div>
       )}
     </section>

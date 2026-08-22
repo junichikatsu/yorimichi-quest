@@ -140,6 +140,23 @@ export function notifyAreaUnlocked(): void {
   vibrate([120, 90, 120])
 }
 
+/**
+ * チェックインできる場所に着いたときの知らせ（FR-02-10）。
+ *
+ * ★ 他の知らせと**リズムで**区別する。同じ高さの2打から5度上へ跳ねる形で、
+ * 開放（2音上昇）・チェックイン成功（3音上昇）と聞き分けられる。
+ * 音程だけを変えても、ポケットの中では区別が付かない。
+ *
+ * ★ 下降させない。着いたことを失敗に聞こえる音で知らせてはいけない。
+ *
+ * ★ これが鳴ることを「近づく動機」にしてはならない（G-2・NFR-14）。
+ * 鳴るのは圏内に入った一度だけで、近さで変わらない（`nearby.ts`）。
+ */
+export function notifyArrival(): void {
+  playSequence([784, 784, 1175], 0.1, 0.2)
+  vibrate([70, 60, 70, 60, 160])
+}
+
 /** 歩行中モードへ入った／出たときの短い知らせ。画面を見ずに切り替わりが分かるように */
 export function notifyWalkGuard(entering: boolean): void {
   playSequence(entering ? [520] : [780], 0.12, 0.18)
@@ -155,6 +172,21 @@ export function notifyWalkGuard(entering: boolean): void {
 export function notifyCheckin(): void {
   playSequence([523, 659, 784], 0.11, 0.22)
   vibrate([80, 60, 120])
+}
+
+/**
+ * カードを手に入れたときの知らせ（FR-14-8）。
+ *
+ * ★ いちばん長い上昇にする。**手に入れたことがいちばん嬉しい出来事**であり、
+ * チェックイン（3音）より短いと格が逆さまになる。
+ *
+ * ★ 鳴らすのは演出が**画面に出た瞬間**である（獲得した瞬間ではない）。
+ * カードの演出はポイントの演出が消えてから出るので、獲得時に鳴らすと
+ * 何も出ていないところで鳴る。
+ */
+export function notifyCardAcquired(): void {
+  playSequence([523, 659, 784, 1046], 0.12, 0.34)
+  vibrate([90, 60, 90, 60, 200])
 }
 
 /**
