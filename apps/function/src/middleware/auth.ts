@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
-import type { MiddlewareHandler } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 import { AppError, unauthorized } from '../errors.js'
 import { loadConfig } from '../config.js'
+import type { Actor } from '../services/actor.js'
 import { verifySession } from '../services/session.js'
 import type { AppEnv } from '../types.js'
 
@@ -47,10 +48,38 @@ export function skipsSessionGate(path: string): boolean {
  * 通すのは公開オープンデータの読み取りだけ。ユーザーごとの記録（探索・同意・
  * キャラクター）はすべて弾く。おためしの記録は端末の中だけに置く設計である。
  */
-const GUEST_ALLOWED = [/\/v1\/spots$/, /\/v1\/spots\/[^/]+$/]
+const GUEST_ALLOWED = [
+  /\/v1\/spots$/,
+  /\/v1\/spots\/[^/]+$/,
+  /*
+   * ★ チェックインとクイズは通すが、**サーバーへは何も書かない。**
+   *
+   * 判定と採点だけをサーバーで行う（クイズの正解をフロントへ渡せないため）。
+   * 記録は端末の中だけに置く。書かないことは各サービスが `Actor` の種類を見て
+   * 保証しており、ここは「呼べる／呼べない」だけを決める。
+   *
+   * ★ 通す代わりに、おためしでは**再チェックイン制限がサーバーで効かない。**
+   * サーバーに前回時刻が無いためである。守る記録が無いので害はない。
+   */
+  /\/v1\/spots\/[^/]+\/checkin$/,
+  /\/v1\/spots\/[^/]+\/quiz$/,
+  /\/v1\/spots\/[^/]+\/quiz\/answer$/,
+]
 
 export function allowsGuest(path: string): boolean {
   return GUEST_ALLOWED.some((pattern) => pattern.test(path))
+}
+
+/**
+ * 誰の操作かを取り出す。
+ *
+ * ★ ルートで `c.get('userId')` を直接読まない。ゲストでは入っていないため、
+ * 読んだ側が undefined を扱い忘れると**空のユーザーIDで書き込む**経路ができる。
+ * 取り出し口を1つにして、型で分岐を強制する。
+ */
+export function actorOf(c: Context<AppEnv>): Actor {
+  const userId = c.get('userId')
+  return userId === undefined ? { kind: 'guest' } : { kind: 'line', userId }
 }
 
 export const ADMIN_KEY_HEADER = 'x-admin-key'

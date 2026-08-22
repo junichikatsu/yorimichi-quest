@@ -5,13 +5,19 @@ import type { DataStoreClient } from './types.js'
 /**
  * テーブルIDは enebular コンソールで作った UUID を環境変数で受ける。
  *
- * FR-01・FR-02 の範囲では 2 つで足りる。FR-03 以降で増やすときは、
- * **enebular コンソールでテーブルを作ってから**ここに足すこと。
+ * ★ 増やすときは **enebular コンソールでテーブルを作ってから**ここに足すこと。
+ * ここに足した時点で「必須の設定」になり、未設定だと /v1/health の configOk が
+ * false になる（missingConfigKeys がこの一覧を回している）。
+ *
+ * ★ checkins のサブキーは**数値型**で作る（keys.ts の説明を参照）。
+ * 文字列で作ると「新しい順」が桁上がりで壊れ、作り直すしか直せない。
  */
 export const TABLE_ENV_KEYS = {
   spots: 'DS_TABLE_SPOTS',
   users: 'DS_TABLE_USERS',
   exploredTiles: 'DS_TABLE_EXPLORED_TILES',
+  checkins: 'DS_TABLE_CHECKINS',
+  userSpotState: 'DS_TABLE_USER_SPOT_STATE',
 } as const
 
 export type TableName = keyof typeof TABLE_ENV_KEYS

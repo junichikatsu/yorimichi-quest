@@ -74,6 +74,22 @@ export interface AppConfig {
   sessionTtlHours: number
   mapboxToken: string
   adminKey: string
+  /**
+   * チェックインできる半径（m）。FR-03-1 の「例：100m」を設定可能にしたもの。
+   *
+   * ★ 判定はサーバーで行う。クライアントへも配るが、それは**ボタンの出し方**の
+   * ためだけである（遠いのに押せるボタンを出さない）。
+   */
+  checkinRadiusM: number
+  /** 同一スポットの再チェックイン制限（時間）。FR-03-3 の「例：24時間」 */
+  checkinCooldownHours: number
+  /**
+   * クイズ正解のボーナスポイント（FR-04-3）。
+   *
+   * ★ チェックインの基礎点より大きくしてある。**現地で考えることに報いる**のが
+   * この設問群の目的であり、通り過ぎるだけで同じ点が入ると学習の動機が消える。
+   */
+  quizCorrectPoints: number
   maxSpotsPerRequest: number
   rateLimitPerMinute: number
   /**
@@ -149,6 +165,9 @@ export function loadConfig(): AppConfig {
     sessionTtlHours: readNumber('SESSION_TTL_HOURS', 12),
     mapboxToken: readString('MAPBOX_ACCESS_TOKEN'),
     adminKey: readString('ADMIN_KEY'),
+    checkinRadiusM: readNumber('CHECKIN_RADIUS_M', 100),
+    checkinCooldownHours: readNumber('CHECKIN_COOLDOWN_HOURS', 24),
+    quizCorrectPoints: readNumber('QUIZ_CORRECT_POINTS', 30),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),

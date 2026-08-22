@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { avatarSchema } from './avatar.js'
 import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
+import type { QuizPrompt } from './quiz.js'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
 import type { UserView } from './user.js'
 
@@ -30,6 +31,15 @@ export const ERROR_CODES = [
   'TOKEN_EXPIRED',
   'FORBIDDEN',
   'NOT_FOUND',
+  /**
+   * チェックインの距離が足りない（FR-03-1）。
+   *
+   * ★ 400 系の汎用エラーにまとめない。画面は「あと何m」を出して近づくよう促す
+   * 必要があり、**入力の不備と混ぜると案内を書き分けられない**。
+   */
+  'TOO_FAR',
+  /** 同一スポットへの再チェックイン制限（FR-03-3）。details に次回可能時刻を入れる */
+  'COOLDOWN',
   'RATE_LIMITED',
   'CONFIG_ERROR',
   'DATASTORE_UNAVAILABLE',
@@ -127,6 +137,16 @@ export interface ClientConfigResponse {
   assetVersion: string
   /** 探索の寸法。FE は環境変数を持たないのでここから配る（FR-02-7） */
   exploration: ExplorationConfig
+  /**
+   * チェックインできる半径（m）。既定 100（FR-03-1）。
+   *
+   * ★ 判定はサーバーで行う。ここで配るのは**ボタンの出し方**のためだけである
+   * （遠いのに押せるボタンを出すと、押してから断られる）。この値を書き換えても
+   * サーバーの判定は変わらない。
+   */
+  checkinRadiusM: number
+  /** 同一スポットの再チェックイン制限（時間）。既定 24（FR-03-3） */
+  checkinCooldownHours: number
   /**
    * デモ用の移動操作を許すか。
    *
@@ -231,6 +251,78 @@ export interface ExplorationResponse {
 export interface ExplorationUpdateResponse extends ExplorationResponse {
   /** 今回の記録で新しく増えたタイル数。0 なら書き込みは発生していない */
   newTileCount: number
+}
+
+/* ------------------------------------------------------------------ *
+ * チェックイン（FR-03）
+ * ------------------------------------------------------------------ */
+
+/**
+ * チェックインの申告位置。
+ *
+ * ★ 距離の判定はサーバーで行う（NFR-04）。クライアントが計算した距離や
+ * 「圏内である」という申告を受け取ってはいけない。受け取ると、家から
+ * 全スポットにチェックインできてしまう。
+ */
+export const checkinRequestSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+})
+
+export type CheckinRequest = z.infer<typeof checkinRequestSchema>
+
+/**
+ * ポイントの内訳（FR-03-2）。
+ *
+ * ★ 合計だけを返さない。「なぜその点数なのか」が画面に出ないと、
+ * 初回ボーナスに気づかれず、**もう一度別の場所へ行く動機にならない**。
+ */
+export interface PointBreakdown {
+  base: number
+  /** 初回訪問のボーナス。2 回目以降は 0 */
+  firstVisitBonus: number
+}
+
+export interface CheckinResponse {
+  /** 更新後のスポット（チェックイン回数が増えている） */
+  spot: SpotWithDistance
+  distanceM: number
+  pointsEarned: number
+  breakdown: PointBreakdown
+  /**
+   * 加点後の累計ポイント。
+   *
+   * ★ おためし（ゲスト）では 0 が返る。サーバーが累計を持たないためである。
+   * 画面は `saved` を見て、端末に持っている累計へ加算する。
+   */
+  totalPoints: number
+  /** 次にこのスポットへチェックインできる時刻（ISO8601・FR-03-3） */
+  nextAvailableAt: string
+  /** このスポットの累計訪問回数（この利用者ぶん・FR-03-4） */
+  visitCount: number
+  /**
+   * サーバーが保存したか。
+   *
+   * ★ おためし（ゲスト）では false。判定はサーバーで行うが、記録は端末の中
+   * だけに置く。**再チェックイン制限もサーバーでは効かない**ので、画面側が
+   * 端末の記録で抑える。
+   */
+  saved: boolean
+}
+
+/* ------------------------------------------------------------------ *
+ * クイズ（FR-04）
+ * ------------------------------------------------------------------ */
+
+export interface QuizResponse {
+  quiz: QuizPrompt
+  /**
+   * すでに正解済みか。
+   *
+   * ★ 正解済みでも出題する（FR-04-6 の再挑戦と同じ経路）。ただし加点はしない。
+   * 画面はこの値で「報酬は増えません」と先に断る。
+   */
+  alreadyCleared: boolean
 }
 
 /* ------------------------------------------------------------------ *

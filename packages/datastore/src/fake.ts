@@ -1,11 +1,15 @@
 import type { DataStoreContext, TableName } from './context.js'
 import {
+  CHECKINS_MAIN_KEY,
+  CHECKINS_SUB_KEY,
   EXPLORED_TILES_MAIN_KEY,
   EXPLORED_TILES_SUB_KEY,
   SPOTS_MAIN_KEY,
   SPOTS_SUB_KEY,
   USERS_MAIN_KEY,
   USERS_SUB_KEY,
+  USER_SPOT_STATE_MAIN_KEY,
+  USER_SPOT_STATE_SUB_KEY,
 } from './keys.js'
 import type {
   DataStoreClient,
@@ -39,12 +43,16 @@ export const FAKE_TABLE_SCHEMAS: Record<string, FakeTableSchema> = {
   'fake-spots': { mainKey: SPOTS_MAIN_KEY, subKey: SPOTS_SUB_KEY },
   'fake-users': { mainKey: USERS_MAIN_KEY, subKey: USERS_SUB_KEY },
   'fake-explored-tiles': { mainKey: EXPLORED_TILES_MAIN_KEY, subKey: EXPLORED_TILES_SUB_KEY },
+  'fake-checkins': { mainKey: CHECKINS_MAIN_KEY, subKey: CHECKINS_SUB_KEY },
+  'fake-user-spot-state': { mainKey: USER_SPOT_STATE_MAIN_KEY, subKey: USER_SPOT_STATE_SUB_KEY },
 }
 
 export const FAKE_TABLE_IDS: Record<TableName, string> = {
   spots: 'fake-spots',
   users: 'fake-users',
   exploredTiles: 'fake-explored-tiles',
+  checkins: 'fake-checkins',
+  userSpotState: 'fake-user-spot-state',
 }
 
 type Item = Record<string, unknown>
