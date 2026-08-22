@@ -31,6 +31,17 @@ setStaticAssetLoader((name) => {
 // ローカルはデータストアへ接続できないため、既定でインメモリ実装を使う
 process.env['USE_FAKE_DATASTORE'] ??= 'true'
 process.env['ADMIN_KEY'] ??= 'local-admin-key'
+/*
+ * ★ 開発用ログインを既定で有効にする。
+ *
+ * LIFF はエンドポイント URL に公開URLを登録した状態で LINE アプリから開く必要が
+ * あるため、**ローカルでは LINE ログインが完走できない。** そのため、ログインが要る
+ * 機能（チェックインの保存・カード）を手元で確かめられなかった。
+ *
+ * ★ ここで有効にするのは安全である。このファイルはローカル起動専用で、
+ * デプロイする ZIP の入口は index.ts であり、**local.ts は含まれない。**
+ */
+process.env['ENABLE_DEV_LOGIN'] ??= 'true'
 
 const port = Number(process.env['PORT'] ?? 8787)
 const config = loadConfig()

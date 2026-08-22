@@ -1,6 +1,7 @@
 import { getUser, type DataStoreContext } from '@imanouchi/datastore'
 import {
   asSpotId,
+  asUserId,
   avatarUpdateRequestSchema,
   checkinRequestSchema,
   consentRequestSchema,
@@ -13,6 +14,7 @@ import {
   spotsQuerySchema,
   toUserView,
   type AdminConfigResponse,
+  type CardsResponse,
   type CheckinResponse,
   type ClientConfigResponse,
   type ExplorationResponse,
@@ -43,6 +45,7 @@ import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-con
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
 import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
 import { issueSession, newGuestId } from '../services/session.js'
+import { buildCards, buildCatalog } from '../services/card-service.js'
 import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
@@ -79,6 +82,40 @@ export function createRoutes(): Hono<AppEnv> {
    * 実機で確かめる以外にない。本体から導線は張っていない（URL を直接開く）。
    */
   routes.get('/caps.html', (c) => sendAsset(c, 'caps.html'))
+  /*
+   * カードの種類と中身の一覧（開発用・FR-14）。
+   *
+   * ★ 中身はサーバー（/v1/dev/card-catalog）から引く。ページに書き写さないので、
+   * 出題やアイテムを増やせば一覧も追随する。**カードを足したときの確認に使う。**
+   * 本体から導線は張っていない（URL を直接開く）。
+   *
+   * ★ **本番では 404 にし、ZIP にも入れない。** 中身を返す API が開発用なので、
+   * 本番に置いても何も出ない「壊れたページ」になる。ローカルは public/ を
+   * ディスクから読むのでそのまま開ける。
+   */
+  routes.get('/card-catalog.html', (c) => {
+    const config = loadConfig()
+    if (!config.devLoginEnabled || !config.useFakeDataStore) throw notFound('見つかりません')
+    return sendAsset(c, 'card-catalog.html')
+  })
+
+  /**
+   * カードの定義を全部返す（**開発用**）。
+   *
+   * ★ **中身（達成後にだけ見せる文）も返すため、本番に出してはいけない。**
+   * 行動カードの中身はクイズの答えそのものである。開発用ログインと同じ条件
+   * （インメモリ実装のとき）でしか通らないようにしてある。
+   *
+   * ★ 一覧のページがここから引く。HTML に書き写すと、出題やアイテムを増やした
+   * ときに一覧だけ古いまま残る。
+   */
+  routes.get('/v1/dev/card-catalog', async (c) => {
+    const config = loadConfig()
+    if (!config.devLoginEnabled || !config.useFakeDataStore) throw notFound('見つかりません')
+
+    const ctx = await contextFor()
+    return c.json(await buildCatalog(ctx, config.area.areaId, 6))
+  })
 
   /* ---------------- ミドルウェア（1 箇所でまとめて適用） ---------------- */
 
@@ -116,6 +153,8 @@ export function createRoutes(): Hono<AppEnv> {
       debugMoveEnabled: config.debugMoveEnabled,
       emergencyDemoEnabled: config.emergencyDemoEnabled,
       guestModeEnabled: config.guestModeEnabled,
+      // ★ 経路が生えているかどうかをそのまま配る（画面は入口を出すかだけを決める）
+      devLoginEnabled: config.devLoginEnabled && config.useFakeDataStore,
       // ★ 判定はサーバー側。ここで配るのはボタンの出し方のためだけ（FR-03-1）
       checkinRadiusM: config.checkinRadiusM,
       checkinCooldownHours: config.checkinCooldownHours,
@@ -185,6 +224,69 @@ export function createRoutes(): Hono<AppEnv> {
 
     const ctx = await contextFor()
     const { profile, registered } = await ensureUser(ctx, identity, new Date())
+    const session = issueSession(
+      { kind: 'line', userId: profile.userId },
+      config.sessionSecret,
+      config.sessionTtlHours,
+    )
+
+    const response: LoginResponse = {
+      token: session.token,
+      expiresAt: session.expiresAt.toISOString(),
+      user: toUserView(profile),
+      registered,
+    }
+    return c.json(response)
+  })
+
+  /**
+   * 開発用ログイン（ローカルの動作確認専用）。
+   *
+   * ★ **本番には経路そのものが生えない。** 登録の条件に `useFakeDataStore` を
+   * 入れてあり、本番は `USE_FAKE_DATASTORE` を設定しない運用なので、
+   * 環境変数が紛れ込んでもこの `if` を通らない。
+   *
+   * ★ これが必要な理由：LIFF はエンドポイント URL に公開URLを登録した状態で
+   * LINE アプリから開く必要があるため、**ローカルでは LINE ログインが完走しない。**
+   * ログインが要る機能（チェックインの保存・カード）を手元で確かめる手段が無く、
+   * 実装したものを実機へ上げるまで見られない状態になっていた。
+   *
+   * ★ 発行するのは LINE ログインと**同じ形のセッション**である。おためしのような
+   * 読み取り専用ではないので、データストア（インメモリ）に書き込みが起きる。
+   */
+  routes.post('/v1/auth/dev', async (c) => {
+    const config = loadConfig()
+
+    /*
+     * ★ 判定はリクエストのたびに行う（登録時に固めない）。
+     *
+     * 環境変数はモジュール読み込みの順序に左右される。ルートを作るかどうかで
+     * 分けると、**設定してあるのに経路が無い**（あるいはその逆）という、
+     * 一番切り分けにくい形の食い違いが起きる。設定の読み取りと同じ場所で決める。
+     *
+     * 経路が無いのと同じ 404 を返す。本番では `USE_FAKE_DATASTORE` を設定しない
+     * 運用なので、常にここで止まる。
+     */
+    if (!config.devLoginEnabled || !config.useFakeDataStore) {
+      throw notFound('見つかりません')
+    }
+
+    if (config.sessionSecret === '') {
+      throw new AppError('CONFIG_ERROR', 500, 'サーバー設定が不足しています')
+    }
+
+    const ctx = await contextFor()
+    const { profile, registered } = await ensureUser(
+      ctx,
+      {
+        // LINE の userId と同じ形（U + 16進32桁）にする。取り違えを型で防いでいるため
+        userId: asUserId('Udeadbeefdeadbeefdeadbeefdeadbeef'),
+        displayName: '開発用ユーザー',
+        pictureUrl: '',
+      },
+      new Date(),
+    )
+
     const session = issueSession(
       { kind: 'line', userId: profile.userId },
       config.sessionSecret,
@@ -387,6 +489,24 @@ export function createRoutes(): Hono<AppEnv> {
       userId: c.get('userId'),
       cooldownHours: config.checkinCooldownHours,
       limit: MAX_PROGRESS_ENTRIES,
+    })
+
+    return c.json(response)
+  })
+
+  /**
+   * カードコレクション（FR-14）。
+   *
+   * ★ おためし（ゲスト）は通らない（403）。達成状態をサーバーが持たないと、
+   * **未達成カードの中身を隠す仕組み（FR-14-3）が成立しない。**
+   */
+  routes.get('/v1/cards', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+
+    const response: CardsResponse = await buildCards(ctx, {
+      userId: c.get('userId'),
+      areaId: config.area.areaId,
     })
 
     return c.json(response)

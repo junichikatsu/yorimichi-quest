@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light dark" />
+    <!--
+      ★ light だけを宣言する。styles.css に暗い配色は無いので、dark を宣言すると
+      端末が暗い設定のときに**スクロールバーや入力欄だけが暗くなり**、白い画面の上で浮く。
+    -->
+    <meta name="color-scheme" content="light" />
     <title>イマノウチ</title>
     <!--
       ?v= は前段キャッシュ対策。実行環境の前段は拡張子で Cache-Control を上書きするため、

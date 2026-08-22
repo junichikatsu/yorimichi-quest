@@ -10,8 +10,10 @@ import {
   putUserSpotState,
   type DataStoreContext,
 } from '@imanouchi/datastore'
+import { checkinItemFor, ITEM_DEFS, SPOT_CATEGORY_LABELS } from '@imanouchi/shared'
 import type {
   AreaId,
+  CardView,
   CheckinResponse,
   ProgressResponse,
   SpotId,
@@ -19,6 +21,7 @@ import type {
   UserId,
 } from '@imanouchi/shared'
 import { AppError, notFound, unauthorized } from '../errors.js'
+import { grantCards, grantMissions, placeCardDef, type CardDefinition } from './card-service.js'
 import { withDistance } from './spot-service.js'
 import type { Actor } from './actor.js'
 
@@ -40,6 +43,29 @@ export interface PerformCheckinInput {
   now: number
   radiusM: number
   cooldownHours: number
+}
+
+/**
+ * チェックインで手に入る道具カード（FR-14-6・FR-07-8）。
+ *
+ * ★ スポットのカテゴリに紐づいた道具だけを渡す。カテゴリに対応する道具が無ければ
+ * 何も渡さない（クイズ正解でしか手に入らない道具がある）。
+ */
+function toolCardForCategory(category: Parameters<typeof checkinItemFor>[0]): CardDefinition | undefined {
+  const itemKey = checkinItemFor(category)
+  if (itemKey === undefined) return undefined
+
+  const def = ITEM_DEFS[itemKey]
+  return {
+    cardId: `tool:${itemKey}`,
+    kind: 'tool',
+    title: def.name,
+    condition:
+      def.fromCategory === null
+        ? '現地のクイズに正解して手に入れる'
+        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}でチェックインして手に入れる`,
+    body: def.use,
+  }
 }
 
 export async function performCheckin(
@@ -96,6 +122,14 @@ export async function performCheckin(
       totalPoints: 0,
       nextAvailableAt,
       visitCount: 1,
+      /*
+       * ★ おためしではカードを扱わない。
+       *
+       * 達成状態をサーバーが持たないと、**未達成カードの中身を隠す仕組み
+       * （レスポンスから落とす・FR-14-3）が成立しない。** クライアントへ中身を
+       * 渡してから隠す形にすると、配信されたデータを読めば分かってしまう。
+       */
+      acquiredCards: [],
       saved: false,
     }
   }
@@ -137,6 +171,23 @@ export async function performCheckin(
     lastActiveAt: nowIso,
   })
 
+  /*
+   * カード（FR-14）。場所カードと、カテゴリに紐づく道具カードを達成させる。
+   *
+   * ★ ミッションの判定は**新しく達成したものがあるときだけ**行う。枚数が変わって
+   * いないのに毎回数え直すと、チェックインごとに query が1回増える（制約 E4）。
+   */
+  const targets: CardDefinition[] = [placeCardDef(spot)]
+  const toolCard = toolCardForCategory(spot.category)
+  if (toolCard) targets.push(toolCard)
+
+  const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
+  if (acquiredCards.length > 0) {
+    acquiredCards.push(
+      ...(await grantMissions(ctx, userId, input.areaId, nowIso)),
+    )
+  }
+
   const updatedSpot = await incrementSpotCheckinCount(ctx, spot, nowIso)
 
   return {
@@ -147,6 +198,7 @@ export async function performCheckin(
     totalPoints: profile.totalPoints + decision.pointsEarned,
     nextAvailableAt,
     visitCount,
+    acquiredCards,
     saved: true,
   }
 }

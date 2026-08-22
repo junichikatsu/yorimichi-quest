@@ -67,6 +67,16 @@ export const CHECKINS_SUB_KEY = 'checkinAt'
 export const USER_SPOT_STATE_MAIN_KEY = 'userKey'
 export const USER_SPOT_STATE_SUB_KEY = 'spotKey'
 
+export const USER_CARDS_MAIN_KEY = 'userKey'
+/**
+ * 達成したカード（FR-14）のサブキー。
+ *
+ * ★ 値は `<種類>:<キー>`（例 `place:aed-277fdb2594`）。**アイテム用のテーブルを
+ * 流用し、サブキーを一般化してある**（要件定義 6.2）。カード用に別のテーブルを
+ * 作らないので、アイテム数が増えない。
+ */
+export const USER_CARDS_SUB_KEY = 'itemKey'
+
 export function areaKey(areaId: AreaId): string {
   return `area#${areaId}`
 }

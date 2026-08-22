@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>カードの種類と中身 — イマノウチ</title>
+    <!--
+      開発用の一覧ページ（FR-14 のカードを確認する）。
+
+      ★ **中身をここに書き写していない。** サーバー（/v1/dev/card-catalog）から引いている。
+      書き写すと、出題やアイテムを増やしたときに一覧だけ古いまま残る。
+      その API はインメモリ実装のときしか通らないので、本番では開いても空になる。
+
+      ★ 見た目は決定した案（表面＝ドット枠 8bit／裏面＝ドット枠）で描いてある。
+      本体（CardArt.tsx / styles.css）へ移すときは、このスタイルをそのまま持っていける。
+
+      ★ 達成／未達成を切り替えられる。一覧の大半は未達成なので、そこで成立していないと
+      実際の画面が崩れる（達成 5 / 全 395 のような状態から始まる）。
+    -->
+    <style>
+      :root {
+        /* ★ アプリ本体に合わせて明るい配色だけにする（本体に暗い配色は無い） */
+        color-scheme: light;
+        --bg: #faf7fb;
+        --surface: #fff;
+        --ink: #241f27;
+        --muted: #5b5560;
+        --line: #e2dbe4;
+        --accent: #6b4e8f;
+        --shelter: #2f6f3e;
+        --aed: #c0392b;
+        --accessible_toilet: #2d6ca2;
+        --water: #1f8a8a;
+        --tool: #7a5c2e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 1rem;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+        line-height: 1.7;
+      }
+      h1 { font-size: 1.1rem; margin: 0 0 0.2rem; }
+      h2 { font-size: 1rem; margin: 1.6rem 0 0.1rem; }
+      .lead { margin: 0 0 0.8rem; font-size: 0.84rem; color: var(--muted); }
+      .howto { margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--muted); }
+      .controls {
+        position: sticky; top: 0; z-index: 2;
+        display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+        padding: 0.5rem; margin: 0 0 0.8rem;
+        border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+      }
+      button {
+        padding: 0.4rem 0.75rem; border: 1px solid var(--line); border-radius: 999px;
+        background: var(--surface); color: var(--ink); font: inherit; font-size: 0.8rem; cursor: pointer;
+      }
+      button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .summary { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.6rem; }
+      .summary__item {
+        padding: 0.25rem 0.6rem; border: 1px solid var(--line); border-radius: 999px;
+        background: var(--surface); font-size: 0.78rem;
+      }
+      .summary__item b { font-variant-numeric: tabular-nums; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.6rem; }
+      .placebar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.6rem; }
+      .note { max-width: 42rem; margin: 1.4rem 0 0; font-size: 0.78rem; color: var(--muted); }
+      .error { color: var(--aed); font-size: 0.85rem; }
+
+      /* ================= 決定した見た目：表面（ドット枠 8bit） ================= */
+
+      .card {
+        --cc: var(--accent);
+        display: flex; flex-direction: column; gap: 0.3rem;
+        padding: 0.5rem;
+        background: var(--surface);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        /* ★ 角丸を使わず階段状に落とす。これがドットらしさの中心 */
+        clip-path: polygon(
+          0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+          100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+          6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+        );
+        box-shadow: inset 0 0 0 3px var(--cc), 4px 4px 0 rgb(0 0 0 / 22%);
+      }
+      .card__art {
+        height: 4.2rem;
+        background: color-mix(in srgb, var(--cc) 14%, var(--surface));
+      }
+      .card__art {
+        display: grid;
+        place-items: center;
+      }
+      .card__art canvas {
+        display: block;
+        /* ★ 正方形を保つ。器いっぱいに伸ばすと絵が横に潰れる（実際に潰れた） */
+        height: 100%;
+        width: auto;
+        aspect-ratio: 1 / 1;
+        /* ★ これが無いとドット絵がぼやける */
+        image-rendering: pixelated;
+      }
+      .card__kind { margin: 0; font-size: 0.66rem; font-weight: 700; color: var(--cc); }
+      .card__title { margin: 0; font-size: 0.84rem; line-height: 1.4; }
+      .card__body { margin: 0; font-size: 0.72rem; line-height: 1.5; }
+      .card--locked { box-shadow: inset 0 0 0 3px var(--line), 4px 4px 0 rgb(0 0 0 / 12%); }
+      .card--locked .card__kind { color: var(--muted); }
+      .card--locked .card__art { background: var(--line); }
+      .card--locked .card__body { color: var(--muted); }
+
+      /* ================= 決定した見た目：裏面（ドット枠） ================= */
+
+      .back {
+        display: grid; place-items: center; gap: 0.4rem;
+        width: 9rem; aspect-ratio: 3 / 4;
+        background: #1b1622; color: #fff;
+        box-shadow: inset 0 0 0 3px var(--accent);
+        clip-path: polygon(
+          0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+          100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%,
+          6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+        );
+      }
+      .back__mark {
+        display: grid; place-items: center; width: 2.7rem; height: 2.7rem;
+        background: rgb(255 255 255 / 92%); color: var(--accent);
+        font-size: 1.5rem; font-weight: 700;
+        box-shadow: 0 0 0 3px #1b1622, 3px 3px 0 rgb(0 0 0 / 35%);
+      }
+      .back__word {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.72rem; letter-spacing: 0.3em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>カードの種類と中身（FR-14）</h1>
+    <p class="lead">
+      中身はサーバー（<code>/v1/dev/card-catalog</code>）から引いています。出題やアイテムを増やせば、
+      このページも自動で追随します。見た目は決定した案（ドット枠 8bit）です。
+    </p>
+
+    <div class="controls">
+      <button id="state" aria-pressed="true" onclick="toggleState()">状態：達成（中身が見える）</button>
+      <span class="lead" style="margin: 0">未達成では中身が消え、達成条件だけが残ります</span>
+    </div>
+
+    <div class="summary" id="summary"></div>
+    <div id="sections"></div>
+
+    <h2>裏面</h2>
+    <p class="howto">獲得の演出でめくる前に見える面です。</p>
+    <div class="back">
+      <div class="back__mark">今</div>
+      <div class="back__word">イマノウチ</div>
+    </div>
+
+    <p class="note">
+      ★ このページは開発用です。本体から導線は張っていません（/caps.html と同じ扱い）。<br />
+      ★ <b>行動カードの見出しは「場面」</b>です。行動そのものを見出しにすると、一覧を見るだけで
+      対応するクイズの答えが読めてしまいます。未達成に切り替えて、答えが見えないことを確かめてください。<br />
+      ★ 場所カードは見本だけ出しています（全件はスポット件数と同じで、対象エリアに 370 件あります）。
+    </p>
+
+    <script>
+      /* ---------------- ドット絵（サーバーから受け取る 24×24） ---------------- */
+      /*
+       * ★ ページに書き写さない。/v1/dev/card-catalog が
+       * packages/shared/src/pixel-art.ts の中身をそのまま返す。
+       * 絵を直せばこのページも自動で追随する。
+       */
+      const FIXED = {
+        o: '#241f27',
+        w: 'rgba(255,255,255,0.94)',
+        g: '#8e8896',
+        y: '#f0c04a',
+        r: '#d0453a',
+        s: '#e7b487',
+      }
+
+      function shadesOf(color) {
+        const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color)
+        if (!m) return { main: color, dark: color, light: color }
+        const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])]
+        const mix = (v, t, k) => Math.round(v + (t - v) * k)
+        return {
+          main: `rgb(${r},${g},${b})`,
+          dark: `rgb(${mix(r,0,0.35)},${mix(g,0,0.35)},${mix(b,0,0.35)})`,
+          light: `rgb(${mix(r,255,0.45)},${mix(g,255,0.45)},${mix(b,255,0.45)})`,
+        }
+      }
+
+      /**
+       * ★ 未達成は**「？」の絵を全部灰色で**描く（決定した案B）。本体の CardArt と同じ扱い。
+       * 主色だけ灰色にしても輪郭（黒）や明かり（黄）が残ると、色が付いて見えて差が出ない。
+       */
+      function drawArt(canvas, rows, color, muted) {
+        const ctx = canvas.getContext('2d')
+        const shades = shadesOf(color)
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        rows.forEach((row, y) => {
+          for (let x = 0; x < row.length; x += 1) {
+            const ch = row[x]
+            if (ch === '.') continue
+            const fill = muted
+              ? (ch === 'o' ? shades.dark : ch === 'w' || ch === 'l' ? shades.light : shades.main)
+              : ch === 'm' ? shades.main : ch === 'd' ? shades.dark
+                : ch === 'l' ? shades.light : FIXED[ch]
+            if (!fill) continue
+            ctx.fillStyle = fill
+            ctx.fillRect(x, y, 1, 1)
+          }
+        })
+      }
+
+      /* ---------------- 描画 ---------------- */
+      let achieved = true
+      let catalog = null
+
+      function colorVarOf(card) {
+        if (card.kind === 'tool') return 'var(--tool)'
+        if (card.kind === 'mission') return 'var(--accent)'
+        return card.category ? `var(--${card.category})` : 'var(--accent)'
+      }
+
+      function cardHtml(card) {
+        const text = achieved ? card.body : card.condition
+        return `<article class="card ${achieved ? '' : 'card--locked'}"
+          style="${achieved ? `--cc: ${colorVarOf(card)}` : ''}">
+          <div class="card__art"><canvas width="24" height="24"
+            data-art="${catalog.artKeys[card.cardId] ?? 'mission'}" data-color="${colorVarOf(card)}"></canvas></div>
+          <p class="card__kind">${card.kindLabel}</p>
+          <h3 class="card__title">${card.title}</h3>
+          <p class="card__body">${text}</p>
+        </article>`
+      }
+
+      function render() {
+        document.getElementById('state').textContent = achieved
+          ? '状態：達成（中身が見える）'
+          : '状態：未達成（達成条件だけ）'
+        document.getElementById('state').setAttribute('aria-pressed', String(achieved))
+
+        if (!catalog) return
+
+        document.getElementById('summary').innerHTML =
+          `<span class="summary__item">全部で <b>${catalog.total}</b> 枚</span>` +
+          catalog.groups
+            .map((g) => `<span class="summary__item">${g.label} <b>${g.total}</b></span>`)
+            .join('')
+
+        document.getElementById('sections').innerHTML = catalog.groups
+          .map((group) => {
+            const cards = group.cards.map((card) =>
+              cardHtml({ ...card, kindLabel: group.label }),
+            )
+            const places =
+              group.kind === 'place'
+                ? `<div class="placebar">${catalog.places
+                    .map((p) => `<span class="summary__item">${p.label} <b>${p.total}</b></span>`)
+                    .join('')}</div>`
+                : ''
+            const more =
+              group.cards.length < group.total
+                ? `<p class="howto">…ほか ${group.total - group.cards.length} 枚（見本のみ表示）</p>`
+                : ''
+            return `<h2>${group.label}カード（${group.total}枚）</h2>
+              <p class="howto">${group.howTo}</p>
+              ${places}
+              <div class="grid">${cards.join('')}</div>
+              ${more}`
+          })
+          .join('')
+
+        // canvas は差し込んだあとに描く（CSS 変数を解決してから色を渡す）
+        const probe = document.createElement('div')
+        document.body.appendChild(probe)
+        for (const canvas of document.querySelectorAll('canvas[data-art]')) {
+          probe.style.color = canvas.dataset.color
+          const color = getComputedStyle(probe).color
+          const rows = catalog.art[achieved ? canvas.dataset.art : 'locked-unknown'] ?? []
+          drawArt(canvas, rows, achieved ? color : 'rgb(150,145,155)', !achieved)
+        }
+        probe.remove()
+      }
+
+      function toggleState() { achieved = !achieved; render() }
+
+      async function load() {
+        try {
+          const response = await fetch('v1/dev/card-catalog')
+          if (!response.ok) throw new Error(String(response.status))
+          catalog = await response.json()
+          render()
+        } catch (err) {
+          document.getElementById('sections').innerHTML =
+            `<p class="error">カードの定義を取得できませんでした（${err.message}）。
+             ローカル起動（pnpm dev）でのみ使えます。</p>`
+        }
+      }
+
+      load()
+    </script>
+  </body>
+</html>

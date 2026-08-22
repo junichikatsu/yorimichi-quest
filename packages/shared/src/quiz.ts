@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { CardView } from './card.js'
 
 /**
  * クイズ（FR-04）。
@@ -69,6 +70,14 @@ export interface QuizAnswerResponse {
    * FR-04-6 によりペナルティを課さないため、不正解なら常に true を返す。
    */
   canRetry: boolean
+  /**
+   * 今回はじめて達成したカード（FR-14）。
+   *
+   * ★ **「今回の新規」はサーバーが判定する。** クライアントが前回の一覧と差分を
+   * 取る作りにすると、再読み込みで演出が消えたり二重に出たりする。
+   * 何も増えなければ空配列。
+   */
+  acquiredCards: CardView[]
   /**
    * この結果をサーバーが保存したか。
    *

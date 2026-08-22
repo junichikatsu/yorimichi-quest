@@ -30,6 +30,10 @@ const NO_SESSION_SUFFIXES = [
   '/v1/auth/login',
   // おためしの発行そのものはセッションを要求しない（発行するための入口）
   '/v1/auth/guest',
+  // 開発用ログイン。ローカル（インメモリ実装）でしか経路が生えない
+  '/v1/auth/dev',
+  // カードの定義の一覧（開発用）。同じくローカルでしか通らない
+  '/v1/dev/card-catalog',
   '/v1/admin/seed',
   '/v1/admin/purge',
   '/v1/admin/config',

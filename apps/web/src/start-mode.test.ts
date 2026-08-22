@@ -13,6 +13,7 @@ function context(overrides: Partial<StartContext> = {}): StartContext {
     inLineClient: false,
     liffLoggedIn: false,
     guestModeEnabled: true,
+    devLoginEnabled: false,
     ...overrides,
   }
 }
@@ -30,6 +31,13 @@ describe('shouldOfferStartChoice', () => {
 
   it('★ おためしが無効なら出さない（選べるものが1つの画面を挟まない）', () => {
     expect(shouldOfferStartChoice(context({ guestModeEnabled: false }))).toBe(false)
+  })
+
+  it('★ おためしが無効でも、開発用ログインが使えるなら出す', () => {
+    // 出さないと、ローカルで確認する入口が無くなる（LIFF は完走しないため）
+    expect(
+      shouldOfferStartChoice(context({ guestModeEnabled: false, devLoginEnabled: true })),
+    ).toBe(true)
   })
 
   it('LINE の外で未ログインなら出す（リダイレクトを踏ませないため）', () => {
