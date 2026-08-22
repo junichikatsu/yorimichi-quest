@@ -22,13 +22,13 @@ interface QuizPanelProps {
  * ★ 演出やロードで待たせない。回答直後に操作権を戻す（FR-04-6）。
  * 正解を表示するためにアニメーションを挟むと、歩きながら遊ぶ前提が崩れる。
  *
- * ★ 画面に重ねて出す。サイドバーの中に置くと、**スマホでは地図の下に積まれて
- * 画面の外にあり、チェックインしても出題があることに気づけない**（実際に
- * そうなった）。ただし別画面にはしない。重ねるだけなので地図は作り直されず、
- * 閉じれば中心と縮尺はそのまま残る。
+ * ★ 画面に重ねて出す（重ね方は `Sheet` に寄せてある）。サイドバーの中に置くと、
+ * **スマホでは地図の下に積まれて画面の外にあり、チェックインしても出題がある
+ * ことに気づけない**（実際にそうなった）。
  *
- * ★ 背景を触っても閉じない。**解説を読み終える前に消えては困る**（誤って
- * 触れただけで学ぶ機会が消える）。閉じるのは × と「地図にもどる」だけにする。
+ * ★ 外側を触っても閉じない（`Sheet` が暗幕で受け止める）。**解説を読み終える
+ * 前に消えては困る**（誤って触れただけで学ぶ機会が消える）。閉じるのは × と
+ * 「地図にもどる」だけにする。
  */
 export function QuizPanel({
   spotName,
@@ -65,9 +65,7 @@ export function QuizPanel({
   }
 
   return (
-    <div className="quizmodal">
-    <div className="quizmodal__sheet">
-    <section className="panel panel--quiz" role="dialog" aria-modal="true" aria-label="防災クイズ">
+    <section className="panel panel--quiz">
       <div className="panel__head">
         <div>
           {/* ★ クイズであることを目立たせる。チェックインの付属物ではない（FR-04・G-8） */}
@@ -154,12 +152,10 @@ export function QuizPanel({
         「どうやって地図に戻るのか」が分からない（× は小さく、位置も上端である）。
       */}
       {answered && (
-        <button type="button" className="button button--ghost quizmodal__back" onClick={onClose}>
+        <button type="button" className="button button--ghost quiz__back" onClick={onClose}>
           地図にもどる
         </button>
       )}
     </section>
-    </div>
-    </div>
   )
 }

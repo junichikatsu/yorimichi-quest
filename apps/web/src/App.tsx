@@ -43,6 +43,7 @@ import { DataCredits } from './components/DataCredits.js'
 import { MapView } from './components/MapView.js'
 import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
+import { Sheet } from './components/Sheet.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
@@ -1409,25 +1410,6 @@ export function App(): React.JSX.Element {
           )}
 
           {/*
-            ★ スポットの詳細は有事モードでも出す。
-            有事は EmergencyPanel から選ぶので、詳細が出ないと行き止まりになる
-            （チェックインとクイズの導線だけを隠している）。
-          */}
-          {(emergency || sidebarTab === 'explore') && selectedSpot && (
-            <SpotPanel
-              spot={selectedSpot}
-              checkinRadiusM={checkinRadiusM}
-              progress={progressOf(selectedSpot.spotId)}
-              busy={busy}
-              now={Date.now()}
-              actionsVisible={game.checkin}
-              onCheckin={() => void handleCheckin(selectedSpot)}
-              onOpenQuiz={() => void openQuiz(selectedSpot.spotId)}
-              onClose={() => setSelectedSpotId(undefined)}
-            />
-          )}
-
-          {/*
             ★ 有事モードではゲーム要素（探索率・散歩）を出さない（FR-08-2）。
             代わりにライフラインを出す。押したときの挙動は平時と同じ（FR-08-7）。
           */}
@@ -1504,6 +1486,35 @@ export function App(): React.JSX.Element {
       )}
 
       {/*
+        ★ スポット詳細は画面に重ねて出す（FR-02-2）。
+
+        ★ サイドバーの中に置くと、**スマホでは地図の下に積まれてピンを押しても
+        画面の外に出る**（押したのに何も起きないように見える）。有事モードでも
+        同じで、ライフラインから選んでも詳細が見えなかった。
+
+        ★ 暗幕は敷かない（`Sheet` 側）。**選んだ場所が地図のどこなのかを
+        見せたまま**にする。外側は地図に触れるので、続けて別のピンも押せる。
+
+        ★ クイズを開いている間は出さない。両方を重ねると暗幕が二重になり、
+        閉じる操作も二度になる。クイズを閉じれば、この詳細が下から現れる。
+      */}
+      {selectedSpot && !(quiz && game.quiz) && (
+        <Sheet kind="spot" label="スポット詳細">
+          <SpotPanel
+            spot={selectedSpot}
+            checkinRadiusM={checkinRadiusM}
+            progress={progressOf(selectedSpot.spotId)}
+            busy={busy}
+            now={Date.now()}
+            actionsVisible={game.checkin}
+            onCheckin={() => void handleCheckin(selectedSpot)}
+            onOpenQuiz={() => void openQuiz(selectedSpot.spotId)}
+            onClose={() => setSelectedSpotId(undefined)}
+          />
+        </Sheet>
+      )}
+
+      {/*
         ★ クイズは画面に重ねて出す（FR-04-1）。
         地図やサイドバーの中には置かない。**スマホでは地図の下に積まれるため、
         チェックインしても出題が画面の外にあり、あることに気づけない。**
@@ -1516,19 +1527,21 @@ export function App(): React.JSX.Element {
         点数の演出はこの上に重なって数秒で消える。
       */}
       {quiz && game.quiz && (
-        <QuizPanel
-          spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
-          quiz={quiz.response.quiz}
-          alreadyCleared={quiz.response.alreadyCleared}
-          result={quizResult}
-          busy={busy}
-          onAnswer={(choiceIndex) => void handleAnswer(choiceIndex)}
-          onRetry={() => setQuizResult(undefined)}
-          onClose={() => {
-            setQuiz(undefined)
-            setQuizResult(undefined)
-          }}
-        />
+        <Sheet kind="quiz" label="防災クイズ">
+          <QuizPanel
+            spotName={sortedSpots.find((spot) => spot.spotId === quiz.spotId)?.name ?? ''}
+            quiz={quiz.response.quiz}
+            alreadyCleared={quiz.response.alreadyCleared}
+            result={quizResult}
+            busy={busy}
+            onAnswer={(choiceIndex) => void handleAnswer(choiceIndex)}
+            onRetry={() => setQuizResult(undefined)}
+            onClose={() => {
+              setQuiz(undefined)
+              setQuizResult(undefined)
+            }}
+          />
+        </Sheet>
       )}
 
       {/*

@@ -226,20 +226,40 @@ describe('styles.css', () => {
   })
 
   /*
-   * 重ねて出すクイズ（FR-04-1）。
+   * 画面に重ねる板（FR-02-2・FR-04-1）。
    *
    * ★ サイドバーの中に置くと、スマホでは地図の下に積まれて画面の外にある。
    * 重ねる以上、**上に何が乗るか**を決めておかないと、演出に隠れる／
    * 逆に演出を隠すことになる。
    */
-  it('★ クイズは演出より後ろ、トーストより前に出る', () => {
-    const quiz = zIndexOf(css, '.quizmodal')
+  it('★ 重ねる板は演出より後ろ、トーストより前に出る', () => {
+    for (const selector of ['.sheet--spot', '.sheet--quiz']) {
+      const sheet = zIndexOf(css, selector)
 
-    // 点数とカードの演出はクイズの上に出る（出題の裏で祝われては伝わらない）
-    expect(quiz).toBeLessThan(zIndexOf(css, '.burst'))
-    expect(quiz).toBeLessThan(zIndexOf(css, '.reveal'))
-    // 失敗の知らせが暗幕の裏に隠れてはいけない
-    expect(quiz).toBeLessThan(zIndexOf(css, '.toast'))
+      // 点数とカードの演出は板の上に出る（板の裏で祝われては伝わらない）
+      expect(sheet, `${selector} が点数の演出を隠す`).toBeLessThan(zIndexOf(css, '.burst'))
+      expect(sheet, `${selector} がカードの演出を隠す`).toBeLessThan(zIndexOf(css, '.reveal'))
+      // 失敗の知らせが板の裏に隠れてはいけない
+      expect(sheet, `${selector} が知らせを隠す`).toBeLessThan(zIndexOf(css, '.toast'))
+    }
+
+    // クイズはスポット詳細の上に出る（詳細から開くもの）
+    expect(zIndexOf(css, '.sheet--spot')).toBeLessThan(zIndexOf(css, '.sheet--quiz'))
+  })
+
+  it('★ スポット詳細は地図を隠さない（暗幕を敷かず、外側は地図に触れる）', () => {
+    /*
+     * 詳細を見るために地図を隠すのは、地図を見に来た人の目的を奪う。
+     * 選んだ場所がどこなのかを見せたまま出す。
+     */
+    const block = ruleBlock(css, '.sheet--spot')
+
+    expect(block, '外側が地図に触れない').toContain('pointer-events: none')
+    expect(block, '暗幕を敷いている').not.toContain('background:')
+  })
+
+  it('★ クイズは暗幕で受け止める（解説を読む前に外を触って消させない）', () => {
+    expect(ruleBlock(css, '.sheet--quiz')).toContain('background:')
   })
 
   it('★ 演出が重なったときは強いものが前に出る（点数 → 帯 → カード）', () => {
@@ -274,7 +294,7 @@ describe('styles.css', () => {
       '.mapcheckin',
       '.flash',
       '.walkdigest',
-      '.quizmodal__sheet',
+      '.sheet__body',
       '.quiz__stamp',
       '.reveal__flip',
       '.statusbar__points--bumped',
