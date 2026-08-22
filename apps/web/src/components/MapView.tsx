@@ -12,7 +12,7 @@ import {
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
-import { mapOptions } from '../map-options.js'
+import { mapOptions, mapStyleFor } from '../map-options.js'
 import type { Position } from '../hooks/useGeolocation.js'
 
 interface MapViewProps {
@@ -29,6 +29,8 @@ interface MapViewProps {
   revealRadiusM: number
   /** 現在地に描くキャラクター（FR-02-8）。未取得なら点で描く */
   avatar: Avatar | undefined
+  /** 有事モードか（FR-08-2） */
+  emergency: boolean
 }
 
 /**
@@ -112,6 +114,7 @@ export function MapView({
   unlockedAreas,
   revealRadiusM,
   avatar,
+  emergency,
 }: MapViewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
@@ -241,6 +244,21 @@ export function MapView({
   }, [position, following, avatar])
 
   /**
+   * 有事モードの配色へ切り替える（FR-08-2・FR-08-8）。
+   *
+   * ★ 地図を作り直さない。`setStyle` は**中心・縮尺・向きを保つ**ので、
+   * 切替が画面遷移ではなく状態遷移になる（FR-08-8）。作り直すと現在地へ跳ね戻る。
+   *
+   * ★ マーカーと霧のキャンバスはスタイルに属さないので消えない
+   * （マーカーは DOM 要素、霧は地図の上に重ねた別のキャンバス）。
+   */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.setStyle(mapStyleFor(emergency))
+  }, [emergency])
+
+  /**
    * 霧を描く（フォグ・オブ・ウォー）。
    *
    * 画面全体を霧で塗ったあと、歩いたところを destination-out で削る。
@@ -268,6 +286,14 @@ export function MapView({
 
     ctx.globalCompositeOperation = 'source-over'
     ctx.clearRect(0, 0, width, height)
+
+    /*
+     * ★ 有事モードでは霧を出さない（FR-08-2）。
+     * 未踏のエリアが霧のままでは、そこにある避難所へ向かえない。
+     * 霧はゲーム要素であり、有事に残しておくと**それ自体が危険**である。
+     */
+    if (emergency) return
+
     ctx.fillStyle = FOG_COLOR
     ctx.fillRect(0, 0, width, height)
 
@@ -351,7 +377,7 @@ export function MapView({
     }
 
     ctx.globalCompositeOperation = 'source-over'
-  }, [revealRadiusM])
+  }, [revealRadiusM, emergency])
 
   // 地図が動いている間ずっと追従させる（move はアニメーション中も毎フレーム発火する）
   useEffect(() => {

@@ -9,6 +9,10 @@ interface StatusBarProps {
   spotCount: number
   /** キャラクターメイキングを開く（FR-01-6） */
   onOpenCreator: () => void
+  /** 有事モードの切替を出すか（FR-08-1）。デモ用でサーバーから止められる */
+  emergencyAvailable: boolean
+  emergency: boolean
+  onToggleEmergency: () => void
 }
 
 const GEO_LABELS: Record<GeolocationStatus, string> = {
@@ -27,6 +31,9 @@ export function StatusBar({
   geoStatus,
   spotCount,
   onOpenCreator,
+  emergencyAvailable,
+  emergency,
+  onToggleEmergency,
 }: StatusBarProps): React.JSX.Element {
   return (
     <header className="statusbar">
@@ -55,7 +62,26 @@ export function StatusBar({
           </p>
         </div>
       </div>
-      <p className={`statusbar__geo statusbar__geo--${geoStatus}`}>{GEO_LABELS[geoStatus]}</p>
+      <div className="statusbar__right">
+        <p className={`statusbar__geo statusbar__geo--${geoStatus}`}>{GEO_LABELS[geoStatus]}</p>
+        {/*
+          有事モードへの切替（FR-08-1）。
+          ★ サーバーで止められるようにしてある。実利用者に見せると、実際に災害が
+          起きたと誤認させうる。文言にも「デモ」を必ず含める。
+        */}
+        {emergencyAvailable && (
+          <button
+            type="button"
+            className={
+              emergency ? 'statusbar__mode statusbar__mode--on' : 'statusbar__mode'
+            }
+            onClick={onToggleEmergency}
+            aria-pressed={emergency}
+          >
+            {emergency ? '平時に戻す' : '有事モード（デモ）'}
+          </button>
+        )}
+      </div>
     </header>
   )
 }

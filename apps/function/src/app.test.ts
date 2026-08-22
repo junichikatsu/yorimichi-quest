@@ -201,6 +201,23 @@ describe('GET /v1/client-config', () => {
     expect(body.usesSampleData).toBe(true)
     expect(body.dataSources[0]?.title).toContain('架空')
   })
+
+  /*
+   * 有事モードの切替（FR-08-1）。
+   *
+   * ★ サーバーから止められることが要件である。実利用者に見せると、実際に災害が
+   * 起きたと誤認させうる。画面側にハードコードしてはいけない。
+   */
+  it('有事モードの切替を出すかを配る', async () => {
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(body.emergencyDemoEnabled).toBe(true)
+  })
+
+  it('★ サーバー側で切替そのものを消せる', async () => {
+    process.env['ENABLE_EMERGENCY_DEMO'] = 'false'
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(body.emergencyDemoEnabled).toBe(false)
+  })
 })
 
 describe('ログイン（FR-01-1・FR-01-2）', () => {

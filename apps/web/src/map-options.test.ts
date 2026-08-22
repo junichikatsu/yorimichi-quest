@@ -1,6 +1,6 @@
 import type { AreaId, AreaSummary } from '@imanouchi/shared'
 import { describe, expect, it } from 'vitest'
-import { mapOptions } from './map-options.js'
+import { EMERGENCY_MAP_STYLE, MAP_STYLE, mapOptions, mapStyleFor } from './map-options.js'
 
 /**
  * 地図の初期設定。
@@ -48,5 +48,16 @@ describe('mapOptions', () => {
 
     expect(options.center).toEqual([AREA.center.lng, AREA.center.lat])
     expect(options.zoom).toBe(AREA.zoom)
+  })
+})
+
+describe('mapStyleFor', () => {
+  it('有事モードでは配色を切り替える（FR-08-2）', () => {
+    expect(mapStyleFor(true)).toBe(EMERGENCY_MAP_STYLE)
+    expect(mapStyleFor(false)).toBe(MAP_STYLE)
+  })
+
+  it('★ 平時と有事で別のスタイルであること（同じだと切替が伝わらない）', () => {
+    expect(EMERGENCY_MAP_STYLE).not.toBe(MAP_STYLE)
   })
 })
