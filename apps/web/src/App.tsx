@@ -64,6 +64,7 @@ import {
 } from './checkin-view.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
 import { gameElements } from './emergency.js'
+import { overlayStep } from './overlay.js'
 import {
   clearGuestData,
   EMPTY_GUEST_PROGRESS,
@@ -249,6 +250,18 @@ export function App(): React.JSX.Element {
    */
   const [survey, setSurvey] = useState<SurveyResponse | undefined>(undefined)
   const [surveyResult, setSurveyResult] = useState<SurveyAnswerResponse | undefined>(undefined)
+  /**
+   * 演出が終わってから開くアンケート（FR-12-3）。
+   *
+   * ★ チェックインの直後に開いてはいけない。**ポイントの演出（3.2秒で自動的に
+   * 消える）とアンケートが同時に画面へ出て、読んでいる最中に点数の表示が消える。**
+   * 実際にそうなった（「忙しない」）。
+   *
+   * 出す順番を1本にする：**ポイント → カード → アンケート → クイズ**。
+   * 前のものが消えてから次を出すので、どの瞬間も画面には1つしか無い。
+   * ここに置くのは「次にアンケートを開く相手」で、開く判断は下の `useEffect` が行う。
+   */
+  const [pendingSurveySpotId, setPendingSurveySpotId] = useState<SpotId | undefined>(undefined)
 
   /**
    * 有事モード（FR-08）。
@@ -287,6 +300,20 @@ export function App(): React.JSX.Element {
    * 逃げる最中に点数のために寄り道させることであり、それ自体が危険である（NFR-14）。
    */
   const game = gameElements(emergency)
+
+  /**
+   * いま重ねて出す番のもの（判定は `overlay.ts`）。
+   *
+   * ★ **同時に出さない**ための1か所である。以前は「出す条件」と「次を待つ条件」を
+   * 別々に書いていたため、ポイントの演出とアンケートが重なって出て、読んでいる
+   * 最中に点数の表示が消えていた（「忙しない」）。ここを見る形にそろえてある。
+   */
+  const step = overlayStep({
+    hasBurst: burst !== undefined,
+    hasCards: revealCards.length > 0,
+    hasPendingSurvey: pendingSurveySpotId !== undefined,
+    game,
+  })
 
   /** 演出の識別。同じ内容が続けて起きても別物として数えるための採番 */
   const flashIdRef = useRef(0)
@@ -949,6 +976,12 @@ export function App(): React.JSX.Element {
    */
   const openSurvey = useCallback(
     async (spotId: SpotId): Promise<void> => {
+      /*
+       * ★ 予約を消す。スポット詳細から手で開いたときに残っていると、
+       * **閉じたあとにもう一度開いてくる**（消したはずの面が戻る）。
+       */
+      setPendingSurveySpotId(undefined)
+
       try {
         const response = await fetchSurvey(spotId)
         setSurvey(response)
@@ -960,6 +993,40 @@ export function App(): React.JSX.Element {
     },
     [openQuiz],
   )
+
+  /**
+   * 予約したアンケートを、**演出が終わってから**開く（FR-12-3）。
+   *
+   * ★ これが「忙しなさ」を消している1か所である。以前はチェックインの直後に
+   * 開いていたため、**ポイントの演出（3.2秒で自動的に消える）とアンケートが
+   * 同時に画面へ出て、読んでいる最中に点数の表示が消えていた。**
+   *
+   * 出す順番は ポイント → カード → アンケート。前のものが消えてから次を出す。
+   * 順番の判定は `overlay.ts` の `overlayStep` 1か所にあり、演出を出す条件と
+   * ここで待つ条件が**同じ式**になっている（別々に書いた結果が上の不具合だった）。
+   *
+   * ★ 有事モードでは開かない（FR-12-13）。予約は捨てる。逃げる最中に設備の有無を
+   * 記録させることは、点数のためにその場へ留まらせることである（NFR-14）。
+   */
+  useEffect(() => {
+    if (pendingSurveySpotId === undefined) return
+
+    /*
+     * ★ 有事モードでは開かず、予約を捨てる（FR-12-13）。持ち続けると、
+     * 平時へ戻した瞬間に**関係のないアンケートが出てくる**。
+     */
+    if (!game.survey) {
+      setPendingSurveySpotId(undefined)
+      return
+    }
+
+    // 自分の番になるまで待つ（ポイント → カード → アンケート）
+    if (step !== 'survey') return
+
+    const spotId = pendingSurveySpotId
+    setPendingSurveySpotId(undefined)
+    void openSurvey(spotId)
+  }, [pendingSurveySpotId, step, game.survey, openSurvey])
 
   /**
    * カードの一覧を開く（FR-14）。
@@ -1070,14 +1137,17 @@ export function App(): React.JSX.Element {
         }
 
         /*
-         * ★ チェックインしたら、**まず現地確認アンケートを出す**（FR-12-3）。
+         * ★ アンケート（FR-12-3）は**ここでは開かない。予約するだけ**である。
          *
-         * クイズ（FR-04-1）はそのあと。順番はこの向きでなければならない。
-         * アンケートは目の前の設備を見て答えるもので、離れたら答えられない。
-         * クイズは知識なのでどこでも答えられる。**途中で離脱されたときに残って
-         * ほしいのはデータの側である。**
+         * ここで開くと、3.2秒で自動的に消えるポイントの演出と重なり、
+         * **読んでいる最中に点数の表示が消える**（実際にそうなった）。
+         * 演出が終わってから開く判断は `useEffect` に寄せてある。
+         *
+         * ★ 順番はアンケート → クイズでなければならない。アンケートは目の前の
+         * 設備を見て答えるもので、離れたら答えられない。クイズは知識なので
+         * どこでも答えられる。**途中で離脱されたときに残ってほしいのはデータの側。**
          */
-        await openSurvey(spot.spotId)
+        setPendingSurveySpotId(spot.spotId)
       } catch (err) {
         if (err instanceof ApiError) {
           setMessage(err.message)
@@ -1105,7 +1175,7 @@ export function App(): React.JSX.Element {
         setBusy(false)
       }
     },
-    [geo.position, guestProgress, openSurvey, updateGuestProgress],
+    [geo.position, guestProgress, updateGuestProgress],
   )
 
   /**
@@ -1654,7 +1724,7 @@ export function App(): React.JSX.Element {
         ★ 演出は app の直下に置く。サイドバーの内側だと、スクロール位置によって
         見えないことがある（記録できたのに何も起きていないように見える）。
       */}
-      {burst && game.checkin && (
+      {step === 'burst' && burst && (
         <CheckinBurst
           result={burst}
           localOnly={mode === 'guest'}
@@ -1672,8 +1742,13 @@ export function App(): React.JSX.Element {
         ★ 暗幕は敷かない（`Sheet` 側）。**選んだ場所が地図のどこなのかを
         見せたまま**にする。外側は地図に触れるので、続けて別のピンも押せる。
 
-        ★ クイズを開いている間は出さない。両方を重ねると暗幕が二重になり、
-        閉じる操作も二度になる。クイズを閉じれば、この詳細が下から現れる。
+        ★ クイズとアンケートを開いている間は出さない。両方を重ねると暗幕が二重に
+        なり、閉じる操作も二度になる。閉じれば、この詳細が下から現れる。
+
+        ★ **ポイントの演出が出ている間は、この詳細を出したままにする。** 押した場所が
+        何なのかを見せる面であり、演出の下地になる。以前はここが一瞬だけ映って
+        すぐアンケートに覆われていた（「一瞬表示される」）。演出のあいだ据わって
+        いれば、覆われるのは3.2秒後の1回だけになる。
       */}
       {selectedSpot && !(quiz && game.quiz) && !(survey && game.survey) && (
         <Sheet kind="spot" label="スポット詳細">
@@ -1730,8 +1805,9 @@ export function App(): React.JSX.Element {
         ★ 別画面にはしない。重ねるだけなので地図は作り直されず、閉じれば
         中心と縮尺はそのまま残る（画面遷移にすると失われる）。
 
-        ★ 待たせない。点数の演出が消えるのを待たずに出す（FR-04-6）。
-        点数の演出はこの上に重なって数秒で消える。
+        ★ クイズはアンケートのあとに、**利用者の操作で**開く（`goToQuiz`）。
+        自動では開かない。演出が終わるのを待つ必要があるのはアンケートまでで、
+        ここから先は本人が進めた結果なので、待たせずにすぐ出す（FR-04-6）。
       */}
       {quiz && game.quiz && (
         <Sheet kind="quiz" label="防災クイズ">
@@ -1754,8 +1830,12 @@ export function App(): React.JSX.Element {
       {/*
         ★ カードの演出はポイントの演出のあと。同時に出さない（3つ重なると何も伝わらない）。
         獲得は必ず立ち止まっているときに起きるので、順に出しても取り逃さない。
+
+        ★ 順番は `overlayStep` が決める。ここで `burst` の有無を見てはいけない
+        （有事モードでは演出が描かれず、描かれなければ自動で消える処理も走らないので、
+        値の有無で待つと永久に出てこない）。
       */}
-      {burst === undefined && revealCards.length > 0 && game.cards && (
+      {step === 'cards' && (
         <CardReveal cards={revealCards} onDone={() => setRevealCards([])} />
       )}
 
@@ -1763,10 +1843,11 @@ export function App(): React.JSX.Element {
         ★ 出来事の演出（FR-03-2）。先頭の1件だけを出す。
         同時に重ねると読めない（読めない演出は出していないのと同じ）。
 
-        ★ カードの演出（`CardReveal`）が開いている間は出さない。**強い演出が
-        出ているときに帯を重ねない**（develop で決めた「同時に出さない」に合わせる）。
+        ★ 他の演出が出ている間は出さない（`step === 'none'`）。**強い演出が
+        出ているときに帯を重ねない。** 出さなかった帯は捨てられず控えに残るので、
+        順番が来てから出る（取り逃がさない）。
       */}
-      {flashes[0] && revealCards.length === 0 && (
+      {flashes[0] && step === 'none' && (
         <EventFlash
           item={flashes[0]}
           onDone={() => setFlashes((current) => current.slice(1))}
