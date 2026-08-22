@@ -193,6 +193,15 @@ function paintRevealShapes(
   revealRadiusM: number,
   width: number,
   height: number,
+  /**
+   * 外周をぼかすか。
+   *
+   * ★ 霧は**ぼかす**（切り抜きが真円だと「穴」に見える）。
+   * ハザードは**ぼかさない**。半透明のところにハザードが半分残ると、
+   * **まだ霧が濃いところに色が見える**（拡大縮小でぼかしの幅が変わるため、
+   * ズームのたびに見え方が変わって「霧の中にハザードが出る」ことになる）。
+   */
+  feather: boolean,
 ): void {
   const zoom = map.getZoom()
 
@@ -251,20 +260,32 @@ function paintRevealShapes(
       continue
     }
 
-    const gradient = ctx.createRadialGradient(
-      point.x,
-      point.y,
-      radius * FOG_FEATHER_START,
-      point.x,
-      point.y,
-      radius,
-    )
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-    ctx.fillStyle = gradient
+    if (feather) {
+      const gradient = ctx.createRadialGradient(
+        point.x,
+        point.y,
+        radius * FOG_FEATHER_START,
+        point.x,
+        point.y,
+        radius,
+      )
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      ctx.fillStyle = gradient
 
+      ctx.beginPath()
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+      ctx.fill()
+      continue
+    }
+
+    /*
+     * ぼかさない側。**霧が完全に晴れているところ**（ぼかしの内側）だけを塗る。
+     * 半径を縮めるのは、霧の縁とハザードの縁を重ねないためである。
+     */
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)'
     ctx.beginPath()
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    ctx.arc(point.x, point.y, radius * FOG_FEATHER_START, 0, Math.PI * 2)
     ctx.fill()
   }
 }
@@ -346,8 +367,16 @@ export function MapView({
   const fogRef = useRef<HTMLCanvasElement>(null)
   /** ハザードを切り抜くための作業用キャンバス（画面には出さない） */
   const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
-  /** 歩いたところの形。霧とハザードで**同じ1枚**を使う（画面には出さない） */
+  /** 霧を晴らす形（外周をぼかす）。画面には出さない */
   const maskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
+  /**
+   * ハザードを残す形（ぼかさない・少し内側）。画面には出さない。
+   *
+   * ★ 霧と同じ形を使ってはいけない。ぼかしの半透明なところにハザードが
+   * 半分残るため、**まだ霧が濃いところに色が見える**。ぼかしの幅は画面の
+   * ピクセルで決まるので、拡大縮小のたびに見え方が変わる（実機で出た）。
+   */
+  const hardMaskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   /**
    * 地図に触れている間か（#72）。
    *
@@ -593,23 +622,44 @@ export function MapView({
 
     /*
      * ★ 形は**1枚のキャンバスにまとめてから**当てる（`applyMask` の説明を参照）。
-     * ついでに霧とハザードで作る回数が1回で済む（毎フレーム描くので効く）。
+     *
+     * ★ 2枚作る。霧は外周をぼかし、ハザードはぼかさない（少し内側）。
+     * 同じ形を使うと、ぼかしの半透明なところにハザードが半分残り、
+     * **まだ霧が濃いところに色が見える**。
      */
-    const mask = maskCanvasRef.current ?? document.createElement('canvas')
-    maskCanvasRef.current = mask
-    if (mask.width !== canvas.width || mask.height !== canvas.height) {
-      mask.width = canvas.width
-      mask.height = canvas.height
+    const buildMask = (
+      ref: typeof maskCanvasRef,
+      feather: boolean,
+    ): { canvas: HTMLCanvasElement; ok: boolean } => {
+      const target = ref.current ?? document.createElement('canvas')
+      ref.current = target
+      if (target.width !== canvas.width || target.height !== canvas.height) {
+        target.width = canvas.width
+        target.height = canvas.height
+      }
+
+      const targetCtx = target.getContext('2d')
+      if (!targetCtx) return { canvas: target, ok: false }
+
+      targetCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      targetCtx.globalCompositeOperation = 'source-over'
+      targetCtx.globalAlpha = 1
+      targetCtx.clearRect(0, 0, width, height)
+      paintRevealShapes(
+        targetCtx,
+        map,
+        areasRef.current,
+        tilesRef.current,
+        revealRadiusM,
+        width,
+        height,
+        feather,
+      )
+      return { canvas: target, ok: true }
     }
 
-    const maskCtx = mask.getContext('2d')
-    if (maskCtx) {
-      maskCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      maskCtx.globalCompositeOperation = 'source-over'
-      maskCtx.globalAlpha = 1
-      maskCtx.clearRect(0, 0, width, height)
-      paintRevealShapes(maskCtx, map, areasRef.current, tilesRef.current, revealRadiusM, width, height)
-    }
+    const fogMask = buildMask(maskCanvasRef, true)
+    const hazardMask = buildMask(hardMaskCanvasRef, false)
 
     /* ---------------- ハザード（#72） ---------------- */
 
@@ -636,8 +686,14 @@ export function MapView({
       /*
        * ★ 平時は歩いたところだけに残す。
        * 有事モードでは切り抜かない（探索に関係なく全面に出す・FR-08-2 と同じ理由）。
+       *
+       * ★ マスクを作れなかったときは**塗りを捨てる**。切り抜けないまま出すと、
+       * 歩いていないところの危険まで見せてしまう（漏らすより出さない）。
        */
-      if (!emergency && maskCtx) applyMask(hazardCtx, mask, 'destination-in', width, height)
+      if (!emergency) {
+        if (hazardMask.ok) applyMask(hazardCtx, hazardMask.canvas, 'destination-in', width, height)
+        else hazardCtx.clearRect(0, 0, width, height)
+      }
     }
 
     /* ---------------- 霧（FR-02-7） ---------------- */
@@ -651,7 +707,7 @@ export function MapView({
       ctx.fillStyle = FOG_COLOR
       ctx.fillRect(0, 0, width, height)
 
-      if (maskCtx) applyMask(ctx, mask, 'destination-out', width, height)
+      if (fogMask.ok) applyMask(ctx, fogMask.canvas, 'destination-out', width, height)
     }
 
     /*
