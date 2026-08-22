@@ -99,6 +99,21 @@ export function createRoutes(): Hono<AppEnv> {
     return sendAsset(c, 'card-catalog.html')
   })
 
+  /*
+   * 行政還元ダッシュボードの画面イメージ（モック・FR-09）。
+   *
+   * ★ **本番では 404 にし、ZIP にも入れない**（card-catalog.html と同じ扱い）。
+   * 行政向けの体裁をしたページなので、公開URLに置くと**実装済みのダッシュボードと
+   * 取り違えられる**。中身は静的で、API も地図ライブラリも呼んでいない。
+   *
+   * ★ 資料へ貼るときはローカルで開いて画面を撮る。通信が要らないので絵が崩れない。
+   */
+  routes.get('/dashboard-mock.html', (c) => {
+    const config = loadConfig()
+    if (!config.devLoginEnabled || !config.useFakeDataStore) throw notFound('見つかりません')
+    return sendAsset(c, 'dashboard-mock.html')
+  })
+
   /**
    * カードの定義を全部返す（**開発用**）。
    *

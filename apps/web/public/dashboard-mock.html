@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>行政還元ダッシュボード（画面イメージ） — イマノウチ</title>
+    <!--
+      FR-09（行政還元ダッシュボード）の画面イメージ。**モックである。**
+
+      ★ 実装ではない。API も地図ライブラリも呼んでいない。数値の出どころは
+      本文の中に「実データ」「モック」で明示してある。**混ぜて書くと、
+      集まっていないデータが集まったように見える**（このダッシュボードは
+      「どこにデータが無いか」を示すものなので、そこを偽ると意味が反転する）。
+
+      ★ 地図はインラインSVGの模式図にしてある。実装では Mapbox の heatmap
+      レイヤーを使う（FR-09-1）。トークンも通信も要らない形にしてあるので、
+      オフラインでも同じ絵が出る（資料へ貼るときに崩れない）。
+
+      ★ 守っている制約
+      - FR-09-8: 町丁目の記録件数を**危険度として提示しない**。色で順位づけせず、
+        0件の町丁目は出さない（データが無いことと設備が無いことは違う）
+      - FR-09-6: 充足／未充足／**判定不能**の3状態。判定不能を隠さない
+      - FR-09-7: 算出根拠（属性値・出典・確定状態）を出す。AI提案のみの値は使わない
+      - NFR-08: 状態を色だけで示さない（記号と文字を併記する）
+      - FR-02-6: 帰属表示の場所を確保する（実装では Mapbox の表示が入る）
+    -->
+    <style>
+      :root {
+        color-scheme: light;
+        /* ★ アプリ本体（styles.css）と同じ配色を使う。別物に見せない */
+        --bg: #f5f3f6;
+        --surface: #ffffff;
+        --ink: #241f27;
+        --muted: #5b5560;
+        --line: #e2dbe4;
+        --accent: #6b4e8f;
+        --chip: #f2eef3;
+
+        --shelter: #2f6f3e;
+        --aed: #c0392b;
+        --accessible_toilet: #2d6ca2;
+        --water: #1f8a8a;
+
+        /*
+         * 3状態の色（FR-09-6）。
+         * ★ 未充足を強い赤にしない。危険度の順位づけに見せないため（G-2・FR-09-8）。
+         */
+        --ok: #2f6f3e;
+        --ng: #b4621f;
+        --unknown: #6d6a72;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 0 0 3rem;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: system-ui, -apple-system, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', Meiryo, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 0 1rem; }
+
+      /* ---------------- 見出し ---------------- */
+
+      header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+        padding: 0.9rem 0;
+        margin-bottom: 1rem;
+      }
+      .head { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
+      .head__title { margin: 0; font-size: 1.15rem; }
+      .head__sub { margin: 0; color: var(--muted); font-size: 0.85rem; }
+      .head__area { margin-left: auto; font-size: 0.85rem; color: var(--muted); }
+
+      /*
+       * ★ モックであることを消せない位置に置く。
+       * 有事モードのデモ表示（FR-08-9）と同じ作法で、画面の一番上に常時出す。
+       */
+      .mockbar {
+        background: #2b2531;
+        color: #f7f3fa;
+        padding: 0.6rem 0;
+        font-size: 0.85rem;
+      }
+      .mockbar strong { color: #ffd9a0; }
+
+      /* ---------------- 部品 ---------------- */
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.9rem 1rem 1.1rem;
+        margin-bottom: 1rem;
+      }
+      .panel__title {
+        margin: 0 0 0.15rem;
+        font-size: 1rem;
+      }
+      .panel__lead {
+        margin: 0 0 0.8rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+      .fr {
+        display: inline-block;
+        margin-left: 0.4rem;
+        padding: 0.05rem 0.4rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--chip);
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        vertical-align: 0.1rem;
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.7rem;
+      }
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.6rem 0.7rem;
+      }
+      .kpi__label { margin: 0; font-size: 0.75rem; color: var(--muted); }
+      .kpi__value {
+        margin: 0.1rem 0 0;
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+      }
+      .kpi__unit { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+      .kpi__note { margin: 0.15rem 0 0; font-size: 0.7rem; }
+
+      /* 出どころの札。実データと架空を混ぜないために必ず付ける */
+      .src { font-size: 0.68rem; font-weight: 700; padding: 0.02rem 0.35rem; border-radius: 4px; }
+      .src--real { background: #e7f1e9; color: #24592f; }
+      .src--mock { background: #f1ecf6; color: #5b4478; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+      th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { font-size: 0.75rem; color: var(--muted); font-weight: 700; white-space: nowrap; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .scroll { overflow-x: auto; }
+
+      /* 3状態。色＋記号＋文字（色だけに頼らない・NFR-08） */
+      .state { white-space: nowrap; font-weight: 700; font-size: 0.8rem; }
+      .state--ok { color: var(--ok); }
+      .state--ng { color: var(--ng); }
+      .state--unknown { color: var(--unknown); }
+
+      .bar {
+        display: flex;
+        height: 1.35rem;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        margin: 0.25rem 0 0.15rem;
+      }
+      .bar span {
+        display: grid;
+        place-items: center;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      .bar__ok { background: var(--ok); }
+      .bar__ng { background: var(--ng); }
+      /* 判定不能は斜線を入れる。「無い」ではなく「分からない」ことを形で示す */
+      .bar__unknown {
+        background: repeating-linear-gradient(
+          -45deg,
+          #7d7a83, #7d7a83 5px,
+          #94919a 5px, #94919a 10px
+        );
+      }
+      .legend { display: flex; flex-wrap: wrap; gap: 0.9rem; font-size: 0.78rem; margin-top: 0.5rem; }
+      .legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .swatch { width: 0.85rem; height: 0.85rem; border-radius: 3px; border: 1px solid rgb(0 0 0 / 15%); }
+
+      /* ---------------- 地図の模式図 ---------------- */
+
+      .map {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        background: #eef0ea;
+      }
+      .map svg { display: block; width: 100%; height: auto; }
+      /* ★ 実装では Mapbox の帰属表示が入る場所（FR-02-6） */
+      .map__attrib {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        padding: 0.1rem 0.4rem;
+        background: rgb(255 255 255 / 80%);
+        font-size: 0.65rem;
+        color: #3a3540;
+      }
+
+      .cols { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+      @media (min-width: 900px) {
+        .cols--map { grid-template-columns: 1.35fr 1fr; }
+      }
+
+      .note {
+        margin: 0.6rem 0 0;
+        font-size: 0.76rem;
+        color: var(--muted);
+      }
+      .note strong { color: var(--ink); }
+
+      .button {
+        appearance: none;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-size: 0.85rem;
+        font-weight: 700;
+        padding: 0.5rem 0.9rem;
+        border-radius: 8px;
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+
+      footer { color: var(--muted); font-size: 0.78rem; }
+      footer a { color: var(--accent); }
+      code { background: var(--chip); padding: 0 0.25rem; border-radius: 4px; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <!--
+      ★ 消さない。この画面は行政向けの体裁をしているため、
+      モックであることを外すと**集まっていないデータが集まったように読める**。
+    -->
+    <div class="mockbar">
+      <div class="wrap">
+        <strong>これは画面イメージ（モック）です。</strong>
+        実装されていません。数値には出どころの札を付けてあり、
+        <span class="src src--real">実データ</span> は取込済みの公開オープンデータ、
+        <span class="src src--mock">モック</span> は画面を見るための架空の値です。
+      </div>
+    </div>
+
+    <header>
+      <div class="wrap head">
+        <h1 class="head__title">行政還元ダッシュボード</h1>
+        <p class="head__sub">閲覧専用（認証なし）<span class="fr">FR-09-5</span></p>
+        <p class="head__area">対象エリア：千代田区・港区 ／ 更新 2026-08-23</p>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <!-- ---------------- KPI ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">サマリー<span class="fr">FR-11-4</span></h2>
+        <p class="panel__lead">
+          市民の歩みで集まった量。<strong>ここだけでは行政の意思決定に使えない</strong>ため、下の基準充足率へ続ける。
+        </p>
+        <div class="kpis">
+          <div class="kpi">
+            <p class="kpi__label">対象スポット</p>
+            <p class="kpi__value">370<span class="kpi__unit"> 件</span></p>
+            <p class="kpi__note"><span class="src src--real">実データ</span> 避難所72・AED224・多機能トイレ36・給水38</p>
+          </div>
+          <div class="kpi">
+            <p class="kpi__label">属性が未記入のスポット</p>
+            <p class="kpi__value">232<span class="kpi__unit"> 件</span></p>
+            <p class="kpi__note"><span class="src src--real">実データ</span> 公開データに記載が無い＝埋める対象</p>
+          </div>
+          <div class="kpi">
+            <p class="kpi__label">市民の投稿（写真）</p>
+            <p class="kpi__value">86<span class="kpi__unit"> 件</span></p>
+            <p class="kpi__note"><span class="src src--mock">モック</span> FR-05 は未実装</p>
+          </div>
+          <div class="kpi">
+            <p class="kpi__label">検証済みの項目</p>
+            <p class="kpi__value">41<span class="kpi__unit"> 件</span></p>
+            <p class="kpi__note"><span class="src src--mock">モック</span> 相互検証（FR-06）で確定した分</p>
+          </div>
+          <div class="kpi">
+            <p class="kpi__label">歩ききった町丁目</p>
+            <p class="kpi__value">18<span class="kpi__unit"> / 256</span></p>
+            <p class="kpi__note"><span class="src src--mock">モック</span> 区画は国勢調査の町丁目<span class="src src--real">実データ</span></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------- 地図 ＋ 凡例 ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">収集状況と基準の充足<span class="fr">FR-09-1</span><span class="fr">FR-09-2</span><span class="fr">FR-09-6</span></h2>
+        <p class="panel__lead">
+          実装では Mapbox の heatmap レイヤーで描く。ここは配置と凡例を確かめるための模式図である。
+        </p>
+
+        <div class="cols cols--map">
+          <div class="map">
+            <!--
+              ★ 模式図。区の形を正確に描いていない（描くと実データの地図に見える）。
+              格子は町丁目、丸は避難所の3状態、斜線は投稿ゼロのエリア。
+            -->
+            <svg viewBox="0 0 640 400" role="img" aria-label="収集状況の模式図。格子が町丁目、丸が避難所の3状態、斜線が投稿ゼロのエリア">
+              <defs>
+                <pattern id="blank" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+                  <rect width="10" height="10" fill="#e4e1dc" />
+                  <line x1="0" y1="0" x2="0" y2="10" stroke="#b9b4ad" stroke-width="3" />
+                </pattern>
+                <radialGradient id="heat">
+                  <stop offset="0%" stop-color="#6b4e8f" stop-opacity="0.55" />
+                  <stop offset="100%" stop-color="#6b4e8f" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+
+              <rect width="640" height="400" fill="#eef0ea" />
+
+              <!-- 町丁目の格子 -->
+              <g stroke="#d7d9d2" fill="none">
+                <g>
+                  <path d="M0 50H640M0 100H640M0 150H640M0 200H640M0 250H640M0 300H640M0 350H640" />
+                  <path d="M60 0V400M120 0V400M180 0V400M240 0V400M300 0V400M360 0V400M420 0V400M480 0V400M540 0V400M600 0V400" />
+                </g>
+              </g>
+
+              <!-- 川と幹線（場所の手がかり。名前は出さない） -->
+              <path d="M0 330 C120 300 220 350 340 320 C450 292 540 330 640 305" stroke="#bcd3dc" stroke-width="14" fill="none" />
+              <path d="M70 0 C110 120 90 250 150 400" stroke="#e8e6e1" stroke-width="9" fill="none" />
+              <path d="M0 170 C160 150 300 200 640 165" stroke="#e8e6e1" stroke-width="9" fill="none" />
+
+              <!-- 投稿ゼロのエリア（FR-09-2） -->
+              <rect x="420" y="50" width="120" height="100" fill="url(#blank)" />
+              <rect x="60" y="250" width="120" height="100" fill="url(#blank)" />
+
+              <!-- 歩かれた濃さ（ヒートマップの代わり） -->
+              <g>
+                <circle cx="215" cy="120" r="95" fill="url(#heat)" />
+                <circle cx="300" cy="230" r="80" fill="url(#heat)" />
+                <circle cx="150" cy="170" r="70" fill="url(#heat)" />
+                <circle cx="390" cy="270" r="60" fill="url(#heat)" />
+                <circle cx="520" cy="230" r="45" fill="url(#heat)" />
+              </g>
+
+              <!-- 避難所の3状態。色だけで分けず、形も変える -->
+              <g stroke="#fff" stroke-width="2">
+                <!-- 充足（丸） -->
+                <circle cx="200" cy="110" r="9" fill="#2f6f3e" />
+                <circle cx="286" cy="215" r="9" fill="#2f6f3e" />
+                <!-- 未充足（四角） -->
+                <rect x="150" y="160" width="17" height="17" rx="2" fill="#b4621f" />
+                <rect x="330" y="245" width="17" height="17" rx="2" fill="#b4621f" />
+                <rect x="245" y="140" width="17" height="17" rx="2" fill="#b4621f" />
+                <!-- 判定不能（斜線入りの菱形） -->
+                <g fill="#6d6a72">
+                  <path d="M110 90l10 10-10 10-10-10z" />
+                  <path d="M470 100l10 10-10 10-10-10z" />
+                  <path d="M530 210l10 10-10 10-10-10z" />
+                  <path d="M100 300l10 10-10 10-10-10z" />
+                  <path d="M370 330l10 10-10 10-10-10z" />
+                  <path d="M600 150l10 10-10 10-10-10z" />
+                  <path d="M420 190l10 10-10 10-10-10z" />
+                  <path d="M270 320l10 10-10 10-10-10z" />
+                  <path d="M560 340l10 10-10 10-10-10z" />
+                  <path d="M180 60l10 10-10 10-10-10z" />
+                </g>
+              </g>
+            </svg>
+            <p class="map__attrib">© Mapbox © OpenStreetMap（実装時に表示）</p>
+          </div>
+
+          <div>
+            <div class="legend" style="margin-bottom: 0.8rem">
+              <span><span class="swatch" style="background: #2f6f3e"></span>● 充足</span>
+              <span><span class="swatch" style="background: #b4621f"></span>■ 未充足</span>
+              <span><span class="swatch" style="background: #6d6a72"></span>◆ 判定不能</span>
+              <span><span class="swatch" style="background: #d5d1cb"></span>／ 投稿ゼロのエリア</span>
+              <span><span class="swatch" style="background: #b9a5cf"></span>歩かれた濃さ</span>
+            </div>
+
+            <h3 style="margin: 0 0 0.2rem; font-size: 0.9rem">スフィア基準の充足率（避難所 72 件）</h3>
+            <p class="note" style="margin-top: 0">
+              <span class="src src--real">実データ</span> 母数の72件は取込済み。
+              <span class="src src--mock">モック</span> 内訳は架空。
+            </p>
+
+            <p style="margin: 0.7rem 0 0; font-size: 0.85rem; font-weight: 700">
+              トイレ充足率（避難者20人に1基）
+            </p>
+            <div class="bar" role="img" aria-label="充足5件、未充足9件、判定不能58件">
+              <span class="bar__ok" style="flex: 5">5</span>
+              <span class="bar__ng" style="flex: 9">9</span>
+              <span class="bar__unknown" style="flex: 58">58</span>
+            </div>
+
+            <p style="margin: 0.6rem 0 0; font-size: 0.85rem; font-weight: 700">
+              男女別トイレ（男女比 1:3）
+            </p>
+            <div class="bar" role="img" aria-label="充足4件、未充足10件、判定不能58件">
+              <span class="bar__ok" style="flex: 4">4</span>
+              <span class="bar__ng" style="flex: 10">10</span>
+              <span class="bar__unknown" style="flex: 58">58</span>
+            </div>
+
+            <p style="margin: 0.6rem 0 0; font-size: 0.85rem; font-weight: 700">夜間照明</p>
+            <div class="bar" role="img" aria-label="充足8件、未充足6件、判定不能58件">
+              <span class="bar__ok" style="flex: 8">8</span>
+              <span class="bar__ng" style="flex: 6">6</span>
+              <span class="bar__unknown" style="flex: 58">58</span>
+            </div>
+
+            <p class="note">
+              <strong>判定不能を隠さない。</strong>「基準を満たしていない」ことと「調べられていない」ことは違う。
+              8割が判定不能であることが、<strong>まず何を調べるべきか</strong>を名指しする（FR-09-6・FR-12-5）。
+            </p>
+            <p class="note">
+              居住面積（1人3.5㎡）は市民投稿では取得できないため、この画面では扱わない。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------- 優先整備候補 ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">優先して調べる・整える候補<span class="fr">FR-09-3</span><span class="fr">FR-09-7</span></h2>
+        <p class="panel__lead">
+          順位は基準の充足状況と市民からの報告で決める。<strong>AIが提案しただけの値は算出に使わない</strong>（確定または検証済みのみ）。
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>避難所</th>
+                <th>満たしていない基準</th>
+                <th>市民からの報告</th>
+                <th>算出の根拠（属性・出典・状態）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>◯◯小学校</td>
+                <td><span class="state state--ng">■ トイレ</span> 68人/基</td>
+                <td>「車いすで正面から入れない」</td>
+                <td>便器数 6（市民投稿・<b>検証済み</b>）／収容想定 410人（東京都防災マップ 2026-08-20）</td>
+              </tr>
+              <tr>
+                <td>◯◯中学校</td>
+                <td><span class="state state--ng">■ 男女別</span> 共用のみ</td>
+                <td>「夜は入口が暗い」</td>
+                <td>共用3基（市民投稿・<b>確定</b>）／夜間照明 なし（市民投稿・<b>確定</b>）</td>
+              </tr>
+              <tr>
+                <td>◯◯区民センター</td>
+                <td><span class="state state--ng">■ 夜間照明</span> なし</td>
+                <td>—</td>
+                <td>夜間照明 なし（市民投稿・<b>検証済み</b>）</td>
+              </tr>
+              <tr>
+                <td>◯◯高等学校</td>
+                <td><span class="state state--unknown">◆ 判定不能</span> 便器数 未取得</td>
+                <td>—</td>
+                <td>収容想定 520人（オープンデータ）／便器数 <b>未取得</b>＝クエスト化の対象（FR-12-3）</td>
+              </tr>
+              <tr>
+                <td>◯◯会館</td>
+                <td><span class="state state--unknown">◆ 判定不能</span> 属性ゼロ</td>
+                <td>—</td>
+                <td>公開データに設備の記載なし（＝未記入。設備が無いことを意味しない）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          施設名は伏せてある（<span class="src src--mock">モック</span>）。
+          実装では、<strong>調べれば埋まるもの（判定不能）</strong>と<strong>整えないと変わらないもの（未充足）</strong>を並べて出す。
+          行政にとって次の一手が違うためである。
+        </p>
+      </section>
+
+      <!-- ---------------- 町丁目ごとの記録件数 ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">町丁目ごとの記録件数<span class="fr">FR-09-8</span></h2>
+        <p class="panel__lead">
+          件数の多い順に並べる。<strong>危険度としては提示しない。</strong>
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>町丁目</th>
+                <th class="num">記録件数</th>
+                <th class="num">人口</th>
+                <th>内訳</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>千代田区 ◯◯一丁目</td><td class="num">14</td><td class="num">1,820</td><td>避難所2・AED9・トイレ2・給水1</td></tr>
+              <tr><td>港区 ◯◯三丁目</td><td class="num">11</td><td class="num">3,140</td><td>避難所1・AED8・トイレ2</td></tr>
+              <tr><td>港区 ◯◯一丁目</td><td class="num">9</td><td class="num">2,470</td><td>避難所2・AED5・給水2</td></tr>
+              <tr><td>千代田区 ◯◯二丁目</td><td class="num">6</td><td class="num">960</td><td>AED5・トイレ1</td></tr>
+              <tr><td>港区 ◯◯二丁目</td><td class="num">3</td><td class="num">4,010</td><td>避難所1・AED2</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          <strong>色で順位をつけていない。</strong>件数の少ない町丁目を強調すると、
+          リスクを地図上の優劣として提示することになる（G-2）。
+          <strong>記録が0件の町丁目は出していない。</strong>データが無いことと設備が無いことは違う。
+          人口を並べているのは、件数の多寡を人の多さと合わせて読めるようにするためで、
+          <strong>比を安全度として計算していない。</strong>
+        </p>
+      </section>
+
+      <!-- ---------------- 書き出し ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">オープンデータとして書き出す<span class="fr">FR-09-4</span></h2>
+        <p class="panel__lead">
+          検証済みのデータだけを、自治体標準オープンデータセットに準拠したCSVで出す（FR-06-3）。
+        </p>
+        <p><button class="button" type="button" disabled>CSVをダウンロード（モックのため動作しません）</button></p>
+        <p class="note">
+          出力に含めるのは<strong>検証済みの値と、その出典・取得日</strong>である。
+          AI提案のみの値は含めない（NFR-07）。行政がそのまま再公開できる形にすることが、
+          市民の投稿を行政の資産へ変える最後の一段になる。
+        </p>
+      </section>
+
+      <!-- ---------------- 要件との対応 ---------------- -->
+      <section class="panel">
+        <h2 class="panel__title">この画面と要件の対応</h2>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr><th>要件</th><th>この画面での置き場所</th><th>MVP</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>FR-09-1 ヒートマップ／ピン</td><td>地図（模式図）</td><td>Must</td></tr>
+              <tr><td>FR-09-2 データ空白地帯</td><td>地図の斜線</td><td>Should</td></tr>
+              <tr><td>FR-09-3 優先整備候補</td><td>優先して調べる・整える候補</td><td>Should</td></tr>
+              <tr><td>FR-09-4 CSVエクスポート</td><td>オープンデータとして書き出す</td><td>Should</td></tr>
+              <tr><td>FR-09-5 認証なしの閲覧専用</td><td>見出しに明示</td><td>Must</td></tr>
+              <tr><td>FR-09-6 スフィア基準の充足率（3状態）</td><td>充足率のバー3本</td><td>Should</td></tr>
+              <tr><td>FR-09-7 算出根拠の表示</td><td>候補一覧の右列</td><td>Should</td></tr>
+              <tr><td>FR-09-8 町丁目ごとの記録件数</td><td>町丁目ごとの記録件数</td><td>Must</td></tr>
+              <tr><td>FR-11-4 サマリー</td><td>サマリーのタイル</td><td>Should</td></tr>
+              <tr><td>FR-12-5 エリア×項目の充填率</td><td>充足率の「判定不能」</td><td>Should</td></tr>
+              <tr><td>FR-02-6 帰属表示</td><td>地図の右下</td><td>Must</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>
+        <p>
+          スポットは千代田区・港区の公開オープンデータ（東京都防災マップ／自治体標準オープンデータセット等）。
+          町丁目の境界は国勢調査 小地域境界。属性の空欄は「設備が無い」ではなく「未記入」で、現地で確かめられる項目である。
+        </p>
+        <p>
+          この画面は <code>apps/web/public/dashboard-mock.html</code> のモックである。
+          実装は FR-09（＋FR-11-4・FR-12-5）で、API は <code>GET /dashboard/summary</code> を想定している。
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -51,8 +51,12 @@ afterEach(() => {
  * ★ ルートを**開発用に閉じてある**（インメモリ実装のときだけ返す）ので、ZIP に
  * 入れない。本番に置いても中身を返す API が無く、開いても何も出ないためである。
  * ローカルは public/ をディスクから読むのでそのまま開ける。
+ *
+ * ★ `dashboard-mock.html` は理由が別である。中身は静的なので本番でも表示は
+ * できるが、**行政向けの体裁をしたモックを公開URLに置くと、実装済みの
+ * ダッシュボードと取り違えられる**。だから同じ扱いで閉じる。
  */
-const DEV_ONLY_ASSETS = ['card-catalog.html']
+const DEV_ONLY_ASSETS = ['card-catalog.html', 'dashboard-mock.html']
 
 describe('静的ファイルの配信', () => {
   it('ルートが返すファイルはすべて ZIP に同梱されている', () => {
