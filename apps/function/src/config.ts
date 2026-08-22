@@ -1,5 +1,5 @@
 import { TABLE_ENV_KEYS } from '@imanouchi/datastore'
-import { asAreaId, type AreaId, type AreaSummary } from '@imanouchi/shared'
+import { asAreaId, DEFAULT_SURVEY_CONSENSUS, type AreaId, type AreaSummary } from '@imanouchi/shared'
 
 /**
  * 設定の読み取りと不足検出。
@@ -90,6 +90,29 @@ export interface AppConfig {
    * この設問群の目的であり、通り過ぎるだけで同じ点が入ると学習の動機が消える。
    */
   quizCorrectPoints: number
+  /**
+   * 現地確認アンケートの基礎点（FR-12・FR-07-1）。
+   *
+   * ★ チェックインより高くしてある。**立ち止まって設備を見ることが、このサービスが
+   * 集めたいものである**（要点 P-1）。通り過ぎるだけのチェックインと同じ点なら、
+   * 誰も答えない。
+   */
+  surveyBasePoints: number
+  /**
+   * 「行政データが空の項目」1件あたりの上乗せ（FR-12-4）。
+   *
+   * ★ **答えの中身では変わらない。** 倍率はスポット側の欠損数だけで決める。
+   * 「はい／いいえ」に加点して「わからない」に加点しない形にすると、分からないのに
+   * 断定する動機を作り、公開データの精度をそのまま落とす。
+   */
+  surveyFillBonusPoints: number
+  /**
+   * 項目を「検証済み」にするのに必要な、同じ答えの数（FR-06-2）。
+   *
+   * ★ 1 にしてはいけない。報酬つきのアンケートは必ず「適当に答えて報酬」を生む。
+   * 独立した2人が同じ答えを出したときに初めて確定させる（競争優位 UA-2 の実体）。
+   */
+  surveyConsensusCount: number
   maxSpotsPerRequest: number
   rateLimitPerMinute: number
   /**
@@ -181,6 +204,14 @@ export function loadConfig(): AppConfig {
     checkinRadiusM: readNumber('CHECKIN_RADIUS_M', 100),
     checkinCooldownHours: readNumber('CHECKIN_COOLDOWN_HOURS', 24),
     quizCorrectPoints: readNumber('QUIZ_CORRECT_POINTS', 30),
+    /*
+     * ★ AED（属性が1件も無い・224件）は 20 + 5×3 = 35 点になり、既存データが
+     * 埋まっているバリアフリートイレより高くなる。**空いているところへ行くほうが
+     * 得**という向きを、点数で作っている（要点 P-1）。暫定値、確定は #7。
+     */
+    surveyBasePoints: readNumber('SURVEY_BASE_POINTS', 20),
+    surveyFillBonusPoints: readNumber('SURVEY_FILL_BONUS_POINTS', 5),
+    surveyConsensusCount: readNumber('SURVEY_CONSENSUS_COUNT', DEFAULT_SURVEY_CONSENSUS),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),

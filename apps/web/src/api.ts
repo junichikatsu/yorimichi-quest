@@ -18,6 +18,9 @@ import type {
   QuizAnswerResponse,
   QuizResponse,
   SpotsResponse,
+  SurveyAnswerRequest,
+  SurveyAnswerResponse,
+  SurveyResponse,
 } from '@imanouchi/shared'
 
 /**
@@ -222,6 +225,34 @@ export function answerQuiz(
   body: QuizAnswerRequest,
 ): Promise<QuizAnswerResponse> {
   return request<QuizAnswerResponse>(`/v1/spots/${encodeURIComponent(spotId)}/quiz/answer`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * 現地確認アンケートの取得（FR-12-3）。
+ *
+ * ★ 設問はサーバーが決める。データ辞書（FR-12-1）と、そのスポットの行政データの
+ * 記載状況（FR-12-2）で「埋める／確かめる」が変わるため、画面側では組み立てられない。
+ */
+export function fetchSurvey(spotId: string): Promise<SurveyResponse> {
+  return request<SurveyResponse>(`/v1/spots/${encodeURIComponent(spotId)}/survey`)
+}
+
+/**
+ * アンケートの回答（FR-12・FR-06-2）。
+ *
+ * ★ ポイントはサーバーが決める。**答えの中身では変わらない**（分からないのに
+ * 断定する動機を作らないため）。
+ *
+ * ★ おためし（ゲスト）でも呼べるが、集計には足されない（`saved` が false）。
+ */
+export function submitSurvey(
+  spotId: string,
+  body: SurveyAnswerRequest,
+): Promise<SurveyAnswerResponse> {
+  return request<SurveyAnswerResponse>(`/v1/spots/${encodeURIComponent(spotId)}/survey`, {
     method: 'POST',
     body: JSON.stringify(body),
   })

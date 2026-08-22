@@ -35,10 +35,13 @@ import {
   type SeedResponse,
   type SpotResponse,
   type SpotsResponse,
+  surveyAnswerRequestSchema,
+  type SurveyAnswerResponse,
+  type SurveyResponse,
   type UserId,
 } from '@imanouchi/shared'
 import { Hono } from 'hono'
-import { buildInfo, loadConfig, missingConfigKeys } from '../config.js'
+import { buildInfo, loadConfig, missingConfigKeys, type AppConfig } from '../config.js'
 import { dataSourceCredits, datasetSpots } from '../data/spot-dataset.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from '../errors.js'
 import { actorOf, ADMIN_KEY_HEADER, matchesAdminKey, userGate } from '../middleware/auth.js'
@@ -52,7 +55,13 @@ import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
-import { ensureUser, setAvatar, setEquipment, setLocationConsent } from '../services/user-service.js'
+import { getSurvey, submitSurvey, type SurveyPointRules } from '../services/survey-service.js'
+import {
+  ensureUser,
+  setAvatar,
+  setEquipment,
+  setLocationConsent,
+} from '../services/user-service.js'
 import { assetVersion, sendAsset } from '../static.js'
 import type { AppEnv } from '../types.js'
 
@@ -60,6 +69,20 @@ async function contextFor(): Promise<DataStoreContext> {
   const ctx = getDataStoreContext()
   await ensureFakeSeeded(ctx)
   return ctx
+}
+
+/**
+ * アンケートの点数と閾値（FR-12-4・FR-06-2）。
+ *
+ * ★ 取得と送信の両方で使う。**片方だけ違う値を渡すと、画面に出した点数と実際の
+ * 加点が食い違う。** 組み立てを1か所に置く。
+ */
+function surveyRules(config: AppConfig): SurveyPointRules {
+  return {
+    base: config.surveyBasePoints,
+    fillBonus: config.surveyFillBonusPoints,
+    consensus: config.surveyConsensusCount,
+  }
 }
 
 export function createRoutes(): Hono<AppEnv> {
@@ -577,6 +600,64 @@ export function createRoutes(): Hono<AppEnv> {
       choiceIndex: body.choiceIndex,
       now: Date.now(),
       correctPoints: config.quizCorrectPoints,
+    })
+
+    return c.json(response)
+  })
+
+  /* ---------------- 現地確認アンケート（FR-12） ---------------- */
+
+  /**
+   * このスポットで答えてほしいこと（FR-12-3）。
+   *
+   * ★ 設問は**カテゴリごとのデータ辞書**（FR-12-1）から出し、行政データに記載が
+   * あるかどうかで「埋める／確かめる」を切り替える（FR-12-2）。これまでの回答は
+   * **件数だけ**返す（誰がどう答えたかは返さない。見せれば同調して答える動機になる）。
+   */
+  routes.get('/v1/spots/:spotId/survey', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const ctx = await contextFor()
+    const response: SurveyResponse = await getSurvey(ctx, {
+      actor: actorOf(c),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+      rules: surveyRules(config),
+    })
+
+    return c.json(response)
+  })
+
+  /**
+   * 回答（FR-12・FR-06-2）。
+   *
+   * ★ ポイントはサーバーが決める（NFR-04）。倍率も点数もクライアントから
+   * 受け取らない。**答えの中身では変わらない**（分からないのに断定する動機を
+   * 作らないため）。
+   *
+   * ★ 1人1スポット1回。二重に送られると1人で検証済みの閾値を越えられる。
+   */
+  routes.post('/v1/spots/:spotId/survey', async (c) => {
+    const config = loadConfig()
+    const spotIdRaw = c.req.param('spotId')
+    if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
+
+    const json: unknown = await c.req.json().catch(() => {
+      throw badRequest('リクエストボディが JSON ではありません')
+    })
+    const body = surveyAnswerRequestSchema.parse(json)
+
+    const ctx = await contextFor()
+    const response: SurveyAnswerResponse = await submitSurvey(ctx, {
+      actor: actorOf(c),
+      areaId: config.area.areaId,
+      spotId: asSpotId(spotIdRaw),
+      answers: body.answers,
+      note: body.note ?? '',
+      now: Date.now(),
+      rules: surveyRules(config),
     })
 
     return c.json(response)

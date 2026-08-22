@@ -23,6 +23,7 @@ function spot(id: string, distanceM: number | null): SpotWithDistance {
     source: '',
     fetchedAt: '',
     checkinCount: 0,
+    surveyStats: {},
     updatedAt: '',
     distanceM,
   }

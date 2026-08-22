@@ -30,6 +30,7 @@ import {
   type CardKind,
   type CardKindProgress,
   type CardView,
+  type ItemKey,
   type CardsResponse,
   type MissionDef,
   type PlaceCardSummary,
@@ -92,20 +93,34 @@ export function actionCardDefs(): CardDefinition[] {
 }
 
 /** 道具カードの定義（FR-14-6）。説明は**行動を主語**にしてある（G-8） */
+/**
+ * 道具カード1枚ぶんの定義（FR-14-6）。
+ *
+ * ★ **ここだけに書く。** 以前は一覧・アンケート・クイズの3か所に書き写されていて、
+ * 道具の入手先をチェックインからアンケートへ移したときに**一覧だけ「チェックインで
+ * 手に入れる」と表示し続けた**（同じカードの説明が画面によって違う状態になった）。
+ */
+export function toolCardDef(key: ItemKey): CardDefinition {
+  const def = ITEM_DEFS[key]
+  return {
+    cardId: toCardId('tool', key),
+    kind: 'tool',
+    title: def.name,
+    /*
+     * ★ カテゴリに紐づく道具は**現地確認アンケート**で手に入る（FR-12）。
+     * チェックインでは渡さない（近くまで来ただけで手に入ると、立ち止まって
+     * 設備を見る動機が消える・G-6）。
+     */
+    condition:
+      def.fromCategory === null
+        ? '現地のクイズに正解して手に入れる'
+        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}で現地アンケートに答えて手に入れる`,
+    body: def.use,
+  }
+}
+
 export function toolCardDefs(): CardDefinition[] {
-  return ITEM_ORDER.map((key) => {
-    const def = ITEM_DEFS[key]
-    return {
-      cardId: toCardId('tool', key),
-      kind: 'tool' as const,
-      title: def.name,
-      condition:
-        def.fromCategory === null
-          ? '現地のクイズに正解して手に入れる'
-          : `${SPOT_CATEGORY_LABELS[def.fromCategory]}でチェックインして手に入れる`,
-      body: def.use,
-    }
-  })
+  return ITEM_ORDER.map(toolCardDef)
 }
 
 export function missionCardDefs(): CardDefinition[] {

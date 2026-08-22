@@ -1,4 +1,5 @@
 import type { AreaId, SpotId } from './ids.js'
+import type { SurveyStats } from './survey.js'
 
 /** FR-02-1 のカテゴリ。取込対象（FR-10-1）に合わせて4種を扱う。 */
 export const SPOT_CATEGORIES = ['shelter', 'aed', 'accessible_toilet', 'water'] as const
@@ -49,6 +50,16 @@ export interface Spot {
   fetchedAt: string
   /** 集計機能が無いため書き込み時に事前計算する（E2 対応） */
   checkinCount: number
+  /**
+   * 現地確認アンケートの集計（FR-12・FR-06-2）。
+   *
+   * ★ `checkinCount` と同じく**書き込み時に事前計算する**（制約 E2：データストアに
+   * 集計関数が無い）。回答のたびに全員ぶんを数え直すことはできない。
+   *
+   * ★ 個々の回答者は入れない。ここに置くのは項目ごとの件数だけである
+   * （誰がどう答えたかは `user_spot_state` の本人の行にしか無い）。
+   */
+  surveyStats: SurveyStats
   updatedAt: string
 }
 

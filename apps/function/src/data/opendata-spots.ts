@@ -448,6 +448,7 @@ export function opendataSpots(areaId: AreaId, updatedAt: string): Spot[] {
     source: seed.source,
     fetchedAt: fetchedAtOf.get(seed.source) ?? '',
     checkinCount: 0,
+    surveyStats: {},
     updatedAt,
   }))
 }

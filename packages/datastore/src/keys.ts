@@ -27,9 +27,11 @@ import type { AreaId, SpotId, UserId } from '@imanouchi/shared'
  * 文字列にすると範囲クエリが辞書順になり、桁が上がった時点で並びが壊れる。
  * 「新しい順に10件」が正しく取れなくなる。**作り直すしか直せない。**
  *
- * `user_spot_state` は FR-03 と FR-04 の両方が使う。1スポットにつき1レコードで、
- * 最終チェックイン時刻・訪問回数・クイズ正解時刻をまとめて持つ。
- * **クイズ用に別テーブルを作らない。** アイテム数を増やさないため（制約 E4）。
+ * `user_spot_state` は FR-03・FR-04・FR-12 が使う。1スポットにつき1レコードで、
+ * 最終チェックイン時刻・訪問回数・クイズ正解時刻・アンケート回答をまとめて持つ。
+ * **クイズ用にもアンケート用にも別テーブルを作らない。** アイテム数を増やさない
+ * ため（制約 E4）。アンケートの集計はスポットの行に事前計算して置く
+ * （`surveyTallyColumn`）。
  */
 
 export const SPOTS_MAIN_KEY = 'areaKey'
@@ -93,4 +95,24 @@ export function userKey(userId: UserId): string {
  */
 export function spotStateKey(spotId: SpotId): string {
   return `spot#${spotId}`
+}
+
+/**
+ * アンケート集計の列名（FR-12）。
+ *
+ * ★ **専用テーブルを作っていない。** 「スポット × 項目 × 回答」を別テーブルに
+ * 置くと、テーブルが1つ増え、環境変数（`DS_TABLE_*`）とコンソールでの作成が要る。
+ * 集計は `checkinCount` と同じく**スポットの行に事前計算して持てば足りる**
+ * （制約 E2）。誰がどう答えたかは `user_spot_state` の本人の行にある。
+ *
+ * ★ 入れ子ではなく平らな数値の列にする。データストアの値は文字列・数値・真偽値で
+ * あり、入れ子は SDK やテーブル定義に依存した壊れ方をする。
+ *
+ * 例: `sv_ostomate_yes` = 3
+ *
+ * ★ 列名を組み立てるのはこの関数だけにすること。書き込み側と読み取り側で別々に
+ * 綴ると、**数えていたはずの回答が静かに 0 に戻る。**
+ */
+export function surveyTallyColumn(fieldKey: string, value: string): string {
+  return `sv_${fieldKey}_${value}`
 }

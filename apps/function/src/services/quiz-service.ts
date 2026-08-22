@@ -6,11 +6,16 @@ import {
   putUserSpotState,
   type DataStoreContext,
 } from '@imanouchi/datastore'
-import { ITEM_DEFS, SPOT_CATEGORY_LABELS, toCardId, type SpotCategory } from '@imanouchi/shared'
+import { toCardId, type SpotCategory } from '@imanouchi/shared'
 import type { AreaId, CardView, ItemKey, QuizAnswerResponse, QuizResponse, SpotId } from '@imanouchi/shared'
 import { quizSource, toPrompt } from '../data/quiz-bank.js'
 import { badRequest, notFound, unauthorized } from '../errors.js'
-import { grantCards, grantMissions, type CardDefinition } from './card-service.js'
+import {
+  grantCards,
+  grantMissions,
+  toolCardDef,
+  type CardDefinition,
+} from './card-service.js'
 import { autoEquip } from './user-service.js'
 import type { Actor } from './actor.js'
 
@@ -83,20 +88,6 @@ function quizRewardFor(category: SpotCategory): ItemKey | undefined {
       return 'raincoat'
     default:
       return undefined
-  }
-}
-
-function toolCardDef(itemKey: ItemKey): CardDefinition {
-  const def = ITEM_DEFS[itemKey]
-  return {
-    cardId: toCardId('tool', itemKey),
-    kind: 'tool',
-    title: def.name,
-    condition:
-      def.fromCategory === null
-        ? '現地のクイズに正解して手に入れる'
-        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}でチェックインして手に入れる`,
-    body: def.use,
   }
 }
 
@@ -179,6 +170,13 @@ export async function answerQuiz(
     lastCheckinAt: state?.lastCheckinAt,
     visitCount: state?.visitCount ?? 0,
     quizClearedAt: input.now,
+    /*
+     * ★ アンケートの回答状態も引き継ぐ（FR-12）。落とすと**同じ人がスポット側の
+     * 集計を何度でも増やせる**（＝1人で検証済みの閾値を越えられる）。
+     */
+    surveyAnsweredAt: state?.surveyAnsweredAt,
+    surveyAnswers: state?.surveyAnswers ?? [],
+    surveyNote: state?.surveyNote ?? '',
   })
 
   /*

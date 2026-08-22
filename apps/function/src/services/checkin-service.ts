@@ -10,7 +10,6 @@ import {
   putUserSpotState,
   type DataStoreContext,
 } from '@imanouchi/datastore'
-import { checkinItemFor, ITEM_DEFS, SPOT_CATEGORY_LABELS } from '@imanouchi/shared'
 import type {
   AreaId,
   CardView,
@@ -22,7 +21,6 @@ import type {
 } from '@imanouchi/shared'
 import { AppError, notFound, unauthorized } from '../errors.js'
 import { grantCards, grantMissions, placeCardDef, type CardDefinition } from './card-service.js'
-import { autoEquip } from './user-service.js'
 import { withDistance } from './spot-service.js'
 import type { Actor } from './actor.js'
 
@@ -46,28 +44,14 @@ export interface PerformCheckinInput {
   cooldownHours: number
 }
 
-/**
- * チェックインで手に入る道具カード（FR-14-6・FR-07-8）。
+/*
+ * ★ 道具カード（FR-14-6）はここでは渡さない。**現地確認アンケート（FR-12）へ
+ * 移してある。**
  *
- * ★ スポットのカテゴリに紐づいた道具だけを渡す。カテゴリに対応する道具が無ければ
- * 何も渡さない（クイズ正解でしか手に入らない道具がある）。
+ * チェックインは「近くまで来た」だけで成立する。立ち止まって設備を見るのは
+ * アンケートの側であり、報酬は労力に比例させる（G-6）。チェックインには
+ * 場所カードだけが残る。
  */
-function toolCardForCategory(category: Parameters<typeof checkinItemFor>[0]): CardDefinition | undefined {
-  const itemKey = checkinItemFor(category)
-  if (itemKey === undefined) return undefined
-
-  const def = ITEM_DEFS[itemKey]
-  return {
-    cardId: `tool:${itemKey}`,
-    kind: 'tool',
-    title: def.name,
-    condition:
-      def.fromCategory === null
-        ? '現地のクイズに正解して手に入れる'
-        : `${SPOT_CATEGORY_LABELS[def.fromCategory]}でチェックインして手に入れる`,
-    body: def.use,
-  }
-}
 
 export async function performCheckin(
   ctx: DataStoreContext,
@@ -164,6 +148,13 @@ export async function performCheckin(
     visitCount,
     // ★ クイズの正解状態は引き継ぐ。ここで落とすと報酬を二重取りできる
     quizClearedAt: state?.quizClearedAt,
+    /*
+     * ★ アンケートの回答状態も引き継ぐ（FR-12）。落とすと**同じ人がスポット側の
+     * 集計を何度でも増やせる**（＝1人で検証済みの閾値を越えられる）。
+     */
+    surveyAnsweredAt: state?.surveyAnsweredAt,
+    surveyAnswers: state?.surveyAnswers ?? [],
+    surveyNote: state?.surveyNote ?? '',
   })
 
   await putUser(ctx, {
@@ -173,14 +164,12 @@ export async function performCheckin(
   })
 
   /*
-   * カード（FR-14）。場所カードと、カテゴリに紐づく道具カードを達成させる。
+   * カード（FR-14）。場所カードだけを達成させる（道具はアンケートへ移した）。
    *
    * ★ ミッションの判定は**新しく達成したものがあるときだけ**行う。枚数が変わって
    * いないのに毎回数え直すと、チェックインごとに query が1回増える（制約 E4）。
    */
   const targets: CardDefinition[] = [placeCardDef(spot)]
-  const toolCard = toolCardForCategory(spot.category)
-  if (toolCard) targets.push(toolCard)
 
   const acquiredCards: CardView[] = await grantCards(ctx, userId, targets, nowIso)
   if (acquiredCards.length > 0) {
@@ -188,19 +177,11 @@ export async function performCheckin(
   }
 
   /*
-   * ★ 手に入れた道具は**空いているスロットにだけ**自動で装備する。
-   * 見た目が変わらないと集めた実感が出ない。一方で、すでに身につけているものを
-   * 置き換えると「選んだ装備が戻る」ことになるので、空きだけを埋める。
+   * ★ 自動装備（FR-07-8）はここでは行わない。**チェックインでは道具が手に入らない**
+   * （道具カードはアンケートへ移した）。空振りの `autoEquip` を残すと、
+   * **チェックインごとに putUser が1回増える**（制約 E4：アクセス数に月次上限がある）。
+   * 装備は survey-service と quiz-service で行う。
    */
-  const equipped = autoEquip(
-    {
-      ...profile,
-      totalPoints: profile.totalPoints + decision.pointsEarned,
-      lastActiveAt: nowIso,
-    },
-    acquiredCards.map((card) => card.cardId.replace('tool:', '')),
-  )
-  await putUser(ctx, equipped)
 
   const updatedSpot = await incrementSpotCheckinCount(ctx, spot, nowIso)
 

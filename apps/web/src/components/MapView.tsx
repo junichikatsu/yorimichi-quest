@@ -481,6 +481,9 @@ export function MapView({
   const tilesRef = useRef<ExploredTile[]>(exploredTiles)
   const areasRef = useRef<UnlockedAreaBounds[]>(unlockedAreas)
 
+  /** 入れ物の大きさの見張り。Mapbox は自分では追随しないので自前で持つ */
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+
   /** 地図の中心を現在地に合わせ続けるか。利用者が自分で動かしたら解除する */
   const [following, setFollowing] = useState(true)
   const centeredRef = useRef(false)
@@ -507,7 +510,27 @@ export function MapView({
       if (event.originalEvent) setFollowing(false)
     })
 
+    /*
+     * 入れ物の大きさが変わったら描き直す。
+     *
+     * ★ **Mapbox は自分では追随しない。** `trackResize` は既定で真だが、これは
+     * window の resize を拾うだけである（3.28.1 の実装に `ResizeObserver` は無い）。
+     * 画面の幅が変わっていないのに入れ物の高さだけが変わる場合——上に帯が
+     * 出入りするとき（ハザードの知らせ・有事モードの帯・おためしの帯）——は
+     * 一切通知が来ず、**キャンバスが古い大きさのまま伸び縮みして歪む。**
+     *
+     * ★ `ResizeObserver` が無い環境では何もしない。歪みは残るが、地図そのものは
+     * 出る（帯の出入りが無ければ起きない）。
+     */
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => map.resize())
+      observer.observe(containerRef.current)
+      resizeObserverRef.current = observer
+    }
+
     return () => {
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
       for (const marker of markersRef.current.values()) marker.remove()
       markersRef.current.clear()
       meMarkerRef.current?.remove()

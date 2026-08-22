@@ -6,6 +6,7 @@ import {
 } from '@imanouchi/shared'
 import { useState } from 'react'
 import { CardArt, cardColorStyle } from './CardArt.js'
+import { Spinner } from './Spinner.js'
 
 interface CardPanelProps {
   cards: CardsResponse | undefined
@@ -35,7 +36,10 @@ export function CardPanel({ cards, onClose }: CardPanelProps): React.JSX.Element
             ×
           </button>
         </div>
-        <p className="panel__note">読み込んでいます…</p>
+        <p className="panel__note panel__note--loading">
+          <Spinner small />
+          読み込んでいます…
+        </p>
       </section>
     )
   }

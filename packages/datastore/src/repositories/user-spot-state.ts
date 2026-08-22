@@ -36,6 +36,32 @@ export interface UserSpotState {
    * undefined は「まだ正解していない」。
    */
   quizClearedAt: number | undefined
+  /**
+   * 現地確認アンケートに答えた時刻（FR-12）。
+   *
+   * ★ **これが二重計上を止めている唯一の仕掛けである。** スポット側の集計には
+   * 加算しか無いので、同じ人が何度も送れると件数を好きなだけ増やせる
+   * （＝閾値 FR-06-2 を1人で越えられる）。undefined は「まだ答えていない」。
+   */
+  surveyAnsweredAt: number | undefined
+  /**
+   * 自分の回答（`<項目キー>:<値>` の配列）。
+   *
+   * ★ 集計とは別に本人ぶんを持つ。回答済みの人に「あなたはこう答えた」と
+   * 見せられないと、**答えたのに何も残っていない画面**になる。
+   *
+   * ★ 文字列の配列にしてあるのは、データストアの値が入れ子を安全に持てないため
+   * （`attributes` と同じ扱い）。
+   */
+  surveyAnswers: readonly string[]
+  /**
+   * 自由記述（FR-12）。
+   *
+   * ★ **ここから公開データへ流してはいけない。** 個人名・私見・苦情が混ざりうる
+   * ため、行政へのフィードバックとして人が読む用途に限る（写真の保留判定
+   * FR-05-4／FR-05-6 に相当する守りが自由文には無い）。空文字は「書かなかった」。
+   */
+  surveyNote: string
 }
 
 export async function getUserSpotState(
@@ -63,20 +89,37 @@ function toState(item: unknown): UserSpotState | undefined {
 
   const last = raw['lastCheckinAt']
   const cleared = raw['quizClearedAt']
+  const surveyed = raw['surveyAnsweredAt']
 
   /*
-   * ★ どちらも読めない行は捨てる。
+   * ★ どれも読めない行は捨てる。
    *
-   * 空の状態を返すと「チェックイン済みでもクイズ正解済みでもない行がある」ことに
-   * なり、書き込み側の不具合が**正常な初回訪問と区別できなくなる**。
+   * 空の状態を返すと「チェックイン済みでもクイズ正解済みでもアンケート回答済みでも
+   * ない行がある」ことになり、書き込み側の不具合が**正常な初回訪問と区別できなく
+   * なる**。
    */
-  if (typeof last !== 'number' && typeof cleared !== 'number') return undefined
+  if (
+    typeof last !== 'number' &&
+    typeof cleared !== 'number' &&
+    typeof surveyed !== 'number'
+  ) {
+    return undefined
+  }
+
+  const answers = raw['surveyAnswers']
+  const note = raw['surveyNote']
 
   return {
     // 書き込み側が「無い」を 0 で表すため、0 は undefined へ戻す
     lastCheckinAt: typeof last === 'number' && last > 0 ? last : undefined,
     visitCount: typeof raw['visitCount'] === 'number' ? raw['visitCount'] : 0,
     quizClearedAt: typeof cleared === 'number' && cleared > 0 ? cleared : undefined,
+    surveyAnsweredAt: typeof surveyed === 'number' && surveyed > 0 ? surveyed : undefined,
+    // 文字列以外が混ざった行でも落とさない（1件ずつ検査する）
+    surveyAnswers: Array.isArray(answers)
+      ? answers.filter((entry): entry is string => typeof entry === 'string')
+      : [],
+    surveyNote: typeof note === 'string' ? note : '',
   }
 }
 
@@ -97,6 +140,9 @@ export async function putUserSpotState(
         lastCheckinAt: state.lastCheckinAt ?? 0,
         visitCount: state.visitCount,
         quizClearedAt: state.quizClearedAt ?? 0,
+        surveyAnsweredAt: state.surveyAnsweredAt ?? 0,
+        surveyAnswers: [...state.surveyAnswers],
+        surveyNote: state.surveyNote,
       },
     }),
   )

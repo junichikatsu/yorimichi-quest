@@ -76,6 +76,7 @@ export function sampleSpots(areaId: AreaId, updatedAt: string): Spot[] {
     source: SOURCE,
     fetchedAt: FETCHED_AT,
     checkinCount: 0,
+    surveyStats: {},
     updatedAt,
   }))
 }

@@ -68,6 +68,15 @@ const GUEST_ALLOWED = [
   /\/v1\/spots\/[^/]+\/checkin$/,
   /\/v1\/spots\/[^/]+\/quiz$/,
   /\/v1\/spots\/[^/]+\/quiz\/answer$/,
+  /*
+   * ★ 現地確認アンケート（FR-12）も通すが、**集計には一切足さない。**
+   *
+   * おためしは身元を持たないので、同じ端末から何度でも送れる。それを公開データに
+   * 載る集計へ混ぜると、**検証済み（FR-06-2）という表示が意味を失う。**
+   * 設問を見て答えて点数が出るところまでは体験させ、記録は端末の中だけに置く。
+   * 書かないことは survey-service が `Actor` の種類を見て保証している。
+   */
+  /\/v1\/spots\/[^/]+\/survey$/,
 ]
 
 export function allowsGuest(path: string): boolean {
