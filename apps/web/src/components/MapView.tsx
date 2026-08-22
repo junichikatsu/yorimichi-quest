@@ -21,6 +21,7 @@ import {
   tilePointOf,
 } from '../hazard.js'
 import { getHazardTile } from '../hazard-tiles.js'
+import { applyMask } from '../canvas-mask.js'
 import { mapOptions, mapStyleFor } from '../map-options.js'
 import type { Position } from '../hooks/useGeolocation.js'
 
@@ -267,9 +268,16 @@ function paintHazardTiles(
   map: mapboxgl.Map,
   onTileReady: () => void,
 ): void {
+  /*
+   * ★ Mapbox のズームは 512px タイル基準、配信されているタイルは 256px 基準である。
+   * そのまま使うと**1段ぼやける**（2倍に伸ばして描くことになる）。+1 して合わせる。
+   *
+   * ★ 上限は 16 に留める。それ以上を要求すると配信が無く 404 になり、
+   * 失敗として覚えてしまう（穴が空いたまま戻らない）。
+   */
   const zoom = Math.round(map.getZoom())
   if (zoom < HAZARD_MIN_ZOOM) return
-  const z = Math.min(HAZARD_MAX_ZOOM, zoom)
+  const z = Math.min(HAZARD_MAX_ZOOM, zoom + 1)
 
   const bounds = map.getBounds()
   if (!bounds) return
@@ -324,6 +332,8 @@ export function MapView({
   const fogRef = useRef<HTMLCanvasElement>(null)
   /** ハザードを切り抜くための作業用キャンバス（画面には出さない） */
   const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
+  /** 歩いたところの形。霧とハザードで**同じ1枚**を使う（画面には出さない） */
+  const maskCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   const markersRef = useRef<Map<SpotId, mapboxgl.Marker>>(new Map())
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   /** 地図上のチェックインボタン。出しているスポットも一緒に覚える */
@@ -556,6 +566,28 @@ export function MapView({
     ctx.globalAlpha = 1
     ctx.clearRect(0, 0, width, height)
 
+    /* ---------------- 歩いたところ（マスク） ---------------- */
+
+    /*
+     * ★ 形は**1枚のキャンバスにまとめてから**当てる（`applyMask` の説明を参照）。
+     * ついでに霧とハザードで作る回数が1回で済む（毎フレーム描くので効く）。
+     */
+    const mask = maskCanvasRef.current ?? document.createElement('canvas')
+    maskCanvasRef.current = mask
+    if (mask.width !== canvas.width || mask.height !== canvas.height) {
+      mask.width = canvas.width
+      mask.height = canvas.height
+    }
+
+    const maskCtx = mask.getContext('2d')
+    if (maskCtx) {
+      maskCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      maskCtx.globalCompositeOperation = 'source-over'
+      maskCtx.globalAlpha = 1
+      maskCtx.clearRect(0, 0, width, height)
+      paintRevealShapes(maskCtx, map, areasRef.current, tilesRef.current, revealRadiusM, width, height)
+    }
+
     /* ---------------- ハザード（#72） ---------------- */
 
     // タイルが届いたら描き直す。ref 越しに最新の描画を呼ぶ（自分自身を依存にしない）
@@ -579,21 +611,9 @@ export function MapView({
 
       /*
        * ★ 平時は歩いたところだけに残す。
-       * 有事モードでは切り抜かない（全面に出す）。
+       * 有事モードでは切り抜かない（探索に関係なく全面に出す・FR-08-2 と同じ理由）。
        */
-      if (!emergency) {
-        hazardCtx.globalCompositeOperation = 'destination-in'
-        paintRevealShapes(
-          hazardCtx,
-          map,
-          areasRef.current,
-          tilesRef.current,
-          revealRadiusM,
-          width,
-          height,
-        )
-        hazardCtx.globalCompositeOperation = 'source-over'
-      }
+      if (!emergency && maskCtx) applyMask(hazardCtx, mask, 'destination-in', width, height)
     }
 
     /* ---------------- 霧（FR-02-7） ---------------- */
@@ -607,9 +627,7 @@ export function MapView({
       ctx.fillStyle = FOG_COLOR
       ctx.fillRect(0, 0, width, height)
 
-      ctx.globalCompositeOperation = 'destination-out'
-      paintRevealShapes(ctx, map, areasRef.current, tilesRef.current, revealRadiusM, width, height)
-      ctx.globalCompositeOperation = 'source-over'
+      if (maskCtx) applyMask(ctx, mask, 'destination-out', width, height)
     }
 
     /*
