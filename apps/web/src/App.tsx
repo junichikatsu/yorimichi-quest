@@ -55,6 +55,7 @@ import { SurveyPanel } from './components/SurveyPanel.js'
 import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
 import { WalkDigest } from './components/WalkDigest.js'
+import { WaitingOverlay } from './components/WaitingOverlay.js'
 import { WalkGuard } from './components/WalkGuard.js'
 import {
   isCheckinReady,
@@ -64,7 +65,12 @@ import {
 } from './checkin-view.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
 import { gameElements } from './emergency.js'
-import { hasNextAfterBurst, overlayStep, type OverlayInput } from './overlay.js'
+import {
+  hasNextAfterBurst,
+  overlayStep,
+  type OverlayInput,
+  type WaitingKind,
+} from './overlay.js'
 import {
   clearGuestData,
   EMPTY_GUEST_PROGRESS,
@@ -156,6 +162,17 @@ export function App(): React.JSX.Element {
   const [spotsTruncated, setSpotsTruncated] = useState(false)
   const [selectedSpotId, setSelectedSpotId] = useState<SpotId | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  /**
+   * サーバーを待っているあいだ、画面を覆う対象（`overlay.ts`）。
+   *
+   * ★ `busy` と分けている。`busy` は「押したボタンを無効にする」ためのもので、
+   * **自分の面が画面に出ているときはそれで足りる**（クイズの選択肢が押せなくなる）。
+   * こちらは**画面に何も無い状態で待つ**ときのためのもので、覆って知らせる。
+   *
+   * ★ これが無いと、通信が遅いときに「押したのに何も起きない」時間ができる。
+   * もう一度押されて二重に記録しようとし、**409 のエラーの知らせだけが出る。**
+   */
+  const [waiting, setWaiting] = useState<WaitingKind | undefined>(undefined)
   const [joystickClosed, setJoystickClosed] = useState(false)
   const [creatorOpen, setCreatorOpen] = useState(false)
   /**
@@ -309,6 +326,7 @@ export function App(): React.JSX.Element {
    * 最中に点数の表示が消えていた（「忙しない」）。ここを見る形にそろえてある。
    */
   const overlay: OverlayInput = {
+    waiting,
     hasBurst: burst !== undefined,
     hasCards: revealCards.length > 0,
     hasPendingSurvey: pendingSurveySpotId !== undefined,
@@ -953,6 +971,9 @@ export function App(): React.JSX.Element {
    */
   const openQuiz = useCallback(
     async (spotId: SpotId): Promise<void> => {
+      // ★ 覆って待つ。アンケートを閉じた直後で、画面には何も無い
+      setWaiting('quiz')
+
       try {
         const response = await fetchQuiz(spotId)
 
@@ -970,6 +991,8 @@ export function App(): React.JSX.Element {
         setQuizResult(undefined)
       } catch (err) {
         setMessage(err instanceof ApiError ? err.message : 'クイズを取得できませんでした。')
+      } finally {
+        setWaiting(undefined)
       }
     },
     [mode, guestProgress],
@@ -989,6 +1012,13 @@ export function App(): React.JSX.Element {
        */
       setPendingSurveySpotId(undefined)
 
+      /*
+       * ★ 覆って待つ。ここはポイントの演出が消えた直後で、**画面に何も無い。**
+       * 通信が遅いと「演出が消えて、しばらく何も起きない」時間になり、
+       * 終わったのだと思って歩き出される。
+       */
+      setWaiting('survey')
+
       try {
         const response = await fetchSurvey(spotId)
         setSurvey(response)
@@ -996,6 +1026,8 @@ export function App(): React.JSX.Element {
       } catch {
         // 知らせは出さない（チェックインの演出と重なる）。クイズへ進める
         await openQuiz(spotId)
+      } finally {
+        setWaiting(undefined)
       }
     },
     [openQuiz],
@@ -1092,6 +1124,12 @@ export function App(): React.JSX.Element {
       }
 
       setBusy(true)
+      /*
+       * ★ 覆って待つ。地図のチェックインボタンは**押しても見た目が変わらない**ので、
+       * 通信が遅いと押せていないように見え、もう一度押される（二重に記録しようとして
+       * 409 になり、エラーの知らせだけが出る）。
+       */
+      setWaiting('checkin')
       setMessage('')
       try {
         const result = await checkin(spot.spotId, geo.position)
@@ -1180,6 +1218,11 @@ export function App(): React.JSX.Element {
         setMessage('チェックインできませんでした。通信状況を確認してください。')
       } finally {
         setBusy(false)
+        /*
+         * ★ 覆いは必ず外す。失敗しても外さないと、**操作を受け付けない画面から
+         * 出られなくなる**（閉じる操作を置いていないため）。
+         */
+        setWaiting(undefined)
       }
     },
     [geo.position, guestProgress, updateGuestProgress],
@@ -1729,6 +1772,19 @@ export function App(): React.JSX.Element {
           onDismiss={() => setGuardDismissed(true)}
         />
       )}
+
+      {/*
+        ★ サーバーを待っているあいだの覆い。
+
+        ★ **押したのに何も起きない時間を作らない。** 通信が遅いと、チェックインの
+        記録も設問の読み込みも待たされる。その間に何も出ていないと押せていないのだと
+        思われ、もう一度押される（二重に記録しようとして 409 になり、エラーの知らせ
+        だけが出る）。覆いが操作を受け止めるので、二度押しそのものが起きない。
+
+        ★ 順番の判定（`overlayStep`）に組み込んである。待っているあいだは演出も面も
+        出さないので、重なることがない。
+      */}
+      {step === 'waiting' && waiting && <WaitingOverlay kind={waiting} />}
 
       {/*
         ★ 演出は app の直下に置く。サイドバーの内側だと、スクロール位置によって

@@ -1468,6 +1468,8 @@ button {
   .sheet__body,
   .quiz__stamp,
   .survey__stamp,
+  .waiting--shown,
+  .waiting__spinner,
   .reveal__flip,
   .statusbar__points--bumped,
   .sidetabs__new {
@@ -1477,6 +1479,17 @@ button {
   /* 幅が伸びるのも動きである。落とす設定では即座に反映する */
   .exploration__bar-fill {
     transition: none;
+  }
+
+  /*
+   * ★ 回転を止めても「待っている」ことが伝わる形にする。
+   *
+   * 印は装飾で、伝えているのは文言（「チェックインを記録しています…」）である。
+   * 回転だけを落とし、輪はそのまま残す（消すと箱の中が文字だけになり、
+   * 何かが起きている最中だという手がかりが減る）。
+   */
+  .waiting__spinner {
+    border-color: var(--accent);
   }
 
   .marker--ready {
@@ -1612,6 +1625,83 @@ button {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--accent);
+}
+
+/* ---------------- 待っているあいだの覆い ---------------- */
+
+/*
+ * サーバーを待っているあいだ、画面を覆って操作を止める。
+ *
+ * ★ 重ねる板（詳細20・アンケート24・クイズ25）と演出（30〜40）より前に出す。
+ * **後ろにあると、板の上を押せてしまう**（覆う意味が無い）。
+ * 歩行中の覆い（60）とまとめ（50）より後ろに置く。あちらは歩きスマホを止める
+ * ための機構で、通信待ちより優先される。
+ *
+ * ★ 下に触らせる指定（演出が使っているような、操作を通す設定）を入れてはいけない。
+ * 演出と違い、これは**操作を止めるため**のものである。`touch-action: none` で
+ * 覆いの上でのスクロールとピンチも止める。
+ */
+/*
+ * ★ 素の状態は**透明**である。出た瞬間から操作は止めるが、まだ何も見せない。
+ * 速いときの応答は 1〜16ms で、そこで暗幕を見せるとチェックインのたびに
+ * ちらつくだけになる（遅さを伝えるどころか画面が汚くなる）。
+ */
+.waiting {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+/* 猶予（250ms）を過ぎてから見せる。ここで初めて暗幕が入る */
+.waiting--shown {
+  background: rgb(20 16 22 / 45%);
+  animation: waiting-in 0.18s ease-out;
+}
+
+@keyframes waiting-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.waiting__box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: min(88vw, 22rem);
+  padding: 0.9rem 1.2rem;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgb(36 31 39 / 22%);
+}
+
+.waiting__spinner {
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: waiting-spin 0.8s linear infinite;
+}
+
+@keyframes waiting-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.waiting__label {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 /* ---------------- 現地確認アンケート（FR-12） ---------------- */

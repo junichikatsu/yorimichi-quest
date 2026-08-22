@@ -252,6 +252,44 @@ describe('styles.css', () => {
     expect(zIndexOf(css, '.sheet--survey')).toBeLessThan(zIndexOf(css, '.sheet--quiz'))
   })
 
+  /*
+   * 待っているあいだの覆い。
+   *
+   * ★ 「操作を止める」ためのものなので、**触れてしまう／後ろに隠れる**形の崩れは
+   * そのまま機能の否定になる。演出の覆い（`pointer-events: none`）と逆であり、
+   * 取り違えやすいので固定する。
+   */
+  it('★ 待っているあいだの覆いは下の操作を通さない', () => {
+    const block = ruleBlock(css, '.waiting')
+
+    // ★ 演出と同じ「操作を通す」指定にしてはいけない（覆う意味が無くなる）
+    expect(block, '操作を通してしまう').not.toContain('pointer-events: none')
+    expect(block, 'スクロールとピンチが通る').toContain('touch-action: none')
+  })
+
+  it('★ 覆いの素の状態は透明（速いときにちらつかせない）', () => {
+    /*
+     * ★ 速いときの応答は 1〜16ms である。素で暗幕を敷くと、チェックインのたびに
+     * 一瞬ちらつくだけになる。**止めるのは即座に、見せるのは遅いときだけ。**
+     * 暗幕は猶予を過ぎてから付く `--shown` の側にある。
+     */
+    expect(ruleBlock(css, '.waiting'), '素で暗幕を敷いている').not.toContain('background:')
+    expect(ruleBlock(css, '.waiting--shown'), '見せる側に暗幕が無い').toContain('background:')
+  })
+
+  it('★ 待っているあいだの覆いは、板と演出より前に出る', () => {
+    const waiting = zIndexOf(css, '.waiting')
+
+    // 後ろにあると板の上を押せてしまう
+    for (const selector of ['.sheet--spot', '.sheet--survey', '.sheet--quiz', '.burst', '.reveal']) {
+      expect(waiting, `${selector} より後ろにある`).toBeGreaterThan(zIndexOf(css, selector))
+    }
+  })
+
+  it('★ 歩行中の覆いは、待ちの覆いより前に出る（歩きスマホを止めるほうが優先）', () => {
+    expect(zIndexOf(css, '.walkguard')).toBeGreaterThan(zIndexOf(css, '.waiting'))
+  })
+
   it('★ アンケートも暗幕で受け止める（外を触って消させない）', () => {
     // ここで消えると、チェックインしただけでデータが1件も増えないまま終わる
     expect(ruleBlock(css, '.sheet--survey')).toContain('background:')

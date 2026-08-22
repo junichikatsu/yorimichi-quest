@@ -13,6 +13,7 @@ import { hasNextAfterBurst, overlayStep, type OverlayInput } from './overlay.js'
 
 function input(overrides: Partial<OverlayInput> = {}): OverlayInput {
   return {
+    waiting: undefined,
     hasBurst: false,
     hasCards: false,
     hasPendingSurvey: false,
@@ -93,6 +94,59 @@ describe('overlayStep', () => {
 })
 
 /**
+ * サーバーを待っているあいだの覆い。
+ *
+ * ★ 通信が遅いと「押したのに何も起きない」時間ができ、もう一度押される。
+ * **二重に記録しようとして 409 になり、エラーの知らせだけが出る**（実際に起きた）。
+ */
+describe('overlayStep（待っているあいだ）', () => {
+  it('★ 待っているあいだは何よりも先に覆いを出す', () => {
+    /*
+     * ★ 待ちを隠して演出を出すと、順番が入れ替わって見える
+     * （記録が終わる前に「+30pt」が出たように見える）。
+     */
+    const step = overlayStep(
+      input({ waiting: 'checkin', hasBurst: true, hasCards: true, hasPendingSurvey: true }),
+    )
+    expect(step).toBe('waiting')
+  })
+
+  it('チェックインの記録を待つあいだは覆う', () => {
+    expect(overlayStep(input({ waiting: 'checkin' }))).toBe('waiting')
+  })
+
+  it('アンケートの読み込みを待つあいだは覆う（画面が空になる区間）', () => {
+    expect(overlayStep(input({ waiting: 'survey' }))).toBe('waiting')
+  })
+
+  it('クイズの読み込みを待つあいだも覆う', () => {
+    expect(overlayStep(input({ waiting: 'quiz' }))).toBe('waiting')
+  })
+
+  it('★ 送信中は覆わない（面が出ているので、そこで無効にすれば伝わる）', () => {
+    /*
+     * ★ ここが `waiting` を返すと、**読んでいた設問が回答のたびに隠れる。**
+     * クイズもアンケートも、送信中は自分の面が画面に残っている。
+     */
+    expect(overlayStep(input({ waiting: 'answer' }))).toBe('none')
+    expect(overlayStep(input({ waiting: 'answer', hasCards: true }))).toBe('cards')
+  })
+
+  it('★ 有事モードでも覆いは隠さない（演出ではなく、操作を止めている表示である）', () => {
+    /*
+     * ★ ゲーム要素は隠すが（FR-08-2）、これは褒める表示ではない。隠すと
+     * 「押しても何も起きない画面」になる。
+     */
+    const step = overlayStep(input({ waiting: 'checkin', game: gameElements(true) }))
+    expect(step).toBe('waiting')
+  })
+
+  it('待ち終われば、順番どおり演出へ進む', () => {
+    expect(overlayStep(input({ hasBurst: true, hasPendingSurvey: true }))).toBe('burst')
+  })
+})
+
+/**
  * ポイントの演出の長さ（FR-03-2）。
  *
  * ★ 重ねないために順番にした結果、**足した待ち時間がそのままアンケートに着くまでの
@@ -135,5 +189,14 @@ describe('hasNextAfterBurst', () => {
   it('★ 自分（ポイントの演出）を続きと数えない', () => {
     // hasBurst だけが真のときに true を返すと、常に短くなってしまう
     expect(hasNextAfterBurst(input({ hasBurst: true }))).toBe(false)
+  })
+
+  it('★ 待ちを「続き」に数えない', () => {
+    /*
+     * ★ ポイントの演出が出ている時点で記録は終わっている。このあと待ちが入るかは
+     * **まだ分からない**（設問の読み込みは演出が消えてから始まる）。数えると、
+     * 続きが無いときまで演出が短くなる。
+     */
+    expect(hasNextAfterBurst(input({ waiting: 'checkin', hasBurst: true }))).toBe(false)
   })
 })
