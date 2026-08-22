@@ -15,6 +15,7 @@ import {
   ApiError,
   checkin,
   fetchClientConfig,
+  fetchProgress,
   fetchQuiz,
   fetchSpots,
   guestLogin,
@@ -480,6 +481,50 @@ export function App(): React.JSX.Element {
     if (phase !== 'ready') return
     void loadSpots()
   }, [phase, loadSpots])
+
+  /**
+   * 前回までの進み具合を復元する（FR-03-3）。
+   *
+   * ★ **これが無いと、再読み込み後はチェックイン済みの場所でもボタンが押せる
+   * 状態に見え、押してから 409 で断られる。** サーバー側は正しく弾いているので
+   * 記録は壊れないが、押させてから断るのは案内として失敗している。
+   *
+   * ★ おためしは端末の記録から復元するのでここは通らない（403 になる）。
+   * 失敗しても行き止まりにしない。ボタンの見た目が戻るだけで、最終判定は
+   * サーバーが行う。
+   */
+  useEffect(() => {
+    if (phase !== 'ready' || mode !== 'line') return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await fetchProgress()
+        if (cancelled) return
+
+        const restored: Record<string, SpotProgress> = {}
+        for (const entry of response.spots) {
+          restored[entry.spotId] = {
+            nextAvailableAt:
+              entry.nextAvailableAt === undefined
+                ? undefined
+                : new Date(entry.nextAvailableAt).getTime(),
+            visitCount: entry.visitCount,
+            quizCleared: entry.quizCleared,
+          }
+        }
+
+        // ★ 置き換えではなく重ねる。読み込んでいる間に押されたぶんを消さない
+        setServerProgress((current) => ({ ...restored, ...current }))
+      } catch {
+        // 取れなくても遊べる状態は保つ（押せば正しく断られる）
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [phase, mode])
 
   /** 距離の付け直しは手元で行う（サーバーへは行かない） */
   const sortedSpots = useMemo(() => {

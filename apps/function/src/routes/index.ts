@@ -22,6 +22,8 @@ import {
   type LoginResponse,
   MAX_EXPLORATION_POINTS,
   type MeResponse,
+  MAX_PROGRESS_ENTRIES,
+  type ProgressResponse,
   type PurgeResponse,
   quizAnswerRequestSchema,
   type QuizAnswerResponse,
@@ -41,7 +43,7 @@ import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-con
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
 import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
 import { issueSession, newGuestId } from '../services/session.js'
-import { performCheckin } from '../services/checkin-service.js'
+import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
@@ -365,6 +367,26 @@ export function createRoutes(): Hono<AppEnv> {
       now: Date.now(),
       radiusM: config.checkinRadiusM,
       cooldownHours: config.checkinCooldownHours,
+    })
+
+    return c.json(response)
+  })
+
+  /**
+   * 進み具合（FR-03・FR-04）。
+   *
+   * ★ 起動時に1回だけ引く。**これが無いと、再読み込み後はチェックイン済みの
+   * 場所でもボタンが押せる状態に見え、押してから 409 で断られる。**
+   * おためし（ゲスト）は端末の記録を使うので、この経路は通らない（403）。
+   */
+  routes.get('/v1/progress', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+
+    const response: ProgressResponse = await getProgress(ctx, {
+      userId: c.get('userId'),
+      cooldownHours: config.checkinCooldownHours,
+      limit: MAX_PROGRESS_ENTRIES,
     })
 
     return c.json(response)

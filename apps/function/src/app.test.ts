@@ -10,6 +10,7 @@ import type {
   ExplorationUpdateResponse,
   GuestLoginResponse,
   MeResponse,
+  ProgressResponse,
   PurgeResponse,
   QuizAnswerResponse,
   QuizResponse,
@@ -1213,5 +1214,99 @@ describe('おためしのチェックイン・クイズ', () => {
     expect(right.pointsEarned).toBeGreaterThan(0)
     expect(right.saved).toBe(false)
     expect(dump('fake-user-spot-state')).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * 進み具合（FR-03-3 の再チェックイン制限を画面へ復元する）
+ * ------------------------------------------------------------------ */
+
+describe('GET /v1/progress', () => {
+  it('チェックイン済みのスポットが次に押せる時刻つきで返る', async () => {
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+
+    const body = await json<ProgressResponse>(
+      await app.request('/v1/progress', { headers: auth(token) }),
+    )
+
+    expect(body.truncated).toBe(false)
+    const entry = body.spots.find((spot) => spot.spotId === SHELTER_SPOT_ID)
+    expect(entry?.visitCount).toBe(1)
+    expect(entry?.quizCleared).toBe(false)
+    // ★ 待ち時間の計算はサーバー側（設定を変えたときに食い違わないようにする）
+    expect(new Date(entry?.nextAvailableAt ?? 0).getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('★ これが無いと再読み込み後に押せてしまう、という値が入っている', async () => {
+    /*
+     * 実際に踏んだ不具合の再現。チェックイン → 別セッション（再読み込み相当）で
+     * 進み具合を引き、**押せない状態を復元できること**を見る。
+     */
+    const first = await loginOk()
+    await checkin(first.token, AT_SPOT)
+
+    const second = await loginOk()
+    const body = await json<ProgressResponse>(
+      await app.request('/v1/progress', { headers: auth(second.token) }),
+    )
+
+    expect(body.spots.some((spot) => spot.spotId === SHELTER_SPOT_ID)).toBe(true)
+  })
+
+  it('クイズに正解しただけのスポットも返る（チェックインしていなくても）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+    await answer(token, quiz.quiz.quizId, 0)
+
+    const body = await json<ProgressResponse>(
+      await app.request('/v1/progress', { headers: auth(token) }),
+    )
+    const entry = body.spots.find((spot) => spot.spotId === SHELTER_SPOT_ID)
+
+    expect(entry?.quizCleared).toBe(true)
+    // ★ 行っていないので待ち時間は無い。ここに時刻が入ると初回ボーナスが消える
+    expect(entry?.nextAvailableAt).toBeUndefined()
+  })
+
+  it('何もしていなければ空で返る', async () => {
+    const { token } = await loginOk()
+    const body = await json<ProgressResponse>(
+      await app.request('/v1/progress', { headers: auth(token) }),
+    )
+
+    expect(body.spots).toEqual([])
+  })
+
+  it('★ 他人の進み具合は混ざらない', async () => {
+    const mine = await loginOk()
+    await checkin(mine.token, AT_SPOT)
+
+    // 別の LINE ユーザーとしてログインする
+    mockLineVerify(validPayload({ sub: 'U' + 'f'.repeat(32) }))
+    const otherResponse = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'dummy-id-token' }),
+    })
+    const other = await json<LoginResponse>(otherResponse)
+
+    const body = await json<ProgressResponse>(
+      await app.request('/v1/progress', { headers: auth(other.token) }),
+    )
+    expect(body.spots).toEqual([])
+  })
+
+  it('★ おためしでは使えない（端末の記録を使う経路）', async () => {
+    const guest = await json<GuestLoginResponse>(
+      await app.request('/v1/auth/guest', { method: 'POST' }),
+    )
+    const response = await app.request('/v1/progress', { headers: auth(guest.token) })
+
+    expect(response.status).toBe(403)
+  })
+
+  it('認証なしでは呼べない', async () => {
+    expect((await app.request('/v1/progress')).status).toBe(401)
   })
 })

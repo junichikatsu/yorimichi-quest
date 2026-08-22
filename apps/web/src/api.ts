@@ -11,6 +11,7 @@ import type {
   GuestLoginResponse,
   LoginResponse,
   MeResponse,
+  ProgressResponse,
   QuizAnswerRequest,
   QuizAnswerResponse,
   QuizResponse,
@@ -199,4 +200,15 @@ export function answerQuiz(
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+/**
+ * 進み具合の取得（FR-03・FR-04）。
+ *
+ * ★ 起動時に1回だけ呼ぶ。**呼ばないと、再読み込み後はチェックイン済みの場所でも
+ * ボタンが押せる状態に見え、押してから断られる。**
+ * おためし（ゲスト）では呼ばない（403 になる。記録は端末の中にある）。
+ */
+export function fetchProgress(): Promise<ProgressResponse> {
+  return request<ProgressResponse>('/v1/progress')
 }

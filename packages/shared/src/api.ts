@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { avatarSchema } from './avatar.js'
 import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
 import type { QuizPrompt } from './quiz.js'
+import type { SpotId } from './ids.js'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
 import type { UserView } from './user.js'
 
@@ -308,6 +309,43 @@ export interface CheckinResponse {
    * 端末の記録で抑える。
    */
   saved: boolean
+}
+
+/**
+ * 進み具合の上限。
+ *
+ * ★ 対象エリアのスポットは 370 件ほどなので、全部訪れても収まる。
+ * 打ち切ったかどうかは返す（黙って切ると、切れた分だけボタンが押せてしまう）。
+ */
+export const MAX_PROGRESS_ENTRIES = 1000
+
+/** スポット1件ぶんの進み（この利用者ぶん） */
+export interface SpotProgressEntry {
+  spotId: SpotId
+  /** 訪問回数（FR-03-4 の貢献度） */
+  visitCount: number
+  /**
+   * 次にチェックインできる時刻（ISO8601）。undefined は制限なし。
+   *
+   * ★ 待ち時間の計算はサーバーで行う。クライアントに計算させると、
+   * 設定を変えても古いバンドルだけ挙動が違う、という食い違いが起きる。
+   */
+  nextAvailableAt: string | undefined
+  /** このスポットのクイズに正解済みか（FR-04） */
+  quizCleared: boolean
+}
+
+/**
+ * 進み具合（FR-03・FR-04）。
+ *
+ * ★ **起動時に1回引くためにある。** 手元に前回時刻が無いと、再読み込み後は
+ * チェックイン済みの場所でもボタンが押せる状態に見え、**押してから 409 で
+ * 断られる**。データストアは 1 回の query でこの利用者ぶんを全部返せる。
+ */
+export interface ProgressResponse {
+  spots: SpotProgressEntry[]
+  /** 上限で打ち切られたか */
+  truncated: boolean
 }
 
 /* ------------------------------------------------------------------ *
