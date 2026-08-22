@@ -444,3 +444,73 @@ export function composeAvatarArt(input: ComposeAvatarInput): string[] {
 
   return grid.map((value) => value.join(''))
 }
+
+/* ------------------------------------------------------------------ *
+ * 向き
+ * ------------------------------------------------------------------ */
+
+export type AvatarFacing = 'front' | 'back' | 'left' | 'right'
+
+/** 顔として扱う点（肌・頬・目） */
+const FACE_CHARS = new Set(['s', 'S', 'p', 'k'])
+
+/**
+ * 顔がどこまでか（首より上の行数）。
+ *
+ * ★ 行番号を定数で書かない。髪型や服を足したときに**顔の位置だけ古くなる**。
+ * 服が始まる行より上を顔として扱う（腕や手の肌はそれより下にある）。
+ */
+function headBottom(rows: readonly string[]): number {
+  const index = rows.findIndex((row) => row.includes('c') || row.includes('C'))
+  return index < 0 ? rows.length : index
+}
+
+/**
+ * 向きを絵に反映する。
+ *
+ * ★ **方向ごとの絵を別に持たない。** 16×22 を手で描くと、髪型6 × 服6 × 装備10 と
+ * 掛かって現実的な枚数にならない（#66 でも「4方向×4コマは数百枚」と見積もっている）。
+ * 正面の絵を加工する。
+ *
+ * ★ 背面は**顔を消して髪で埋めるだけ**にする。輪郭は変えない。後ろ姿だと分かるのは
+ * 「目が無いこと」であり、輪郭を描き替える必要はない。
+ *
+ * ★ 横向きは目と頬を1点ずらす。**肌の上にだけ動かす**（輪郭に乗ると顔が壊れる）。
+ * 顔ごと横を向かせるには目・鼻・髪の形を作り直すことになり、加工では届かない。
+ */
+export function faceArt(rows: readonly string[], facing: AvatarFacing): string[] {
+  if (facing === 'front') return [...rows]
+
+  const bottom = headBottom(rows)
+  const shift = facing === 'left' ? -1 : facing === 'right' ? 1 : 0
+
+  return rows.map((row, y) => {
+    if (y >= bottom) return row
+
+    if (facing === 'back') {
+      // 顔を髪で埋める。影の点は影のまま置き換える（面が平らになると頭が板に見える）
+      return [...row]
+        .map((ch) => (ch === 'S' ? 'H' : FACE_CHARS.has(ch) ? 'h' : ch))
+        .join('')
+    }
+
+    const before = [...row]
+    const after = [...row]
+
+    for (let x = 0; x < before.length; x += 1) {
+      const ch = before[x]
+      if (ch !== 'k' && ch !== 'p') continue
+
+      const to = x + shift
+      const target = before[to]
+      if (target === undefined || !FACE_CHARS.has(target)) continue
+
+      after[to] = ch
+      // 後ろから同じものが来るなら空けない（`pp` のような並びが切れる）
+      const behind = before[x - shift]
+      if (behind !== 'k' && behind !== 'p') after[x] = 's'
+    }
+
+    return after.join('')
+  })
+}

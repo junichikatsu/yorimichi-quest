@@ -8,6 +8,7 @@ import {
   AVATAR_EQUIP,
   AVATAR_HAIR,
   composeAvatarArt,
+  faceArt,
 } from './avatar-art.js'
 
 /**
@@ -82,5 +83,68 @@ describe('キャラクターのドット絵', () => {
   it('知らない装備は無視する（落ちない）', () => {
     const art = composeAvatarArt({ hair: 0, cloth: 0, equip: ['no-such-item'] })
     expect(art.length).toBe(AVATAR_ART_HEIGHT)
+  })
+
+  /*
+   * 向き（#73 が持ち込んだ機能をドット絵の側で受け直したもの）。
+   *
+   * ★ 方向ごとの絵を持たず正面を加工するので、**加工で顔が壊れないこと**を
+   * 固定する必要がある。目が輪郭の上に乗ると、その1点で別人に見える。
+   */
+  describe('向き', () => {
+    const front = composeAvatarArt({ hair: 0, cloth: 0 })
+
+    it('どの向きでも寸法が変わらない', () => {
+      for (const facing of ['front', 'back', 'left', 'right'] as const) {
+        const art = faceArt(front, facing)
+        expect(art.length, facing).toBe(AVATAR_ART_HEIGHT)
+        for (const row of art) expect(row.length, facing).toBe(AVATAR_ART_WIDTH)
+      }
+    })
+
+    it('正面は加工しない', () => {
+      expect(faceArt(front, 'front')).toEqual(front)
+    })
+
+    it('★ 後ろ姿は目を出さない（後ろ姿だと分かるのはそこだけ）', () => {
+      const back = faceArt(front, 'back').join('')
+      expect(back).not.toContain('k')
+      expect(back).not.toContain('p')
+      expect(back).toContain('h')
+    })
+
+    it('★ 横向きは目を1点だけ動かす（顔ごと横は向かない）', () => {
+      const eyesOf = (rows: readonly string[]): number[] =>
+        rows.flatMap((row, y) => [...row].map((ch, x) => (ch === 'k' ? y * 100 + x : -1)))
+          .filter((value) => value >= 0)
+
+      const base = eyesOf(front)
+      const right = eyesOf(faceArt(front, 'right'))
+      const left = eyesOf(faceArt(front, 'left'))
+
+      expect(base.length).toBeGreaterThan(0)
+      expect(right.length).toBe(base.length)
+      expect(left.length).toBe(base.length)
+      expect(right).not.toEqual(base)
+      expect(left).not.toEqual(base)
+    })
+
+    it('★ どの向きでも輪郭を壊さない（顔の点が線に乗らない）', () => {
+      const outlines = (rows: readonly string[]): number =>
+        rows.join('').split('').filter((ch) => ch === 'o').length
+
+      for (const facing of ['back', 'left', 'right'] as const) {
+        expect(outlines(faceArt(front, facing)), facing).toBe(outlines(front))
+      }
+    })
+
+    it('服より下（腕や手の肌）は向きで変えない', () => {
+      const clothRow = front.findIndex((row) => row.includes('c'))
+      const back = faceArt(front, 'back')
+
+      for (let y = clothRow; y < front.length; y += 1) {
+        expect(back[y], `${y} 行目`).toBe(front[y])
+      }
+    })
   })
 })

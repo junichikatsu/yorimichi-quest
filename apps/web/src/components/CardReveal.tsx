@@ -1,5 +1,6 @@
 import { CARD_KIND_LABELS, type CardView } from '@imanouchi/shared'
 import { useEffect } from 'react'
+import { notifyCardAcquired } from '../feedback.js'
 import { CardArt, cardColorStyle } from './CardArt.js'
 
 interface CardRevealProps {
@@ -27,6 +28,17 @@ const VISIBLE_MS = 3200
  * CDN が使えず、Lambda の応答上限 6MB に対して余裕は減っている）。
  */
 export function CardReveal({ cards, onDone }: CardRevealProps): React.JSX.Element {
+  /*
+   * ★ 音は**出た瞬間**に鳴らす（獲得した瞬間ではない）。
+   * この演出はポイントの演出が消えてから出るので、獲得時に鳴らすと
+   * 何も出ていないところで鳴り、返る動きと音がずれる。
+   *
+   * ★ 音を出せない状態なら黙って通り過ぎる（`feedback.ts` が受け止める）。
+   */
+  useEffect(() => {
+    notifyCardAcquired()
+  }, [cards])
+
   useEffect(() => {
     const timer = setTimeout(onDone, VISIBLE_MS)
     return () => clearTimeout(timer)

@@ -131,6 +131,37 @@ describe('styles.css', () => {
   })
 
   /*
+   * 状態バーの折り返し。
+   *
+   * ★ 右側に置くものは増える（位置情報・ポイント・有事モードの切替…）。
+   * 折り返せないと、狭い画面で**左のブランドが潰されて縦に伸びる**。
+   * 日本語はどこでも改行できるため、幅が足りると 1 文字ずつ積まれる。
+   * **実際にそうなった**（スマホで状態バーが画面の1/4を占めた）。
+   */
+  it('★ 状態バーは折り返す（右の要素が増えても左を潰さない）', () => {
+    expect(ruleBlock(css, '.statusbar')).toContain('flex-wrap: wrap')
+  })
+
+  it('★ 状態バーの文字は折り返さずに切り詰める（1文字ずつ縦に積まれない）', () => {
+    for (const selector of ['.statusbar__title', '.statusbar__sub']) {
+      const block = ruleBlock(css, selector)
+      expect(block, `${selector} が折り返す`).toContain('white-space: nowrap')
+      expect(block, `${selector} に省略記号が無い`).toContain('text-overflow: ellipsis')
+    }
+  })
+
+  it('★ 名前の入れ物は最小内容幅より縮められる（日本語の最小幅は1文字）', () => {
+    // min-width: 0 が無いと、幅1文字まで縮んでから縦に伸び続ける
+    expect(ruleBlock(css, '.statusbar__names')).toContain('min-width: 0')
+  })
+
+  it('状態バーのチップは折り返さない', () => {
+    for (const selector of ['.statusbar__geo', '.statusbar__mode', '.statusbar__points']) {
+      expect(ruleBlock(css, selector), selector).toContain('white-space: nowrap')
+    }
+  })
+
+  /*
    * 有事モード（FR-08-7）。
    *
    * ★ 「平時のプレイ経験だけで有事モードを操作できる」ことが要件である。
@@ -187,6 +218,133 @@ describe('styles.css', () => {
         'image-rendering: pixelated',
       )
     }
+  })
+
+  /*
+   * 到着の知らせと出来事の演出（FR-02-10・FR-03-2）。
+   *
+   * ★ 覆い（FR-02-9）との関係が要点である。**覆っている最中に前へ出る演出は、
+   * それ自体が歩きスマホを作る。** 1行で壊れるので固定する。
+   */
+  it('★ 出来事の演出は下の操作を通す（地図が触れなくなると歩けない）', () => {
+    expect(ruleBlock(css, '.flash')).toContain('pointer-events: none')
+  })
+
+  it('★ 演出とまとめは歩行中の覆いより後ろに出る', () => {
+    const guard = zIndexOf(css, '.walkguard')
+
+    for (const selector of ['.flash', '.walkdigest', '.reveal']) {
+      expect(guard, `${selector} が覆いより前に出る`).toBeGreaterThan(zIndexOf(css, selector))
+    }
+  })
+
+  /*
+   * 画面に重ねる板（FR-02-2・FR-04-1）。
+   *
+   * ★ サイドバーの中に置くと、スマホでは地図の下に積まれて画面の外にある。
+   * 重ねる以上、**上に何が乗るか**を決めておかないと、演出に隠れる／
+   * 逆に演出を隠すことになる。
+   */
+  it('★ 重ねる板は演出より後ろ、トーストより前に出る', () => {
+    for (const selector of ['.sheet--spot', '.sheet--quiz']) {
+      const sheet = zIndexOf(css, selector)
+
+      // 点数とカードの演出は板の上に出る（板の裏で祝われては伝わらない）
+      expect(sheet, `${selector} が点数の演出を隠す`).toBeLessThan(zIndexOf(css, '.burst'))
+      expect(sheet, `${selector} がカードの演出を隠す`).toBeLessThan(zIndexOf(css, '.reveal'))
+      // 失敗の知らせが板の裏に隠れてはいけない
+      expect(sheet, `${selector} が知らせを隠す`).toBeLessThan(zIndexOf(css, '.toast'))
+    }
+
+    // クイズはスポット詳細の上に出る（詳細から開くもの）
+    expect(zIndexOf(css, '.sheet--spot')).toBeLessThan(zIndexOf(css, '.sheet--quiz'))
+  })
+
+  it('★ スポット詳細は地図を隠さない（暗幕を敷かず、外側は地図に触れる）', () => {
+    /*
+     * 詳細を見るために地図を隠すのは、地図を見に来た人の目的を奪う。
+     * 選んだ場所がどこなのかを見せたまま出す。
+     */
+    const block = ruleBlock(css, '.sheet--spot')
+
+    expect(block, '外側が地図に触れない').toContain('pointer-events: none')
+    expect(block, '暗幕を敷いている').not.toContain('background:')
+  })
+
+  it('★ クイズは暗幕で受け止める（解説を読む前に外を触って消させない）', () => {
+    expect(ruleBlock(css, '.sheet--quiz')).toContain('background:')
+  })
+
+  /*
+   * ハザード（#72）。
+   *
+   * ★ 知らせであって警報ではない。地図の操作を奪ってはいけないし、
+   * 覆っている最中に前へ出てもいけない。
+   */
+  it('★ ハザードの知らせは地図の操作を通す', () => {
+    expect(ruleBlock(css, '.hazardnow')).toContain('pointer-events: none')
+  })
+
+  it('★ ハザードの知らせは歩行中の覆いより後ろに出る', () => {
+    expect(zIndexOf(css, '.hazardnow')).toBeLessThan(zIndexOf(css, '.walkguard'))
+  })
+
+  it('★ 演出が重なったときは強いものが前に出る（点数 → 帯 → カード）', () => {
+    /*
+     * 同時に出さないのが原則（画面側で順に出している）。それでも重なったときに
+     * **どちらも読めない**事故を避けるため、順番は CSS の側で決めておく。
+     * カードの演出は触って閉じる面なので、いちばん前に置く。
+     */
+    expect(zIndexOf(css, '.burst')).toBeLessThan(zIndexOf(css, '.flash'))
+    expect(zIndexOf(css, '.flash')).toBeLessThan(zIndexOf(css, '.reveal'))
+  })
+
+  it('★ 地図に重ねる要素は transform を使わない（位置は Mapbox が持っている）', () => {
+    /*
+     * マーカーの位置は Mapbox が transform で決めている。CSS 側で transform を
+     * 宣言すると**地図から外れた場所に描かれる**（拡大縮小でずれていく）。
+     * 演出は box-shadow と opacity で表す。
+     */
+    for (const selector of ['.marker--ready', '.mapcheckin']) {
+      expect(ruleBlock(css, selector), `${selector} が transform を宣言している`).not.toContain(
+        'transform:',
+      )
+    }
+  })
+
+  it('★ 動きを減らす設定で、すべての演出の動きが止まる（NFR-08）', () => {
+    const block = mediaBlock(css, '@media (prefers-reduced-motion: reduce)')
+
+    for (const selector of [
+      '.burst',
+      '.marker--ready',
+      '.mapcheckin',
+      '.flash',
+      '.walkdigest',
+      '.sheet__body',
+      '.quiz__stamp',
+      '.reveal__flip',
+      '.statusbar__points--bumped',
+      '.sidetabs__new',
+      '.exploration__bar-fill',
+    ]) {
+      expect(block, `${selector} の動きが落ちない`).toContain(selector)
+    }
+  })
+
+  it('★ 動きを落とす指定は1か所にまとめる（足したときの落とし忘れを防ぐ）', () => {
+    const blocks = css.match(/@media \(prefers-reduced-motion/g) ?? []
+
+    expect(blocks).toHaveLength(1)
+  })
+
+  it('★ 押せるマーカーは動きを止めても分かる（点滅が消えても輪が残る）', () => {
+    const block = mediaBlock(css, '@media (prefers-reduced-motion: reduce)')
+    const rule = ruleBlock(block, '.marker--ready')
+
+    // 動きだけを落とす。出ること自体は変えない
+    expect(rule).toContain('animation: none')
+    expect(rule).toContain('box-shadow')
   })
 
   it('有事モードでも文字色と背景を明示する（親の配色が透ける事故を防ぐ）', () => {

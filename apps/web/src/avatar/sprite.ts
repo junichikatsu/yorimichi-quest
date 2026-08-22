@@ -3,11 +3,13 @@ import {
   AVATAR_ART_WIDTH,
   CLOTH_COLORS,
   composeAvatarArt,
+  faceArt,
   HAIR_COLORS,
   ITEM_COLORS,
   isItemKey,
   SKIN_COLORS,
   type Avatar,
+  type AvatarFacing,
 } from '@imanouchi/shared'
 
 /**
@@ -35,6 +37,19 @@ const EYE_WHITE = '#fbf7f4'
 /** 瞳 */
 const EYE_DARK = '#241f27'
 
+export type Direction = 'down' | 'up' | 'left' | 'right'
+
+/**
+ * 状態（#72・#73）。
+ *
+ * ★ 浸水想定区域の中を通ったことを見た目で示す。**加点も減点もしない。**
+ * 「濡れると何かが得られる」形にしてはいけない（G-2・FR-14-10）。
+ *
+ * ★ 表し方は控えめにする。浸水想定区域には人が住み、店があり、学校がある。
+ * 被災の絵に見える表現にしてはいけない。**足元が濡れている**ところまでに留める。
+ */
+export type Condition = 'dry' | 'wet'
+
 export interface SpriteOptions {
   avatar: Avatar
   /**
@@ -44,7 +59,33 @@ export interface SpriteOptions {
    * 装備を選んで保存する機能そのものは別（#66 の B）。
    */
   equip?: readonly string[]
+  /** 歩行の何コマ目か。`moving` が偽なら見ない */
+  frame?: number
+  moving?: boolean
+  direction?: Direction
+  /** 状態。省略すると乾いている */
+  condition?: Condition
 }
+
+/** 向きの呼び名を絵の加工に渡す形へ直す */
+const FACING: Record<Direction, AvatarFacing> = {
+  down: 'front',
+  up: 'back',
+  left: 'left',
+  right: 'right',
+}
+
+/**
+ * 歩いているときの上下動（点）。
+ *
+ * ★ **1点しか動かさない。** 全体で 22 点しかないので、2点動かすと歩くより
+ * 跳ねて見える。4コマのうち2回上がるので、1歩に1回弾む形になる。
+ *
+ * ★ 脚を交互に踏み出す動きは持たない。脚は左右 3 点ずつしかなく、
+ * **踏み出しを描くと脚が折れたように見える**（ベクタで描いていたときは
+ * 脚を伸縮させていたが、ドット絵では表せない）。
+ */
+const BOB = [0, -1, 0, -1] as const
 
 function shade(hex: string, amount: number): string {
   const value = Number.parseInt(hex.slice(1), 16)
@@ -81,6 +122,34 @@ function equipColor(equip: readonly string[] | undefined): string {
   return key && isItemKey(key) ? ITEM_COLORS[key] : '#a9a2b5'
 }
 
+/**
+ * 足元の水（#72）。
+ *
+ * ★ 輪郭を描かない。線を足すと「装備」に見えてしまう。水は形ではなく
+ * **色の重なり**として置く。
+ *
+ * ★ 水面の高さは足首までにする。膝まで塗ると被災の絵になる。
+ */
+function paintWet(
+  context: CanvasRenderingContext2D,
+  size: number,
+  dy: number,
+): void {
+  const surface = AVATAR_ART_HEIGHT - 3 + dy
+
+  context.fillStyle = 'rgba(70, 130, 195, 0.42)'
+  context.fillRect(0, Math.round(surface * size), Math.round(AVATAR_ART_WIDTH * size), Math.round(3 * size))
+
+  // 水面の線。ここが水位だと分かるように1点ぶんだけ引く
+  context.fillStyle = 'rgba(150, 205, 240, 0.9)'
+  context.fillRect(
+    Math.round(2 * size),
+    Math.round(surface * size),
+    Math.round((AVATAR_ART_WIDTH - 4) * size),
+    Math.max(1, Math.round(size * 0.5)),
+  )
+}
+
 export function drawSprite(
   target: HTMLCanvasElement,
   options: SpriteOptions,
@@ -111,19 +180,27 @@ export function drawSprite(
     k: EYE_DARK,
   }
 
-  const art = composeAvatarArt({
-    hair: avatar.hair,
-    cloth: avatar.cloth,
-    ...(options.equip ? { equip: options.equip } : {}),
-  })
+  const art = faceArt(
+    composeAvatarArt({
+      hair: avatar.hair,
+      cloth: avatar.cloth,
+      ...(options.equip ? { equip: options.equip } : {}),
+    }),
+    FACING[options.direction ?? 'down'],
+  )
+
+  const dy = options.moving ? (BOB[(options.frame ?? 0) % BOB.length] ?? 0) : 0
 
   const size = target.width / SPRITE_WIDTH || scale
   context.imageSmoothingEnabled = false
   context.clearRect(0, 0, target.width, target.height)
 
-  for (const [y, row] of art.entries()) {
-    for (let x = 0; x < row.length; x += 1) {
-      const ch = row[x]
+  for (const [row, value] of art.entries()) {
+    const y = row + dy
+    if (y < 0) continue
+
+    for (let x = 0; x < value.length; x += 1) {
+      const ch = value[x]
       if (ch === undefined || ch === '.') continue
 
       const fill = palette[ch]
@@ -139,4 +216,7 @@ export function drawSprite(
       context.fillRect(left, top, Math.round((x + 1) * size) - left, Math.round((y + 1) * size) - top)
     }
   }
+
+  // ★ 水は最後に重ねる。脚の上に来ないと「水に入っている」に見えない
+  if (options.condition === 'wet') paintWet(context, size, dy)
 }

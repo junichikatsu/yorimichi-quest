@@ -1,5 +1,6 @@
 import type { GeolocationStatus } from '../hooks/useGeolocation.js'
 import { equippedKeys, type UserView } from '@imanouchi/shared'
+import { useEffect, useRef, useState } from 'react'
 import { AvatarCanvas } from './AvatarCanvas.js'
 
 interface StatusBarProps {
@@ -25,6 +26,9 @@ interface StatusBarProps {
   onToggleEmergency: () => void
 }
 
+/** 跳ねている時間。CSS のアニメーションと同じ長さにそろえる */
+const POINTS_BUMP_MS = 700
+
 const GEO_LABELS: Record<GeolocationStatus, string> = {
   idle: '位置情報 未使用',
   watching: '位置情報 ON',
@@ -46,6 +50,28 @@ export function StatusBar({
   emergency,
   onToggleEmergency,
 }: StatusBarProps): React.JSX.Element {
+  /*
+   * 増えた瞬間だけ跳ねさせる（FR-03-2）。
+   *
+   * ★ 演出は地図の上に出るのに、累計はここにある。数字が静かに置き換わるだけだと、
+   * **増えたことに気づかない**。減ることは無いので、増えたときだけ動かす。
+   *
+   * ★ 動きは CSS 側で `prefers-reduced-motion` に従って落とす（NFR-08）。
+   * 印を出すこと自体は変えない。
+   */
+  const [bumped, setBumped] = useState(false)
+  const previousPointsRef = useRef(totalPoints)
+
+  useEffect(() => {
+    const previous = previousPointsRef.current
+    previousPointsRef.current = totalPoints
+    if (previous === undefined || totalPoints === undefined || totalPoints <= previous) return
+
+    setBumped(true)
+    const timer = setTimeout(() => setBumped(false), POINTS_BUMP_MS)
+    return () => clearTimeout(timer)
+  }, [totalPoints])
+
   return (
     <header className="statusbar">
       <div className="statusbar__brand">
@@ -66,14 +92,19 @@ export function StatusBar({
         ) : (
           <span className="statusbar__avatar statusbar__avatar--blank" aria-hidden="true" />
         )}
-        <div>
+        {/*
+          ★ クラスを付けて min-width: 0 を当てている。
+          これが無いと、幅が足りないときに**1文字ずつ改行して縦に伸びる**
+          （日本語はどこでも改行できるため、最小幅が1文字になる）。
+        */}
+        <div className="statusbar__names">
           <p className="statusbar__title">イマノウチ</p>
           <p className="statusbar__sub">
             {areaName} ・ {spotCount}件
           </p>
         </div>
         {/* 貯まっていることが平時は常に見えるようにする（FR-03-2 の付与が実感になる） */}
-        <div className="statusbar__points">
+        <div className={bumped ? 'statusbar__points statusbar__points--bumped' : 'statusbar__points'}>
           {totalPoints !== undefined && (
             <>
               <span className="statusbar__points-value">{totalPoints}</span>

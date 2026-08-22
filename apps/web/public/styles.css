@@ -19,6 +19,9 @@
   --alert: #c2410c;
   --alert-ink: #f7f3ef;
 
+  /* 防災クイズの色（FR-04）。チェックイン（--accent）と別に持つ */
+  --quiz: #2d6ca2;
+
   --shelter: #2f6f3e;
   --aed: #c0392b;
   --accessible_toilet: #2d6ca2;
@@ -155,11 +158,24 @@ button {
   flex-direction: column;
 }
 
+/*
+ * 状態バー。
+ *
+ * ★ 折り返せるようにしておく（`flex-wrap`）。
+ *
+ * 右側に置くものは増える（位置情報・有事モードの切替…）。狭い画面で入り切らないとき、
+ * 折り返せないと**左のブランドが潰されて縦に伸びる**。実際にそうなった：
+ * ポイント（FR-03-2）と有事モード（FR-08-1）が増えた結果、スマホで
+ * 「イ／マ／ノ／ウ／チ」と1文字ずつ改行され、状態バーが画面の1/4を占めた。
+ *
+ * 潰れるより、2段になるほうがよい。
+ */
 .statusbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding: 0.6rem 0.9rem;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
@@ -169,6 +185,18 @@ button {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  /* 余った幅を取る。縮むのは名前だけに限る（下の nowrap で切り詰める） */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * ★ 名前の入れ物には min-width: 0 が必要である。
+ *
+ * フレックスの子は既定で「最小内容幅」より縮まない。**日本語の最小内容幅は
+ * 1文字**なので、これが無いと幅1文字まで縮んでから縦に伸び続ける。
+ */
+.statusbar__names {
   min-width: 0;
 }
 
@@ -185,16 +213,28 @@ button {
   display: inline-block;
 }
 
+/*
+ * ★ 折り返さずに切り詰める。
+ *
+ * 日本語はどこでも改行できるため、幅が足りないと 1 文字ずつ縦に積まれる。
+ * 「…」で切れているほうが、縦に伸びて地図を押しのけるより読める。
+ */
 .statusbar__title {
   margin: 0;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__sub {
   margin: 0;
   font-size: 0.78rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statusbar__geo {
@@ -205,6 +245,8 @@ button {
   background: var(--chip);
   color: var(--muted);
   flex: none;
+  /* 「位置情報を利用できません」も1文字ずつ折り返させない */
+  white-space: nowrap;
 }
 
 .statusbar__geo--denied,
@@ -473,7 +515,12 @@ button {
   background: var(--ink);
   color: #fff;
   font-size: 0.85rem;
-  z-index: 10;
+  /*
+   * ★ 重ねて出すもの（スポット詳細・クイズ・演出・まとめ）より前に置く。
+   * ここが低いと、クイズを開いている間に出る「回答を送れませんでした」が
+   * **暗幕の裏に隠れて見えない**。歩行中の覆いよりは後ろに置く。
+   */
+  z-index: 55;
 }
 
 /* ---------------- 出典（FR-10-2） ---------------- */
@@ -585,7 +632,9 @@ button {
   overflow: hidden;
 }
 
+/* ★ 伸びるところを見せる。数値だけが差し替わると、進んだことに気づかない */
 .exploration__bar-fill {
+  transition: width 0.5s ease-out;
   height: 100%;
   background: var(--accent);
 }
@@ -763,6 +812,7 @@ button {
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .statusbar__mode--on {
@@ -1387,10 +1437,36 @@ button {
   align-items: baseline;
   gap: 0.15rem;
   margin-left: auto;
+  /* 数字は切り詰められない。名前より優先して幅を確保する */
+  flex: none;
+  white-space: nowrap;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background: var(--chip);
   color: var(--accent);
+}
+
+/*
+ * 増えた瞬間の跳ね（FR-03-2）。
+ *
+ * ★ 演出は地図の上に出るのに、累計はここにある。**増えたことがこの数字に
+ * つながっている**ことを一度だけ見せる。減ることは無いので増加時のみ。
+ */
+.statusbar__points--bumped {
+  animation: points-bump 0.7s ease-out;
+}
+
+@keyframes points-bump {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18);
+    background: #ece2f6;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .statusbar__points-value {
@@ -1481,10 +1557,41 @@ button {
   }
 }
 
-/* 動きを減らす設定を尊重する（NFR-08）。出ること自体は変えない */
+/*
+ * 動きを減らす設定を尊重する（NFR-08）。
+ *
+ * ★ **出ること自体は変えない。** 動きだけを落とす。点滅で示していたもの
+ * （押せるマーカーの輪）は、静止した形で残す。消すと「押せる場所」が分からなくなる。
+ *
+ * ★ ここ1か所にまとめる。演出ごとに散らすと、新しい演出を足したときに
+ * 落とし忘れる（検査でも1か所であることを固定している）。
+ */
 @media (prefers-reduced-motion: reduce) {
-  .burst {
+  .burst,
+  .mapcheckin,
+  .flash,
+  .walkdigest,
+  .sheet__body,
+  .quiz__stamp,
+  .reveal__flip,
+  .statusbar__points--bumped,
+  .sidetabs__new {
     animation: none;
+  }
+
+  /* 幅が伸びるのも動きである。落とす設定では即座に反映する */
+  .exploration__bar-fill {
+    transition: none;
+  }
+
+  .marker--ready {
+    animation: none;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 4px rgb(107 78 143 / 60%);
+  }
+
+  /* 裏面は見せない。返る動きが無いなら、裏のまま止まって見える */
+  .reveal__back {
+    display: none;
   }
 }
 
@@ -1978,17 +2085,6 @@ button {
   }
 }
 
-/* 動きを減らす設定では回さない。出ること自体は変えない（NFR-08） */
-@media (prefers-reduced-motion: reduce) {
-  .reveal__flip {
-    animation: none;
-  }
-
-  .reveal__back {
-    display: none;
-  }
-}
-
 /*
  * 開発用ログインの入口（ローカル確認専用）。
  *
@@ -1998,6 +2094,36 @@ button {
 .start__button--dev {
   border-style: dashed;
   color: var(--muted);
+}
+
+/*
+ * 新しく手に入れたカードの印（FR-14-8）。
+ *
+ * ★ 獲得の演出は数秒で消える。**消えたあとの行き先**をタブに残しておく。
+ * 獲得時は枚数の表示を取り直すために消しているので、これが無いと
+ * 「手に入れたのに、むしろ数字が消えた」ことになる。
+ */
+.sidetabs__new {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: newcards-in 0.3s ease-out;
+}
+
+@keyframes newcards-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /*
@@ -2055,3 +2181,615 @@ button {
   opacity: 0.9;
 }
 
+
+/* ---------------- 到着の知らせと出来事の演出（FR-02-10・FR-03-2） ---------------- */
+
+/*
+ * チェックインできるスポットのマーカー。
+ *
+ * ★ `transform` を使わない。マーカーの位置は Mapbox が transform で決めており、
+ * ここで上書きすると**ピンが地図から外れた場所に描かれる**。輪（box-shadow）で示す。
+ *
+ * ★ 光らせるのは**押せるときだけ**である（判定は checkin-view.ts の1か所）。
+ * 遠い・時間をおくといった押せない理由は文言で出しているので、
+ * 「光っているのに押せない」場所を作らない。
+ */
+.marker--ready {
+  animation: marker-ready 1.8s ease-in-out infinite;
+}
+
+@keyframes marker-ready {
+  0% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 0 rgb(107 78 143 / 60%);
+  }
+  70% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 12px rgb(107 78 143 / 0%);
+  }
+  100% {
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%), 0 0 0 0 rgb(107 78 143 / 0%);
+  }
+}
+
+/*
+ * 地図の上に出すチェックインボタン（FR-03-1）。
+ *
+ * ★ スポットをタップして詳細を開いてから押す、という経路だけでは
+ * 「タップすれば何かある」ことが画面から分からない。着いたら、押せるボタンを
+ * その場所の上に出す。
+ *
+ * ★ ここも transform を使わない（位置は Mapbox が持っている）。
+ */
+.mapcheckin {
+  z-index: 3;
+  /* 歩いてきた人が片手で押せる大きさ（NFR-08） */
+  min-height: 40px;
+  padding: 0.4rem 0.9rem;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(36 31 39 / 40%);
+  animation: mapcheckin-in 0.24s ease-out;
+}
+
+@keyframes mapcheckin-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 一覧でも「いま押せる」ことを出す。地図が使えない環境でも分かるように */
+.spotlist__item--ready {
+  border-color: var(--accent);
+  background: #f6f2fa;
+}
+
+.spotlist__ready {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/*
+ * 出来事の演出（FR-03-2）。
+ *
+ * ★ チェックインの演出（`.burst`）と同じ約束を守る。数秒で自分から消え、
+ * 下の地図には指が届く（`pointer-events: none`）。閉じる操作を要求しない。
+ */
+.flash {
+  position: fixed;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 4.2rem);
+  transform: translateX(-50%);
+  /*
+   * ★ カードの演出（`.reveal`）より後ろに置く。強い演出が出ている間に
+   * 帯を重ねない（重なるとどちらも読まれない）。並びは
+   * burst 30 < flash 35 < reveal 40 < walkdigest 50 < walkguard 60。
+   */
+  z-index: 35;
+  pointer-events: none;
+  max-width: min(92vw, 24rem);
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 8px 24px rgb(36 31 39 / 30%);
+  animation: flash-in 0.24s ease-out;
+}
+
+/* 種類ごとに色を変える。ただし色だけに意味を持たせない（文言で書く・NFR-08） */
+.flash--arrival {
+  background: var(--accent);
+}
+
+.flash--area {
+  background: var(--shelter);
+}
+
+.flash--quiz {
+  background: var(--quiz);
+}
+
+/* ★ ハザードは祝わない。他と同じ明るい色にしない（#72・G-2） */
+.flash--hazard {
+  background: #3c4a63;
+}
+
+.flash__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.flash__detail {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+}
+
+@keyframes flash-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/*
+ * 覆っている間に着いたことの表示（FR-02-9・FR-02-10）。
+ *
+ * ★ ここに「開く」導線を置かない。覆いを外させたら歩きスマホである（NFR-14）。
+ */
+.walkguard__arrival {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem;
+  border: 2px solid #d8cf7a;
+  border-radius: 12px;
+  background: #2a2620;
+  text-align: left;
+}
+
+.walkguard__arrival-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f6efc9;
+}
+
+.walkguard__arrival-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: #f5f2ef;
+}
+
+.walkguard__arrival-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: #cfc8b8;
+}
+
+/*
+ * 覆いが外れたときのまとめ（FR-02-9）。
+ *
+ * ★ 自動で消さない。**見ていなかった間のこと**を渡すためのものなので、
+ * 読む前に消えてはいけない。演出（`.flash`）とは役割が違う。
+ *
+ * ★ 出典表示に重なることがあるが、これは覆いと同じ扱いである。歩いたあとに
+ * 一度だけ出て、閉じれば戻る（常時居座るジョイスティックとは別の話）。
+ */
+.walkdigest {
+  position: fixed;
+  left: 50%;
+  bottom: 0.8rem;
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(92vw, 24rem);
+  max-height: 55dvh;
+  overflow-y: auto;
+  padding: 0.9rem;
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgb(36 31 39 / 30%);
+  animation: digest-in 0.26s ease-out;
+}
+
+@keyframes digest-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.8rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.walkdigest__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.walkdigest__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.walkdigest__close {
+  flex: none;
+  min-height: 40px;
+  min-width: 40px;
+}
+
+.walkdigest__group {
+  margin-top: 0.6rem;
+}
+
+.walkdigest__group-title {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.walkdigest__list {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.walkdigest__list--plain {
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.9rem;
+}
+
+/* 立ち止まって開いた直後なので、ここから記録へ進める（止まっている前提の導線） */
+.walkdigest__spot {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--chip);
+  text-align: left;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walkdigest__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---------------- 防災クイズの主張（FR-04・G-8） ---------------- */
+
+/*
+ * ★ クイズを控えめに置かない。**防災を学ぶことがこのサービスの目的**であり、
+ * チェックインの副産物ではない。ポイントの付くチェックインだけが目立つと、
+ * 点数を集める遊びに読み替えられる（G-2・G-8）。
+ */
+.quizcta {
+  margin-top: 0.2rem;
+  padding: 0.7rem;
+  border: 2px solid var(--quiz);
+  border-radius: 12px;
+  background: #f1f6fb;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.quizcta--done {
+  border-color: var(--line);
+  background: var(--chip);
+}
+
+.quizcta__head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.quizcta__badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--quiz);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quizcta__lead {
+  font-size: 0.85rem;
+}
+
+.quizcta__button {
+  width: 100%;
+}
+
+.quizcta__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.button--quiz {
+  min-height: 3rem;
+  border: 1px solid var(--quiz);
+  background: var(--quiz);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* ---------------- 画面に重ねる板（FR-02-2・FR-04-1） ---------------- */
+
+/*
+ * ★ サイドバーの中に置いてはいけないものを、ここに寄せる。**スマホでは
+ * サイドバーが地図の下に積まれるため、選んでも押しても画面の外に出る。**
+ * 実際にそうなった（ピンを押しても何も起きないように見え、チェックインしても
+ * 出題があることに気づけない）。
+ *
+ * ★ 別画面にはしない。重ねるだけなので地図は作り直されず、閉じれば中心と
+ * 縮尺はそのまま残る。
+ *
+ * ★ 下寄せにする。片手で持ったときに、押すものが親指の届く側へ来る（NFR-08）。
+ *
+ * ★ 重なりの順（この板より前に出るもの）:
+ * スポット 20 < クイズ 25 < 点数 30 < 帯 35 < カード 40 < まとめ 50 <
+ * トースト 55 < 覆い 60。**演出と失敗の知らせは板の上に出す。**
+ */
+.sheet {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.6rem;
+  padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
+  /* 裏の地図を引っぱらない。指が滑っても地図が動かないようにする */
+  overscroll-behavior: contain;
+}
+
+.sheet__body {
+  width: min(100%, 30rem);
+  /* 解説や属性が入って画面より高くなることがある。板の中でだけ送る */
+  max-height: 82dvh;
+  overflow-y: auto;
+  animation: sheet-in 0.26s ease-out;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * スポット詳細（FR-02-2）。
+ *
+ * ★ 暗幕を敷かない。**選んだ場所が地図のどこなのかを見せたまま**にする。
+ * 外側は地図に触れるので（`pointer-events: none`）、続けて別のピンを押せる。
+ * 詳細を見るために地図を隠すのは、地図を見に来た人の目的を奪う。
+ */
+.sheet--spot {
+  z-index: 20;
+  pointer-events: none;
+}
+
+.sheet--spot .sheet__body {
+  pointer-events: auto;
+  /* 地図が半分は見えるように抑える。押すものは下寄せなので届く */
+  max-height: 62dvh;
+}
+
+/*
+ * 地図の上に浮いていることが分かるように影を付ける（暗幕が無いため）。
+ *
+ * ★ 影は中の板に付ける。入れ物側に付けると角が丸まらず、四角い影が
+ * 丸めた角からはみ出す。
+ *
+ * ★ 開いている間は地図の帰属表示に重なる。**閉じれば戻る**（× と、外側の
+ * 地図を触ることで消える経路がある）。歩行中の覆いやカードの演出と同じ扱いで、
+ * 帰属表示そのものを消してはいない（FR-02-6）。
+ */
+.sheet--spot .panel {
+  box-shadow: 0 10px 24px rgb(36 31 39 / 30%);
+}
+
+/*
+ * 防災クイズ（FR-04-1）。
+ *
+ * ★ ここは暗幕を敷く。答えるための面であり、**解説を読み終える前に外を
+ * 触って消してしまわない**ようにする（閉じるのは × と「地図にもどる」だけ）。
+ */
+.sheet--quiz {
+  z-index: 25;
+  background: rgb(20 16 22 / 55%);
+}
+
+@media (min-width: 900px) {
+  /* 広い画面のクイズは中央。下寄せにする理由（親指）が無い */
+  .sheet--quiz {
+    align-items: center;
+  }
+
+  /*
+   * ★ スポット詳細はサイドバー（22rem）ぶん寄せて、地図の側の中央に出す。
+   * 画面の中央に出すと、詳細がサイドバーの上に半分乗って読みにくい。
+   */
+  .sheet--spot {
+    padding-right: calc(22rem + 0.6rem);
+    /*
+     * ★ フッタ（出典表示）の上へ逃がす。PC ではページが伸びないので、
+     * 画面下端に貼り付けると**出典表示を覆ったまま居座る**（ジョイスティックで
+     * 同じことが起きた）。実測でフッタは約80px。
+     */
+    padding-bottom: 6rem;
+  }
+}
+
+/* 読み終えたあとの出口。× は小さく上端にあるので、大きな出口を下にも置く */
+.quiz__back {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 0.6rem;
+}
+
+/* 結果の印。装飾であり、文言（正解です／おしい）だけでも成立させる */
+.quiz__stamp {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid currentColor;
+  font-size: 0.95rem;
+  line-height: 1;
+  vertical-align: -0.35rem;
+  animation: stamp-in 0.3s ease-out;
+}
+
+.quiz__result--correct .quiz__stamp {
+  color: var(--shelter);
+}
+
+.quiz__result--wrong .quiz__stamp {
+  color: var(--danger);
+}
+
+@keyframes stamp-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ---------------- ハザード（浸水想定・#72） ---------------- */
+
+/*
+ * いまいる場所の知らせ。
+ *
+ * ★ 地図の上に置く。**キャラクターの見た目だけに頼らない**（NFR-08）。
+ * 小さい画面や色覚によっては、濡れている絵だけでは伝わらない。
+ *
+ * ★ 操作を奪わない。地図には指が届く（`pointer-events: none`）。
+ * 閉じる操作も要求しない（区域を出れば消える）。
+ *
+ * ★ 危険色（赤）で塗らない。ここは「危ないと学ぶ」ための知らせであって、
+ * 警報ではない。警報に見せると、防災アプリが災害の発生を思わせる画面を
+ * 出すことになる（FR-08-9 と同じ配慮）。
+ */
+.hazardnow {
+  position: absolute;
+  left: 0.6rem;
+  top: 0.6rem;
+  z-index: 3;
+  pointer-events: none;
+  max-width: min(22rem, calc(100% - 5.5rem));
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid #3c4a63;
+  background: rgb(28 36 50 / 92%);
+  color: #f2f5fa;
+}
+
+.hazardnow__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.hazardnow__character {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #cfe0f2;
+}
+
+.hazardnow__note {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  /* 暗い背景なので明度を落としすぎない（NFR-08） */
+  color: #bcc9d9;
+}
+
+/* 確かめ方。書かなければ誰も気づかない */
+.hazardnow__hint {
+  margin: 0.25rem 0 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid #45536b;
+  font-size: 0.72rem;
+  color: #d7e2ef;
+}
+
+/* 見た目が未取得のときの現在地。濡れていることが点でも分かるように */
+.me--wet {
+  background: #4682c3;
+  box-shadow: 0 0 0 4px rgb(70 130 195 / 40%);
+}
+
+/*
+ * 覆いの上のキャラクター（#72）。
+ *
+ * ★ 情報を持たせない。歩いている姿と濡れているかだけを出す。
+ * 進捗をここに出すと、**画面を見に来る動機**になる（NFR-14）。
+ */
+.walkguard__avatar {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 0.6rem;
+}
+
+/*
+ * 覆っている間に通った浸水想定区域。
+ *
+ * ★ 到着の知らせより前に置く（危ないことのほうが先に読まれるべきである）。
+ * ★ ここにも「開く」導線は置かない。覆いを外させたら歩きスマホである。
+ */
+.walkguard__hazard {
+  margin: 0 0 0.7rem;
+  padding: 0.7rem;
+  border: 2px solid #6f88ad;
+  border-radius: 12px;
+  background: #1d2431;
+  text-align: left;
+}
+
+.walkguard__hazard-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #dbe7f5;
+}
+
+.walkguard__hazard-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: #f5f2ef;
+}
+
+.walkguard__hazard-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: #b9c4d3;
+}

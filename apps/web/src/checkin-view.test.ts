@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCheckinView, NO_PROGRESS, progressFromStored } from './checkin-view.js'
+import { buildCheckinView, isCheckinReady, NO_PROGRESS, progressFromStored } from './checkin-view.js'
 
 /**
  * ★ 見ているのは「押せないときに理由が出ること」である。
@@ -114,5 +114,22 @@ describe('progressFromStored', () => {
 
     expect(view['done']?.quizCleared).toBe(true)
     expect(view['todo']?.quizCleared).toBe(false)
+  })
+})
+
+describe('isCheckinReady', () => {
+  it('★ ボタンが押せるときだけ真になる（目立たせる条件を別に持たない）', () => {
+    const base = { radiusM: 100, progress: NO_PROGRESS, now: 1_000 }
+
+    expect(isCheckinReady({ ...base, distanceM: 50 })).toBe(true)
+    expect(isCheckinReady({ ...base, distanceM: 150 })).toBe(false)
+    expect(isCheckinReady({ ...base, distanceM: null })).toBe(false)
+    expect(
+      isCheckinReady({
+        ...base,
+        distanceM: 10,
+        progress: { nextAvailableAt: 2_000, visitCount: 1, quizCleared: false },
+      }),
+    ).toBe(false)
   })
 })
