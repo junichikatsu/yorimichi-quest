@@ -27,7 +27,26 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      ★ 読み込み中の表示を **HTML に直接置く。**
+
+      これが無いと、`app.js`（2.4MB）を取り終えて解釈するまで**真っ白な画面**に
+      なる。React はまだ動いていないので、画面側にどれだけ読み込み表示を書いても
+      ここには出ない。**起動が遅いときに一番不安になるのがこの区間である。**
+
+      ★ `createRoot().render()` は入れ物の中身を消してから描くので、React が
+      立ち上がった時点で自動的に消える。片付ける処理は要らない。
+
+      ★ 見た目は `styles.css` の `.boot` / `.spinner` をそのまま使う。CSS は
+      `<head>` で読み込むので、この時点でもう当たっている。**専用の style を
+      書かない**（同じ「待ち」が違う見た目になる）。
+    -->
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite" aria-busy="true">
+        <span class="spinner" aria-hidden="true"></span>
+        <p>読み込んでいます…</p>
+      </div>
+    </div>
     <noscript>イマノウチは JavaScript を有効にしてご利用ください。</noscript>
     <script src="app.js?v=__ASSET_VERSION__"></script>
   </body>

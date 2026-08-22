@@ -1592,34 +1592,39 @@ export function App(): React.JSX.Element {
   return (
     /* ★ 配色は差分だけを変える。要素の並びは平時と同じに保つ（FR-08-7） */
     <div className={emergency ? 'app app--emergency' : 'app'}>
-      <StatusBar
-        user={user}
-        areaName={config?.area.name ?? ''}
-        geoStatus={geo.status}
-        spotCount={sortedSpots.length}
-        onOpenCreator={() => setCreatorOpen((open) => !open)}
-        emergencyAvailable={config?.emergencyDemoEnabled ?? false}
-        emergency={emergency}
-        onToggleEmergency={handleToggleEmergency}
-      />
+      {/*
+        ★ 状態バーと、その上に重ねるハザードの知らせ（#72）。
+
+        ★ **行を増やさない。** 知らせを状態バーの下に別の帯として置くと、区域に
+        入るたびに画面がもう一段狭くなる（湾岸は広範囲が想定区域なので、ほぼ常時
+        狭くなる）。タイトルの場所へ**重ねて**出す。
+
+        ★ 地図の中には置かない。以前は地図の左上に出していたため、スマホでは
+        キャラクターや地図の文字と重なって読めなかった。
+
+        ★ 重ねても**押せるものは隠さない**。キャラクター（キャラメイクを開く）と
+        右側の操作（位置情報・有事モードの切替）は知らせより前に出してある
+        （CSS の `z-index`）。隠れるのはタイトルの文字だけである。
+      */}
+      <div className="statusbar-stack">
+        <StatusBar
+          user={user}
+          areaName={config?.area.name ?? ''}
+          geoStatus={geo.status}
+          spotCount={sortedSpots.length}
+          onOpenCreator={() => setCreatorOpen((open) => !open)}
+          emergencyAvailable={config?.emergencyDemoEnabled ?? false}
+          emergency={emergency}
+          onToggleEmergency={handleToggleEmergency}
+        />
+        {/*
+          ★ **有事モードでも出す。** 消すほうが危険である（キャラクターの演出だけを
+          止める）。
+        */}
+        <HazardNotice here={hazard.here} withCharacter={game.exploration} />
+      </div>
 
       {emergency && <EmergencyBanner onExit={handleToggleEmergency} />}
-
-      {/*
-        ★ いまいる場所のハザード（#72）。**状態バーの下、地図の外に出す。**
-
-        ★ 地図の中に置いてはいけない。以前は地図の左上に出していたため、スマホでは
-        キャラクターや地図の文字と重なって読めなかった。**地図の絵の上に情報を
-        積み上げない。**
-
-        ★ **有事モードでも出す。** 消すほうが危険である（キャラクターの演出だけを
-        止める）。
-
-        ★ ここに置けるのは、地図が入れ物の大きさの変化に追随するようにしたため
-        （`MapView` の `ResizeObserver`）。Mapbox は自分では追随せず、帯が出入りすると
-        キャンバスが古い大きさのまま歪む。
-      */}
-      <HazardNotice here={hazard.here} withCharacter={game.exploration} />
 
       {/*
         ★ おためしであることを隠さない。

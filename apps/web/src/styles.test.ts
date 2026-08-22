@@ -237,6 +237,34 @@ describe('styles.css', () => {
     ).toBe(true)
   })
 
+  /*
+   * ハザードの知らせを状態バーへ重ねる（#72）。
+   *
+   * ★ 行を増やさないために重ねている。**重ねた結果として押せるものを隠すと、
+   * キャラメイクも有事モードの切替も触れなくなる。** どちらも1行で壊れる。
+   */
+  it('★ 重ねても押せるものは隠さない（知らせより前に出す）', () => {
+    const notice = zIndexOf(css, '.hazardnow')
+
+    for (const selector of ['.statusbar__avatar', '.statusbar__right']) {
+      expect(
+        zIndexOf(css, selector),
+        `${selector} が知らせの裏に隠れる`,
+      ).toBeGreaterThan(notice)
+    }
+  })
+
+  it('★ 知らせは状態バーの高さを変えない（地図が跳ねる）', () => {
+    /*
+     * ★ 内訳が折り返すと状態バーが伸び、地図の入れ物の高さが変わる。
+     * 知らせのために画面が跳ねてはいけない。
+     */
+    expect(ruleBlock(css, '.hazardnow')).toContain('position: absolute')
+    expect(ruleBlock(css, '.hazardnow__parts'), '内訳が折り返す').toContain(
+      'text-overflow: ellipsis',
+    )
+  })
+
   it('★ ハザードの知らせは「想定」の印を持つ（実況として読ませない）', () => {
     /*
      * ★ 短い表示（区域の中に居るあいだ）でも落とさない。これが無いと、
