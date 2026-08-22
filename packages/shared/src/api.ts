@@ -134,6 +134,33 @@ export interface ClientConfigResponse {
    * URL が漏れたときにサーバー側から止められるようにするためのスイッチ。
    */
   debugMoveEnabled: boolean
+  /**
+   * 有事モードへの切替を出すか（FR-08-1）。
+   *
+   * ★ デモ用である。実利用者に見せると、実際に災害が起きたと誤認させうる。
+   * 画面側でも「デモ表示であり実際の災害情報ではない」ことを常時出す。
+   */
+  emergencyDemoEnabled: boolean
+  /**
+   * LINE ログインなしの「おためし」を許すか。
+   *
+   * ★ おためしは**読み取り専用**である。歩いた記録・同意・キャラクターは
+   * 端末の中だけに置き、サーバーへは送らない（送れない）。
+   */
+  guestModeEnabled: boolean
+}
+
+/**
+ * おためし利用の開始。
+ *
+ * ★ 本体（LoginResponse）と型を分ける。`registered` のような LINE ログイン固有の
+ * 項目が無く、返すユーザーは**データストアに存在しない**（その場で組み立てた値）。
+ */
+export interface GuestLoginResponse {
+  token: string
+  expiresAt: string
+  /** 画面に出すための仮の利用者。保存されていない */
+  user: UserView
 }
 
 /* ------------------------------------------------------------------ *

@@ -83,6 +83,10 @@ export interface AppConfig {
    * 止められる手段**を1つ持っておく。デプロイなしで切れる。
    */
   debugMoveEnabled: boolean
+  /** 有事モードへの切替を出すか（FR-08-1）。デモ用 */
+  emergencyDemoEnabled: boolean
+  /** LINE ログインなしの「おためし」を許すか。読み取り専用のセッションを発行する */
+  guestModeEnabled: boolean
 
   /* ---- 探索（FR-02-7） ---- */
   /** 記録の粒度（m 四方）。小さくすると軌跡は滑らかになるが書き込みが面積比で増える */
@@ -148,6 +152,10 @@ export function loadConfig(): AppConfig {
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),
+    // デモの導線に要るため既定で出す。実利用者へ配るときは false にする
+    emergencyDemoEnabled: readBoolean('ENABLE_EMERGENCY_DEMO', true),
+    // LINE を持っていない人にも動きを見せるために既定で許す。読み取りしかできない
+    guestModeEnabled: readBoolean('ENABLE_GUEST_MODE', true),
 
     exploreTileSizeM: readNumber('EXPLORE_TILE_SIZE_M', 50),
     // タイルより大きくする。同じ大きさだと隣り合うタイルの間に霧が残って軌跡が途切れる

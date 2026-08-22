@@ -15,6 +15,10 @@
   --chip: #f2eef3;
   --danger: #b03030;
 
+  /* 有事モードの配色（FR-08-2）。定義は :root に置き、適用は .app--emergency で行う */
+  --alert: #c2410c;
+  --alert-ink: #f7f3ef;
+
   --shelter: #2f6f3e;
   --aed: #c0392b;
   --accessible_toilet: #2d6ca2;
@@ -634,6 +638,290 @@ button {
   background: var(--chip);
   font-size: 0.74rem;
   font-weight: 600;
+}
+
+/* ---------------- 開き方の選択・おためし ---------------- */
+
+/*
+ * ★ LINE の外で開いた人に、いきなりリダイレクトを踏ませない画面。
+ * 「何のサービスか」を読んでから選べるようにする。
+ */
+.start {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.start__body {
+  width: 100%;
+  max-width: 26rem;
+}
+
+.start__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.start__lead {
+  margin: 0 0 1.2rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.start__message {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  background: var(--chip);
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.start__button {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.start__note {
+  margin: 0.35rem 0 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/*
+ * おためし中の帯。
+ *
+ * ★ 消せる作りにしない。記録がサーバーに残らないことを知らないまま
+ * 歩かせてはいけない。「記録を消してやり直す」だけを置く。
+ */
+.guestbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.9rem;
+  background: var(--chip);
+  border-bottom: 1px solid var(--line);
+}
+
+.guestbar__text {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.guestbar__reset {
+  flex: none;
+  min-height: 34px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+/* ---------------- 有事モード（FR-08） ---------------- */
+
+/*
+ * ★ 変えるのは配色だけである（FR-08-7）。
+ *
+ * 要素の並び・ピンの体系・タップで詳細が開く操作は平時と同じに保つ。
+ * 「平時のプレイ経験だけで有事モードを操作できる」ことが要件であり、
+ * ここでレイアウトを作り替えると、覚えた操作が通じなくなる。
+ */
+.app--emergency {
+  --bg: #1b1714;
+  --surface: #262019;
+  --ink: #f7f3ef;
+  --muted: #c4b8ac;
+  --line: #4a3f34;
+  --accent: var(--alert);
+  --chip: #342b23;
+
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* モード切替（FR-08-1）。デモ用なので文言に「デモ」を必ず入れる */
+.statusbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.statusbar__mode {
+  min-height: 34px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.statusbar__mode--on {
+  background: var(--alert);
+  border-color: var(--alert);
+  color: var(--alert-ink);
+}
+
+/*
+ * デモであることの常時表示。
+ *
+ * ★ 消してはいけない。防災アプリが災害の発生を思わせる画面を出すことは
+ * それ自体が危険であり、この画面は災害情報を**何も検知していない**（FR-08-6 は対象外）。
+ */
+.emergency-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--alert);
+  color: var(--alert-ink);
+}
+
+.emergency-banner__title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.emergency-banner__note {
+  margin: 0;
+  font-size: 0.76rem;
+  /* 警告色の上なので、明度を落としすぎない（NFR-08） */
+  color: #f3e3da;
+}
+
+.emergency-banner__exit {
+  flex: none;
+  min-height: 34px;
+  padding: 0.2rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--alert-ink);
+  background: transparent;
+  color: var(--alert-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ライフライン一覧（FR-08-3） */
+
+.lifeline {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+
+.lifeline__title {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.lifeline__warn {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--alert-ink);
+  background: var(--alert);
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+}
+
+.lifeline__filter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  /* タップ領域を確保する（NFR-08） */
+  min-height: 44px;
+}
+
+.lifeline__group {
+  margin-top: 0.7rem;
+}
+
+.lifeline__group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* ピンと同じ字と色を使う（FR-08-7：アイコン体系を共通化する） */
+.lifeline__glyph {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--marker-color, var(--accent));
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex: none;
+}
+
+.lifeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.lifeline__item {
+  width: 100%;
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.lifeline__item--selected {
+  border-color: var(--accent);
+}
+
+.lifeline__name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.lifeline__distance {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lifeline__attributes {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+/* 近くに無いことも有事には情報なので、空欄を隠さない */
+.lifeline__empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.lifeline__note {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  color: var(--muted);
 }
 
 /* ---------------- 散歩中（FR-02-9〜11） ---------------- */

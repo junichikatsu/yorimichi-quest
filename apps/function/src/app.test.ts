@@ -7,6 +7,7 @@ import type {
   LoginResponse,
   ExplorationResponse,
   ExplorationUpdateResponse,
+  GuestLoginResponse,
   MeResponse,
   PurgeResponse,
   SeedResponse,
@@ -85,6 +86,7 @@ beforeEach(() => {
   process.env['ADMIN_KEY'] = 'test-admin-key'
   process.env['RATE_LIMIT_PER_MINUTE'] = '200'
   process.env['AREA_ID'] = 'chiyoda-minato'
+  process.env['ENABLE_GUEST_MODE'] = 'true'
   setDataStoreClient(new FakeDataStoreClient())
   resetFakeDataStore()
   resetRateLimit()
@@ -200,6 +202,23 @@ describe('GET /v1/client-config', () => {
     const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
     expect(body.usesSampleData).toBe(true)
     expect(body.dataSources[0]?.title).toContain('架空')
+  })
+
+  /*
+   * 有事モードの切替（FR-08-1）。
+   *
+   * ★ サーバーから止められることが要件である。実利用者に見せると、実際に災害が
+   * 起きたと誤認させうる。画面側にハードコードしてはいけない。
+   */
+  it('有事モードの切替を出すかを配る', async () => {
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(body.emergencyDemoEnabled).toBe(true)
+  })
+
+  it('★ サーバー側で切替そのものを消せる', async () => {
+    process.env['ENABLE_EMERGENCY_DEMO'] = 'false'
+    const body = await json<ClientConfigResponse>(await app.request('/v1/client-config'))
+    expect(body.emergencyDemoEnabled).toBe(false)
   })
 })
 
@@ -781,5 +800,88 @@ describe('POST /v1/admin/seed', () => {
       headers: { ...auth(token), 'x-admin-key': 'test-admin-key' },
     })
     expect(response.status).toBe(200)
+  })
+})
+
+/**
+ * おためし利用（LINE ログインなし）。
+ *
+ * ★ 守りたいのは「読めるものしか通らない」こと。ルートを足したときに
+ * 書き忘れて**おためしの利用者がデータストアへ書ける**のが最悪の壊れ方である。
+ */
+describe('おためし利用（POST /v1/auth/guest）', () => {
+  async function guestToken(): Promise<string> {
+    const response = await app.request('/v1/auth/guest', { method: 'POST' })
+    expect(response.status).toBe(200)
+    const body = await json<GuestLoginResponse>(response)
+    return body.token
+  }
+
+  it('LINE ログインなしでセッションを発行する', async () => {
+    const response = await app.request('/v1/auth/guest', { method: 'POST' })
+    const body = await json<GuestLoginResponse>(response)
+
+    expect(response.status).toBe(200)
+    expect(body.token).not.toBe('')
+    expect(body.user.displayName).toBe('おためし')
+    // ★ 同意はサーバーに持てない（書けない）。端末の中だけで扱う
+    expect(body.user.locationConsentGiven).toBe(false)
+  })
+
+  it('★ ゲストIDは LINE の userId の形と重ならない', async () => {
+    const body = await json<GuestLoginResponse>(
+      await app.request('/v1/auth/guest', { method: 'POST' }),
+    )
+    expect(body.user.userId).toMatch(/^G[0-9a-f]{32}$/)
+  })
+
+  it('スポットは読める（地図が成立する最低限）', async () => {
+    const token = await guestToken()
+    const response = await app.request('/v1/spots', { headers: auth(token) })
+    const body = await json<SpotsResponse>(response)
+
+    expect(response.status).toBe(200)
+    expect(body.spots.length).toBeGreaterThan(0)
+  })
+
+  it('スポット詳細も読める', async () => {
+    const token = await guestToken()
+    const spots = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    const spotId = spots.spots[0]?.spotId
+
+    const response = await app.request(`/v1/spots/${spotId}`, { headers: auth(token) })
+    expect(response.status).toBe(200)
+  })
+
+  it('★ 書き込みは通らない（探索・同意・キャラクター）', async () => {
+    const token = await guestToken()
+
+    const writes = [
+      ['/v1/exploration', 'POST', JSON.stringify({ points: [{ lat: 35.6739, lng: 139.7568 }] })],
+      ['/v1/me/location-consent', 'POST', JSON.stringify({ agreed: true })],
+      ['/v1/me/avatar', 'PUT', JSON.stringify({ hair: 'short', outfit: 'casual' })],
+    ] as const
+
+    for (const [path, method, body] of writes) {
+      const response = await app.request(path, { method, headers: auth(token), body })
+      expect(response.status, `${method} ${path}`).toBe(403)
+      expect((await json<ErrorResponse>(response)).error.code).toBe('FORBIDDEN')
+    }
+  })
+
+  it('★ 自分の記録の読み取りも通らない（ユーザーごとの経路は開けない）', async () => {
+    const token = await guestToken()
+
+    for (const path of ['/v1/me', '/v1/exploration']) {
+      const response = await app.request(path, { headers: auth(token) })
+      expect(response.status, path).toBe(403)
+    }
+  })
+
+  it('★ サーバー側でおためしを止められる', async () => {
+    process.env['ENABLE_GUEST_MODE'] = 'false'
+    const response = await app.request('/v1/auth/guest', { method: 'POST' })
+
+    expect(response.status).toBe(403)
   })
 })

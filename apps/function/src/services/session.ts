@@ -1,5 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
-import { asUserId, isUserId, type UserId } from '@imanouchi/shared'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { asGuestId, asUserId, isGuestId, isUserId, type GuestId, type UserId } from '@imanouchi/shared'
 
 /**
  * セッショントークン（FR-01）。
@@ -18,11 +18,22 @@ import { asUserId, isUserId, type UserId } from '@imanouchi/shared'
 const SEPARATOR = '.'
 
 interface SessionPayload {
-  /** ユーザーID */
+  /** ユーザーID（LINE の userId、またはおためしのゲストID） */
   u: string
   /** 失効時刻（epoch ミリ秒） */
   e: number
 }
+
+/**
+ * トークンの持ち主。
+ *
+ * ★ LINE ログインとおためし（ゲスト）を**型で分ける**。
+ * 同じ `userId` に混ぜると、おためしの ID でデータストアへ書く経路が
+ * うっかり通ってしまう。呼び出し側に分岐を強制する。
+ */
+export type SessionSubject =
+  | { kind: 'line'; userId: UserId }
+  | { kind: 'guest'; guestId: GuestId }
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url')
@@ -37,11 +48,17 @@ export interface IssuedSession {
   expiresAt: Date
 }
 
-export function issueSession(userId: UserId, secret: string, ttlHours: number): IssuedSession {
+export function issueSession(
+  subject: SessionSubject,
+  secret: string,
+  ttlHours: number,
+): IssuedSession {
   if (secret === '') throw new Error('session secret is not configured')
 
   const expiresAt = new Date(Date.now() + ttlHours * 3600_000)
-  const payload: SessionPayload = { u: userId, e: expiresAt.getTime() }
+  // 種別は ID の接頭辞で分かる（U… / G…）ので、余分な項目は持たせない
+  const id = subject.kind === 'line' ? subject.userId : subject.guestId
+  const payload: SessionPayload = { u: id, e: expiresAt.getTime() }
   const encoded = base64url(JSON.stringify(payload))
 
   return { token: `${encoded}${SEPARATOR}${sign(encoded, secret)}`, expiresAt }
@@ -50,7 +67,7 @@ export function issueSession(userId: UserId, secret: string, ttlHours: number): 
 export type SessionFailure = 'malformed' | 'bad-signature' | 'expired'
 
 export type SessionResult =
-  | { ok: true; userId: UserId }
+  | { ok: true; subject: SessionSubject }
   | { ok: false; reason: SessionFailure }
 
 /**
@@ -87,8 +104,26 @@ export function verifySession(token: string, secret: string): SessionResult {
   if (typeof payload.u !== 'string' || typeof payload.e !== 'number') {
     return { ok: false, reason: 'malformed' }
   }
-  if (!isUserId(payload.u)) return { ok: false, reason: 'malformed' }
+  /*
+   * ★ 形の検査を緩めない。
+   *
+   * LINE の userId（U + 32桁）か、おためしのゲストID（G + 32桁）のどちらかだけを
+   * 通す。緩めると、署名を持っている側が任意の文字列を主キーにできてしまう。
+   */
+  const line = isUserId(payload.u)
+  if (!line && !isGuestId(payload.u)) return { ok: false, reason: 'malformed' }
   if (payload.e <= Date.now()) return { ok: false, reason: 'expired' }
 
-  return { ok: true, userId: asUserId(payload.u) }
+  return {
+    ok: true,
+    subject: line
+      ? { kind: 'line', userId: asUserId(payload.u) }
+      : { kind: 'guest', guestId: asGuestId(payload.u) },
+  }
+}
+
+/** おためしのゲストIDを作る。`G` + 32桁の16進数（LINE の形と重ならない） */
+export function newGuestId(): GuestId {
+  const bytes = randomBytes(16).toString('hex')
+  return asGuestId(`G${bytes}`)
 }

@@ -11,6 +11,7 @@ import {
   ApiError,
   fetchClientConfig,
   fetchSpots,
+  guestLogin,
   isAuthExpired,
   login,
   saveAvatar,
@@ -19,19 +20,24 @@ import {
 } from './api.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { ConsentGate } from './components/ConsentGate.js'
+import { EmergencyBanner } from './components/EmergencyBanner.js'
+import { EmergencyPanel } from './components/EmergencyPanel.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
 import { MapView } from './components/MapView.js'
 import { SpotList } from './components/SpotList.js'
 import { SpotPanel } from './components/SpotPanel.js'
+import { StartGate } from './components/StartGate.js'
 import { StatusBar } from './components/StatusBar.js'
 import { WalkGuard } from './components/WalkGuard.js'
 import { hasFinePointer, shouldOfferDebugMove } from './debug-move.js'
+import { clearGuestData, loadGuestConsent, saveGuestConsent } from './guest-store.js'
 import { canPlaySound, enableSound, notifyAreaUnlocked, notifyWalkGuard } from './feedback.js'
 import { useExploration } from './hooks/useExploration.js'
 import { useGeolocation } from './hooks/useGeolocation.js'
 import { useWakeLock } from './hooks/useWakeLock.js'
+import { shouldOfferStartChoice } from './start-mode.js'
 import { WALK_STALE_MS, initialWalkTracker, speedKmh, trackWalk } from './walking.js'
 import {
   LiffError,
@@ -39,10 +45,14 @@ import {
   forceRelogin,
   hasTriedRelogin,
   isInLineClient,
+  isLiffLoggedIn,
   loginAndGetIdToken,
 } from './liff.js'
 
-type Phase = 'booting' | 'logging-in' | 'consent' | 'ready' | 'failed'
+type Phase = 'booting' | 'start' | 'logging-in' | 'consent' | 'ready' | 'failed'
+
+/** 使い方。おためしは読み取り専用で、記録は端末の中だけに置く */
+type Mode = 'line' | 'guest'
 
 /** ログインできない理由。原因ごとに出す案内を変える（同じ文言にすると自己解決できない） */
 const LIFF_MESSAGES: Record<string, string> = {
@@ -56,6 +66,8 @@ export function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('booting')
   const [message, setMessage] = useState('')
   const [config, setConfig] = useState<ClientConfigResponse | undefined>(undefined)
+  /** LINE ログインか、おためしか。おためしは記録を端末の中だけに置く */
+  const [mode, setMode] = useState<Mode>('line')
   const [user, setUser] = useState<UserView | undefined>(undefined)
   const [spots, setSpots] = useState<SpotWithDistance[]>([])
   const [spotsTruncated, setSpotsTruncated] = useState(false)
@@ -85,12 +97,25 @@ export function App(): React.JSX.Element {
   const [guardDismissed, setGuardDismissed] = useState(false)
 
   /**
+   * 有事モード（FR-08）。
+   *
+   * ★ 画面遷移ではなく状態にする（FR-08-8）。地図を作り直さないので、
+   * 切り替えても中心と縮尺が保たれる。
+   */
+  const [emergency, setEmergency] = useState(false)
+  /** バリアフリーの記載があるものだけに絞るか（FR-08-4） */
+  const [accessibleOnly, setAccessibleOnly] = useState(false)
+
+  /**
    * ★ 同意していない間は位置情報を要求しない（FR-01-4）。
    * この 1 行が同意画面の意味を担保している。
    */
   const consented = user?.locationConsentGiven ?? false
   const geo = useGeolocation(consented)
-  const exploration = useExploration(phase === 'ready' ? config?.exploration : undefined)
+  const exploration = useExploration(
+    phase === 'ready' ? config?.exploration : undefined,
+    mode === 'guest' ? 'local' : 'server',
+  )
   const wakeLock = useWakeLock(walkStarted)
 
   /**
@@ -194,7 +219,126 @@ export function App(): React.JSX.Element {
     setWalk(initialWalkTracker())
   }, [])
 
+  /**
+   * 有事モードの切替（FR-08-1）。
+   *
+   * ★ 有事へ入るときは散歩（歩行中モード）を必ず終える。
+   * 有事に画面を覆って地図を見せないのは**それ自体が危険**であり、
+   * 探索の進捗も非表示になる（FR-08-2）ので、続ける意味が無い。
+   */
+  const handleToggleEmergency = useCallback(() => {
+    setEmergency((current) => {
+      if (!current) handleStopWalk()
+      return !current
+    })
+  }, [handleStopWalk])
+
   /* ---------------- 起動 → 設定取得 → LINE ログイン ---------------- */
+
+  /**
+   * LINE ログインを実行する。
+   *
+   * ★ LINE アプリの中では自動で走らせる。外（PC・スマホのブラウザ）では
+   * 選択画面を出してから走らせる。**リダイレクトを伴うため、外で自動実行すると
+   * 開いた瞬間に LINE のログイン画面へ飛ばされる。**
+   */
+  /**
+   * ログインの失敗を画面へ落とす。
+   *
+   * ★ LINE アプリの中と外で経路が2つある（自動と選択画面）。
+   * 分けて書くと、片方だけ直して**もう片方が行き止まりのまま**になる。
+   */
+  const handleLoginError = useCallback((err: unknown, guestAvailable: boolean) => {
+    /*
+     * ★ IDトークンの期限切れは取り直せば直る。
+     *
+     * LIFF は**セッションが残っている間 isLoggedIn() が true を返す**ので、
+     * 期限切れのIDトークンを送り続ける。ここで行き止まりにすると、
+     * 「しばらく経つと開けなくなる」という形で詰まる（実際にそうなった）。
+     *
+     * ただし取り直すのは**一度だけ**。設定が壊れている場合は取り直しても
+     * 直らず、リダイレクトが無限に続く。
+     */
+    if (isAuthExpired(err) && !hasTriedRelogin()) {
+      setMessage('ログインを取り直しています…')
+      try {
+        forceRelogin()
+        return
+      } catch {
+        // 取り直せない環境（sessionStorage が使えない等）はそのまま下へ
+      }
+    }
+
+    if (err instanceof LiffError) {
+      setMessage(LIFF_MESSAGES[err.reason] ?? 'ログインに失敗しました。')
+    } else if (isAuthExpired(err)) {
+      setMessage(
+        'ログインの有効期限が切れました。取り直しても直らない場合は、LINE アプリからミニアプリを開いてください。',
+      )
+    } else if (err instanceof ApiError) {
+      setMessage(err.message)
+    } else {
+      setMessage('起動に失敗しました。通信状況を確認してください。')
+    }
+
+    /*
+     * ★ おためしが使えるなら行き止まりにしない。
+     * LINE ログインが通らない環境でも、地図までは触れるほうがよい。
+     */
+    setPhase(guestAvailable ? 'start' : 'failed')
+  }, [])
+
+  /**
+   * LINE ログインを実行する。
+   *
+   * ★ LINE アプリの中では自動で走らせる。外（PC・スマホのブラウザ）では
+   * 選択画面を出してから走らせる。**リダイレクトを伴うため、外で自動実行すると
+   * 開いた瞬間に LINE のログイン画面へ飛ばされる。**
+   */
+  const runLineLogin = useCallback(
+    async (loaded: ClientConfigResponse) => {
+      setMode('line')
+      setPhase('logging-in')
+      setMessage('')
+
+      try {
+        const idToken = await loginAndGetIdToken(loaded.liffId)
+        const result = await login(idToken)
+
+        setToken(result.token)
+        setUser(result.user)
+        // ここまで来たら取り直しは成功している。次回のために印を消す
+        clearReloginMark()
+        setPhase(result.user.locationConsentGiven ? 'ready' : 'consent')
+      } catch (err) {
+        handleLoginError(err, loaded.guestModeEnabled && !isInLineClient())
+      }
+    },
+    [handleLoginError],
+  )
+
+  /**
+   * おためしを始める（LINE ログインなし）。
+   *
+   * ★ 同意は端末の中だけで持つ。サーバーへ送る経路が無い（403 になる）。
+   */
+  const startGuest = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await guestLogin()
+      setToken(result.token)
+      setMode('guest')
+
+      const agreed = loadGuestConsent()
+      setUser({ ...result.user, locationConsentGiven: agreed })
+      setPhase(agreed ? 'ready' : 'consent')
+      setMessage('')
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'おためしを開始できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -204,61 +348,46 @@ export function App(): React.JSX.Element {
         const loaded = await fetchClientConfig()
         if (cancelled) return
         setConfig(loaded)
-        setPhase('logging-in')
-
-        const idToken = await loginAndGetIdToken(loaded.liffId)
-        if (cancelled) return
-
-        const result = await login(idToken)
-        if (cancelled) return
-
-        setToken(result.token)
-        setUser(result.user)
-        // ここまで来たら取り直しは成功している。次回のために印を消す
-        clearReloginMark()
-        setPhase(result.user.locationConsentGiven ? 'ready' : 'consent')
-      } catch (err) {
-        if (cancelled) return
 
         /*
-         * ★ IDトークンの期限切れは取り直せば直る。
+         * ★ 選択画面を出すかは start-mode.ts で決める。
          *
-         * LIFF は**セッションが残っている間 isLoggedIn() が true を返す**ので、
-         * 期限切れのIDトークンを送り続ける。ここで行き止まりにすると、
-         * 「しばらく経つと開けなくなる」という形で詰まる（実際にそうなった）。
+         * ミニアプリの中と、すでに LINE ログイン済みの場合は**出さない**。
+         * 逆に、LINE の外で未ログインのときにそのままログインへ進むと、
+         * 開いた人は**何も見ないうちに** LINE のログイン画面へリダイレクトされる。
          *
-         * ただし取り直すのは**一度だけ**。設定が壊れている場合は取り直しても
-         * 直らず、リダイレクトが無限に続く。
+         * ★ `isInClient()` は初期化前でも使える（LIFF の仕様）。
+         * `isLoggedIn()` は初期化後でないと使えないので、内側で初期化している。
+         * 初期化に失敗しても false が返るだけで、選択画面から明示的にログインできる。
          */
-        if (isAuthExpired(err) && !hasTriedRelogin()) {
-          setMessage('ログインを取り直しています…')
-          try {
-            forceRelogin()
-            return
-          } catch {
-            // 取り直せない環境（sessionStorage が使えない等）はそのまま下へ
-          }
+        const inLineClient = isInLineClient()
+        const liffLoggedIn = inLineClient ? true : await isLiffLoggedIn(loaded.liffId)
+        if (cancelled) return
+
+        if (shouldOfferStartChoice({
+          inLineClient,
+          liffLoggedIn,
+          guestModeEnabled: loaded.guestModeEnabled,
+        })) {
+          setPhase('start')
+          return
         }
 
+        await runLineLogin(loaded)
+      } catch (err) {
+        if (cancelled) return
+        // 設定の取得そのものが失敗した場合。おためしにも入れない
         setPhase('failed')
-        if (err instanceof LiffError) {
-          setMessage(LIFF_MESSAGES[err.reason] ?? 'ログインに失敗しました。')
-        } else if (isAuthExpired(err)) {
-          setMessage(
-            'ログインの有効期限が切れました。取り直しても直らない場合は、LINE アプリからミニアプリを開いてください。',
-          )
-        } else if (err instanceof ApiError) {
-          setMessage(err.message)
-        } else {
-          setMessage('起動に失敗しました。通信状況を確認してください。')
-        }
+        setMessage(
+          err instanceof ApiError ? err.message : '起動に失敗しました。通信状況を確認してください。',
+        )
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [runLineLogin])
 
   /* ---------------- スポットの取得 ---------------- */
 
@@ -343,6 +472,13 @@ export function App(): React.JSX.Element {
 
   /** キャラクターの見た目を保存する（FR-01-6） */
   const handleSaveAvatar = async (avatar: Avatar): Promise<void> => {
+    // おためしは保存できない。画面の中だけで見た目を変える
+    if (mode === 'guest') {
+      setUser((current) => (current ? { ...current, avatar } : current))
+      setCreatorOpen(false)
+      return
+    }
+
     setBusy(true)
     try {
       const response = await saveAvatar(avatar)
@@ -356,6 +492,18 @@ export function App(): React.JSX.Element {
   }
 
   const handleAgree = async (): Promise<void> => {
+    /*
+     * ★ おためしはサーバーへ同意を送れない（403 になる経路である）。
+     * 端末の中だけに置く。次に開いたときに聞き直さないためだけの記録で、
+     * サーバーは「誰が同意したか」を一切持たない。
+     */
+    if (mode === 'guest') {
+      saveGuestConsent(true)
+      setUser((current) => (current ? { ...current, locationConsentGiven: true } : current))
+      setPhase('ready')
+      return
+    }
+
     setBusy(true)
     try {
       const response = await setLocationConsent(true)
@@ -368,6 +516,12 @@ export function App(): React.JSX.Element {
     }
   }
 
+  /** おためしの記録を消して選択画面へ戻す */
+  const handleResetGuest = useCallback(() => {
+    clearGuestData()
+    window.location.reload()
+  }, [])
+
   /* ---------------- 表示 ---------------- */
 
   if (phase === 'booting' || phase === 'logging-in') {
@@ -375,6 +529,20 @@ export function App(): React.JSX.Element {
       <div className="boot">
         <p>{phase === 'booting' ? '起動しています…' : 'LINE でログインしています…'}</p>
       </div>
+    )
+  }
+
+  if (phase === 'start') {
+    return (
+      <StartGate
+        guestAvailable={config?.guestModeEnabled ?? false}
+        busy={busy}
+        onLineLogin={() => {
+          if (config) void runLineLogin(config)
+        }}
+        onGuest={() => void startGuest()}
+        message={message}
+      />
     )
   }
 
@@ -394,14 +562,37 @@ export function App(): React.JSX.Element {
   const canUseMap = config !== undefined && config.mapboxToken !== ''
 
   return (
-    <div className="app">
+    /* ★ 配色は差分だけを変える。要素の並びは平時と同じに保つ（FR-08-7） */
+    <div className={emergency ? 'app app--emergency' : 'app'}>
       <StatusBar
         user={user}
         areaName={config?.area.name ?? ''}
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
         onOpenCreator={() => setCreatorOpen((open) => !open)}
+        emergencyAvailable={config?.emergencyDemoEnabled ?? false}
+        emergency={emergency}
+        onToggleEmergency={handleToggleEmergency}
       />
+
+      {emergency && <EmergencyBanner onExit={handleToggleEmergency} />}
+
+      {/*
+        ★ おためしであることを隠さない。
+        記録がサーバーに残らないことを知らないまま歩かせてはいけない。
+        LINE ログインへ移っても記録は引き継げないので、それも先に書く。
+      */}
+      {mode === 'guest' && (
+        <div className="guestbar" role="status">
+          <p className="guestbar__text">
+            <strong>おためし中</strong>（LINE ログインなし）。歩いた記録は
+            <strong>この端末の中だけ</strong>に残ります。ログインしても引き継げません。
+          </p>
+          <button type="button" className="guestbar__reset" onClick={handleResetGuest}>
+            記録を消してやり直す
+          </button>
+        </div>
+      )}
 
       <main className="app__main">
         {canUseMap && config ? (
@@ -416,6 +607,7 @@ export function App(): React.JSX.Element {
             unlockedAreas={exploration.unlockedAreas}
             revealRadiusM={config.exploration.revealRadiusM}
             avatar={user?.avatar}
+            emergency={emergency}
           />
         ) : (
           <div className="map map--fallback">
@@ -457,33 +649,50 @@ export function App(): React.JSX.Element {
             <SpotPanel spot={selectedSpot} onClose={() => setSelectedSpotId(undefined)} />
           )}
 
-          <ExplorationPanel
-            summary={exploration.summary}
-            areaRadiusM={config?.exploration.areaRadiusM ?? 0}
-            mapEnabled={canUseMap}
-            position={geo.position}
-            unlockedAreas={exploration.unlockedAreas}
-            walkStarted={walkStarted}
-            soundReady={soundReady}
-            wakeLockHeld={wakeLock.held}
-            wakeLockSupported={wakeLock.supported}
-            onStartWalk={handleStartWalk}
-            onStopWalk={handleStopWalk}
-          />
-
-          <section className="panel" aria-label="近くのスポット">
-            <h2 className="panel__title">近くのスポット</h2>
-            {spotsTruncated && (
-              <p className="panel__warn" role="status">
-                件数が上限で打ち切られています。表示されていないスポットがあります（カテゴリごと欠けることがあります）。
-              </p>
-            )}
-            <SpotList
+          {/*
+            ★ 有事モードではゲーム要素（探索率・散歩）を出さない（FR-08-2）。
+            代わりにライフラインを出す。押したときの挙動は平時と同じ（FR-08-7）。
+          */}
+          {emergency ? (
+            <EmergencyPanel
               spots={sortedSpots}
               selectedSpotId={selectedSpotId}
               onSelectSpot={setSelectedSpotId}
+              accessibleOnly={accessibleOnly}
+              onToggleAccessibleOnly={setAccessibleOnly}
+              hasPosition={geo.position !== undefined}
             />
-          </section>
+          ) : (
+            <>
+              <ExplorationPanel
+                summary={exploration.summary}
+                areaRadiusM={config?.exploration.areaRadiusM ?? 0}
+                mapEnabled={canUseMap}
+                position={geo.position}
+                unlockedAreas={exploration.unlockedAreas}
+                walkStarted={walkStarted}
+                soundReady={soundReady}
+                wakeLockHeld={wakeLock.held}
+                wakeLockSupported={wakeLock.supported}
+                onStartWalk={handleStartWalk}
+                onStopWalk={handleStopWalk}
+              />
+
+              <section className="panel" aria-label="近くのスポット">
+                <h2 className="panel__title">近くのスポット</h2>
+                {spotsTruncated && (
+                  <p className="panel__warn" role="status">
+                    件数が上限で打ち切られています。表示されていないスポットがあります（カテゴリごと欠けることがあります）。
+                  </p>
+                )}
+                <SpotList
+                  spots={sortedSpots}
+                  selectedSpotId={selectedSpotId}
+                  onSelectSpot={setSelectedSpotId}
+                />
+              </section>
+            </>
+          )}
         </aside>
       </main>
 
