@@ -19,6 +19,13 @@ interface StatusBarProps {
   spotCount: number
   /** キャラクターメイキングを開く（FR-01-6） */
   onOpenCreator: () => void
+  /**
+   * カードの一覧を開く（FR-14）。
+   *
+   * ★ undefined なら出さない。おためしではカードを扱わず、有事モードでは
+   * ゲーム要素を隠すため（FR-08-2）、出すかどうかは親が決める。
+   */
+  onOpenCards: (() => void) | undefined
   /** 有事モードの切替を出すか（FR-08-1）。デモ用でサーバーから止められる */
   emergencyAvailable: boolean
   emergency: boolean
@@ -42,6 +49,7 @@ export function StatusBar({
   geoStatus,
   spotCount,
   onOpenCreator,
+  onOpenCards,
   emergencyAvailable,
   emergency,
   onToggleEmergency,
@@ -83,6 +91,11 @@ export function StatusBar({
         </div>
       </div>
       <div className="statusbar__right">
+        {onOpenCards && (
+          <button type="button" className="statusbar__cards" onClick={onOpenCards}>
+            カード
+          </button>
+        )}
         <p className={`statusbar__geo statusbar__geo--${geoStatus}`}>{GEO_LABELS[geoStatus]}</p>
         {/*
           有事モードへの切替（FR-08-1）。

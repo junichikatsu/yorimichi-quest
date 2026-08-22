@@ -1,6 +1,7 @@
 import { FakeDataStoreClient, setDataStoreClient } from '@imanouchi/datastore'
 import type {
   AdminConfigResponse,
+  CardsResponse,
   CheckinResponse,
   ClientConfigResponse,
   ErrorResponse,
@@ -1308,5 +1309,145 @@ describe('GET /v1/progress', () => {
 
   it('認証なしでは呼べない', async () => {
     expect((await app.request('/v1/progress')).status).toBe(401)
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * カードコレクション（FR-14）
+ * ------------------------------------------------------------------ */
+
+async function fetchCards(token: string): Promise<CardsResponse> {
+  const response = await app.request('/v1/cards', { headers: auth(token) })
+  expect(response.status).toBe(200)
+  return json<CardsResponse>(response)
+}
+
+describe('GET /v1/cards', () => {
+  it('4種のカードを1つの一覧で返す（FR-14-1）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchCards(token)
+
+    // 行動12 + 道具10 + ミッション3。場所は達成分だけなので0
+    expect(body.summary.byKind.action.total).toBe(12)
+    expect(body.summary.byKind.tool.total).toBe(10)
+    expect(body.summary.byKind.mission.total).toBe(3)
+    expect(body.cards.filter((card) => card.kind === 'place')).toEqual([])
+  })
+
+  it('★ 行動カードの見出しは「場面」で、行動は達成するまで見えない', async () => {
+    const { token } = await loginOk()
+    const body = await fetchCards(token)
+    const card = body.cards.find((c) => c.cardId === 'action:shelter-action-1')
+
+    expect(card?.achieved).toBe(false)
+    expect(card?.title).toBe('大きな地震の直後')
+    // ★ 中身を返さない。表示側で隠す形にすると、配信データを読めば分かってしまう
+    expect(card?.body).toBeUndefined()
+  })
+
+  it('★ 未達成カードの中身がレスポンスに一切出ない（FR-14-3）', async () => {
+    const { token } = await loginOk()
+    const text = await (await app.request('/v1/cards', { headers: auth(token) })).text()
+
+    // 行動カードの中身（答えそのもの）が本文に混ざっていないこと
+    expect(text).not.toContain('頭を守って身を低くし')
+    expect(text).not.toContain('揺れが収まるまで動かない')
+  })
+
+  it('場所カードはカテゴリ別の件数で残りを示す（371枚を並べない）', async () => {
+    const { token } = await loginOk()
+    const body = await fetchCards(token)
+
+    expect(body.places.length).toBeGreaterThan(0)
+    for (const place of body.places) {
+      expect(place.total).toBeGreaterThan(0)
+      expect(place.achieved).toBe(0)
+    }
+    // 集計の総数はスポット件数（並べた枚数ではない）
+    expect(body.summary.byKind.place.total).toBeGreaterThan(0)
+  })
+
+  it('★ 認証なし・おためしでは使えない', async () => {
+    expect((await app.request('/v1/cards')).status).toBe(401)
+
+    const guest = await json<GuestLoginResponse>(
+      await app.request('/v1/auth/guest', { method: 'POST' }),
+    )
+    expect((await app.request('/v1/cards', { headers: auth(guest.token) })).status).toBe(403)
+  })
+})
+
+describe('カードの達成（FR-14-4・FR-14-5・FR-14-6）', () => {
+  it('チェックインで場所カードと道具カードが達成される', async () => {
+    const { token } = await loginOk()
+    const body = await json<CheckinResponse>(await checkin(token, AT_SPOT))
+
+    const ids = body.acquiredCards.map((card) => card.cardId)
+    expect(ids).toContain(`place:${SHELTER_SPOT_ID}`)
+    // 避難所のチェックインではヘルメットが手に入る
+    expect(ids).toContain('tool:helmet')
+    // ★ 達成したカードは中身が入っている（演出でそのまま見せる）
+    expect(body.acquiredCards.every((card) => card.body !== undefined)).toBe(true)
+  })
+
+  it('★ 2回目のチェックインではカードが増えない（達成は一度だけ）', async () => {
+    process.env['CHECKIN_COOLDOWN_HOURS'] = '0'
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+
+    const again = await json<CheckinResponse>(await checkin(token, AT_SPOT))
+    expect(again.acquiredCards).toEqual([])
+  })
+
+  it('クイズ正解で行動カードと道具カードが達成される', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+    const body = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+
+    const ids = body.acquiredCards.map((card) => card.cardId)
+    expect(ids).toContain(`action:${quiz.quiz.quizId}`)
+    // 避難所のクイズ正解では防炎ずきんが手に入る（チェックインの報酬と重ならない）
+    expect(ids).toContain('tool:zukin')
+  })
+
+  it('不正解ではカードが増えない', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+    const body = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 1))
+
+    expect(body.acquiredCards).toEqual([])
+  })
+
+  it('★ ミッションは他のカードの枚数だけで達成する（FR-14-7）', async () => {
+    const { token } = await loginOk()
+    const quiz = await fetchQuiz(token)
+
+    // 行動カード1枚で「まず身を守る」が達成される
+    const body = await json<QuizAnswerResponse>(await answer(token, quiz.quiz.quizId, 0))
+    expect(body.acquiredCards.map((card) => card.cardId)).toContain('mission:first-action')
+  })
+
+  it('達成したカードは一覧でも達成として返り、中身が見える', async () => {
+    const { token } = await loginOk()
+    await checkin(token, AT_SPOT)
+
+    const cards = await fetchCards(token)
+    const place = cards.cards.find((card) => card.cardId === `place:${SHELTER_SPOT_ID}`)
+
+    expect(place?.achieved).toBe(true)
+    expect(place?.body).not.toBe(undefined)
+    expect(place?.achievedAt).not.toBe('')
+    // カテゴリ別の件数にも反映される
+    expect(cards.places.find((p) => p.category === 'shelter')?.achieved).toBe(1)
+  })
+
+  it('★ おためしではカードを配らない（データストアにも書かない）', async () => {
+    const guest = await json<GuestLoginResponse>(
+      await app.request('/v1/auth/guest', { method: 'POST' }),
+    )
+    const body = await json<CheckinResponse>(await checkin(guest.token, AT_SPOT))
+
+    expect(body.acquiredCards).toEqual([])
+    expect(dump('fake-user-cards')).toEqual([])
   })
 })

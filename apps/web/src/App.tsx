@@ -1,6 +1,8 @@
 import { distanceMeters, offsetByMeters } from '@imanouchi/core'
 import type {
   Avatar,
+  CardsResponse,
+  CardView,
   CheckinResponse,
   ClientConfigResponse,
   QuizAnswerResponse,
@@ -14,6 +16,7 @@ import {
   answerQuiz,
   ApiError,
   checkin,
+  fetchCards,
   fetchClientConfig,
   fetchProgress,
   fetchQuiz,
@@ -26,6 +29,8 @@ import {
   setToken,
 } from './api.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
+import { CardPanel } from './components/CardPanel.js'
+import { CardReveal } from './components/CardReveal.js'
 import { CheckinBurst } from './components/CheckinBurst.js'
 import { ConsentGate } from './components/ConsentGate.js'
 import { EmergencyBanner } from './components/EmergencyBanner.js'
@@ -143,6 +148,17 @@ export function App(): React.JSX.Element {
 
   /** チェックインの演出（FR-03-2）。数秒で消える */
   const [burst, setBurst] = useState<CheckinResponse | undefined>(undefined)
+  /**
+   * カード（FR-14）。
+   *
+   * ★ 一覧は開いたときに取りに行く（起動時には引かない）。カードは歩いている間に
+   * 増えないので、開くたびに最新を取れば足りる。
+   */
+  const [cards, setCards] = useState<CardsResponse | undefined>(undefined)
+  const [cardsOpen, setCardsOpen] = useState(false)
+  /** 手に入れたカードの演出（FR-14-8）。空なら出さない */
+  const [revealCards, setRevealCards] = useState<CardView[]>([])
+
   /** 開いているクイズと、その回答結果（FR-04） */
   const [quiz, setQuiz] = useState<{ spotId: SpotId; response: QuizResponse } | undefined>(undefined)
   const [quizResult, setQuizResult] = useState<QuizAnswerResponse | undefined>(undefined)
@@ -601,6 +617,20 @@ export function App(): React.JSX.Element {
   )
 
   /**
+   * カードの一覧を開く（FR-14）。
+   *
+   * ★ 取得に失敗しても行き止まりにしない。読み込み中の表示のまま閉じられる。
+   */
+  const openCards = useCallback(async (): Promise<void> => {
+    setCardsOpen(true)
+    try {
+      setCards(await fetchCards())
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'カードを取得できませんでした。')
+    }
+  }, [])
+
+  /**
    * チェックイン（FR-03）。
    *
    * ★ 判定はサーバーに任せる。手元では押せるボタンを出すかどうかだけを決めており、
@@ -621,10 +651,17 @@ export function App(): React.JSX.Element {
         // ★ 音でも知らせる。歩行中モードでは画面を見ていない（FR-02-10・NFR-14）
         notifyCheckin()
         setBurst(result)
+        /*
+         * ★ カードの演出はポイントの演出が消えてから出す（同時に出すと何も伝わらない）。
+         * 表示側で `burst` が消えるのを待つ形にしてある。
+         */
+        setRevealCards(result.acquiredCards)
 
         const nextAvailableAt = new Date(result.nextAvailableAt).getTime()
 
         if (result.saved) {
+          // カードが増えたので、次に一覧を開くときは取り直す
+          if (result.acquiredCards.length > 0) setCards(undefined)
           setServerProgress((current) => ({
             ...current,
             [spot.spotId]: {
@@ -704,6 +741,8 @@ export function App(): React.JSX.Element {
         })
 
         notifyQuizResult(result.correct)
+        // 手に入れたカードは結果の上に重ねて見せる（FR-14-8）
+        if (result.acquiredCards.length > 0) setRevealCards(result.acquiredCards)
 
         /*
          * ★ おためしで正解済みの場合、サーバーは加点ぶんを返してくる
@@ -717,6 +756,8 @@ export function App(): React.JSX.Element {
         setQuizResult(rewarded)
 
         if (result.saved) {
+          // カードが増えたので、次に一覧を開くときは取り直す
+          if (result.acquiredCards.length > 0) setCards(undefined)
           setUser((current) =>
             current ? { ...current, totalPoints: result.totalPoints } : current,
           )
@@ -906,6 +947,16 @@ export function App(): React.JSX.Element {
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
         onOpenCreator={() => setCreatorOpen((open) => !open)}
+        /*
+          ★ おためしではカードを出さない。達成状態をサーバーが持たないと、
+          未達成カードの中身を隠す仕組み（FR-14-3）が成立しない。
+          有事モードでも出さない（FR-08-2）。
+        */
+        onOpenCards={
+          mode === 'line' && game.cards
+            ? () => (cardsOpen ? setCardsOpen(false) : void openCards())
+            : undefined
+        }
         emergencyAvailable={config?.emergencyDemoEnabled ?? false}
         emergency={emergency}
         onToggleEmergency={handleToggleEmergency}
@@ -979,6 +1030,10 @@ export function App(): React.JSX.Element {
               onSave={(avatar) => void handleSaveAvatar(avatar)}
               onClose={() => setCreatorOpen(false)}
             />
+          )}
+
+          {cardsOpen && game.cards && (
+            <CardPanel cards={cards} onClose={() => setCardsOpen(false)} />
           )}
 
           {selectedSpot && (
@@ -1085,6 +1140,14 @@ export function App(): React.JSX.Element {
           localOnly={mode === 'guest'}
           onDone={() => setBurst(undefined)}
         />
+      )}
+
+      {/*
+        ★ カードの演出はポイントの演出のあと。同時に出さない（3つ重なると何も伝わらない）。
+        獲得は必ず立ち止まっているときに起きるので、順に出しても取り逃さない。
+      */}
+      {burst === undefined && revealCards.length > 0 && game.cards && (
+        <CardReveal cards={revealCards} onDone={() => setRevealCards([])} />
       )}
 
       {message !== '' && (

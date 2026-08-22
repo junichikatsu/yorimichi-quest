@@ -19,6 +19,14 @@ import type { QuizKind, QuizPrompt, SpotCategory, SpotId } from '@imanouchi/shar
 
 export interface QuizEntry {
   quizId: string
+  /**
+   * この出題に対応する行動カード（FR-14-5）。
+   *
+   * ★ `scene`（場面）を**未達成でも見せる見出し**にし、`action`（行動）は
+   * 達成後にだけ見せる。行動を見出しにすると、**カード一覧を見るだけで
+   * クイズの答えが読めてしまう。**
+   */
+  card: { scene: string; action: string }
   category: SpotCategory
   question: string
   options: string[]
@@ -33,6 +41,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- 避難所・避難場所 ---------------- */
   {
     quizId: 'shelter-action-1',
+    card: { scene: '大きな地震の直後', action: '頭を守って身を低くし、揺れが収まるまで動かない' },
     kind: 'action',
     category: 'shelter',
     question: '大きな地震で強い揺れを感じました。まずすることはどれですか。',
@@ -47,6 +56,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'shelter-flood-1',
+    card: { scene: '冠水した道を歩くとき', action: '足元が見えない水には入らない。膝上まで来たら高い場所へ' },
     kind: 'action',
     category: 'shelter',
     question: '大雨で道路が冠水しています。歩いて避難するとき、最も危険なのはどれですか。',
@@ -57,6 +67,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'shelter-open-1',
+    card: { scene: '避難所へ向かう前', action: '開設されているかを確かめる。場所だけでは足りない' },
     kind: 'knowledge',
     category: 'shelter',
     question: '避難所について、行ってみるまで分からないことが多いのはどれですか。',
@@ -67,6 +78,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'shelter-toilet-1',
+    card: { scene: '避難所でトイレが使いにくいとき', action: '水分を控えない。控えると脱水から血栓につながる' },
     kind: 'knowledge',
     category: 'shelter',
     question: '避難所でトイレが使いにくいと、なぜ命に関わるのですか。',
@@ -83,6 +95,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- AED ---------------- */
   {
     quizId: 'aed-use-1',
+    card: { scene: '人が倒れているのを見つけたとき', action: '助けを呼び、AEDを待たずに胸骨圧迫を始める' },
     kind: 'action',
     category: 'aed',
     question: '倒れている人を見つけたとき、AEDが届くまでにすべきことはどれですか。',
@@ -93,6 +106,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'aed-time-1',
+    card: { scene: 'AEDを頼るとき', action: '24時間使える場所かを平時に確かめておく' },
     kind: 'knowledge',
     category: 'aed',
     question: 'AEDについて、いざという時に確認しておくと役に立つのはどれですか。',
@@ -105,6 +119,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- バリアフリートイレ ---------------- */
   {
     quizId: 'toilet-action-1',
+    card: { scene: '車いすやベビーカーで避難するとき', action: '建物より先に、そこまでの道の段差を確かめる' },
     kind: 'action',
     category: 'accessible_toilet',
     question: '車いすやベビーカーの家族と避難します。出発前にまず確かめることはどれですか。',
@@ -119,6 +134,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'toilet-access-1',
+    card: { scene: 'トイレを使えるか判断するとき', action: '入口だけでなく、中で向きを変えられる広さを見る' },
     kind: 'knowledge',
     category: 'accessible_toilet',
     question: '車いすの人がトイレを使えるかどうかを左右するのは、次のうちどれですか。',
@@ -129,6 +145,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'toilet-water-1',
+    card: { scene: '断水してトイレが使えないとき', action: '携帯トイレやマンホールトイレの備えを確かめる' },
     kind: 'knowledge',
     category: 'accessible_toilet',
     question: '断水したとき、避難所のトイレはどうなりますか。',
@@ -145,6 +162,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   /* ---------------- 給水スポット ---------------- */
   {
     quizId: 'water-action-1',
+    card: { scene: '地震の揺れが収まった直後', action: '断水する前に、浴槽などへ生活用水を確保する' },
     kind: 'action',
     category: 'water',
     question: '地震の揺れが収まりました。水について、まずすることはどれですか。',
@@ -159,6 +177,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'water-supply-1',
+    card: { scene: '水を備えるとき', action: '1人1日3リットルを目安に、運ぶ手段まで用意する' },
     kind: 'knowledge',
     category: 'water',
     question: '断水に備えて、1人が1日に必要とされる飲料水の目安はどれくらいですか。',
@@ -169,6 +188,7 @@ const QUIZ_ENTRIES: QuizEntry[] = [
   },
   {
     quizId: 'water-route-1',
+    card: { scene: '給水拠点へ水をもらいに行くとき', action: '10リットルは10キログラム。段差や坂のない道を選ぶ' },
     kind: 'knowledge',
     category: 'water',
     question: '給水拠点へ水をもらいに行くとき、事前に知っておきたいのはどれですか。',
@@ -253,6 +273,16 @@ export const fixtureQuizSource: QuizSource = {
   find(quizId) {
     return Promise.resolve(ENTRIES_BY_ID.get(quizId))
   },
+}
+
+/**
+ * すべての出題。**行動カード（FR-14-5）の一覧を組み立てるために使う。**
+ *
+ * ★ 正解と解説を含むので、呼び出しはサーバー内に限ること。カードの一覧では
+ * `card.scene` と `card.action` しか使わない。
+ */
+export function allQuizEntries(): readonly QuizEntry[] {
+  return QUIZ_ENTRIES
 }
 
 let activeSource: QuizSource = fixtureQuizSource

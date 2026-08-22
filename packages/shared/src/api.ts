@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { avatarSchema } from './avatar.js'
 import { MAX_EXPLORATION_POINTS, type ExplorationConfig, type ExplorationSummary, type ExploredTile, type UnlockedAreaBounds } from './exploration.js'
+import type { CardCollectionSummary, CardView, PlaceCardSummary } from './card.js'
 import type { QuizPrompt } from './quiz.js'
 import type { SpotId } from './ids.js'
 import type { AreaSummary, SpotWithDistance } from './spot.js'
@@ -302,6 +303,14 @@ export interface CheckinResponse {
   /** このスポットの累計訪問回数（この利用者ぶん・FR-03-4） */
   visitCount: number
   /**
+   * 今回はじめて達成したカード（FR-14）。
+   *
+   * ★ **「今回の新規」はサーバーが判定する。** クライアントが前回の一覧と差分を
+   * 取る作りにすると、再読み込みで演出が消えたり二重に出たりする。
+   * 何も増えなければ空配列。
+   */
+  acquiredCards: CardView[]
+  /**
    * サーバーが保存したか。
    *
    * ★ おためし（ゲスト）では false。判定はサーバーで行うが、記録は端末の中
@@ -361,6 +370,25 @@ export interface QuizResponse {
    * 画面はこの値で「報酬は増えません」と先に断る。
    */
   alreadyCleared: boolean
+}
+
+/* ------------------------------------------------------------------ *
+ * カードコレクション（FR-14）
+ * ------------------------------------------------------------------ */
+
+export interface CardsResponse {
+  /**
+   * 並べるカード。
+   *
+   * ★ 場所カードは**達成した分だけ**入る。未達成の場所は `places` の件数で示す
+   * （対象エリアに 371 件あり、全部並べると一覧が使えない）。
+   * 行動・道具・ミッションは未達成も枠として入る（FR-14 の「何が残っているかが
+   * 常に見えている」）。
+   */
+  cards: CardView[]
+  /** 場所カードのカテゴリ別の集約 */
+  places: PlaceCardSummary[]
+  summary: CardCollectionSummary
 }
 
 /* ------------------------------------------------------------------ *

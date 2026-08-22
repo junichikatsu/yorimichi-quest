@@ -1,5 +1,6 @@
 import type {
   Avatar,
+  CardsResponse,
   CheckinRequest,
   CheckinResponse,
   ClientConfigResponse,
@@ -211,4 +212,14 @@ export function answerQuiz(
  */
 export function fetchProgress(): Promise<ProgressResponse> {
   return request<ProgressResponse>('/v1/progress')
+}
+
+/**
+ * カードコレクションの取得（FR-14）。
+ *
+ * ★ おためし（ゲスト）では呼べない（403）。達成状態をサーバーが持たないと、
+ * 未達成カードの中身を隠す仕組みが成立しないため、機能そのものを出さない。
+ */
+export function fetchCards(): Promise<CardsResponse> {
+  return request<CardsResponse>('/v1/cards')
 }

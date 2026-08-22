@@ -13,6 +13,7 @@ import {
   spotsQuerySchema,
   toUserView,
   type AdminConfigResponse,
+  type CardsResponse,
   type CheckinResponse,
   type ClientConfigResponse,
   type ExplorationResponse,
@@ -43,6 +44,7 @@ import { ensureFakeSeeded, getDataStoreContext } from '../services/datastore-con
 import { LineVerifyError, verifyLineIdToken } from '../services/line.js'
 import { DEFAULT_SEED_DELAY_MS, purgeSpots, seedSpots } from '../services/seed-service.js'
 import { issueSession, newGuestId } from '../services/session.js'
+import { buildCards } from '../services/card-service.js'
 import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
@@ -367,6 +369,7 @@ export function createRoutes(): Hono<AppEnv> {
       now: Date.now(),
       radiusM: config.checkinRadiusM,
       cooldownHours: config.checkinCooldownHours,
+      maxSpots: config.maxSpotsPerRequest,
     })
 
     return c.json(response)
@@ -387,6 +390,25 @@ export function createRoutes(): Hono<AppEnv> {
       userId: c.get('userId'),
       cooldownHours: config.checkinCooldownHours,
       limit: MAX_PROGRESS_ENTRIES,
+    })
+
+    return c.json(response)
+  })
+
+  /**
+   * カードコレクション（FR-14）。
+   *
+   * ★ おためし（ゲスト）は通らない（403）。達成状態をサーバーが持たないと、
+   * **未達成カードの中身を隠す仕組み（FR-14-3）が成立しない。**
+   */
+  routes.get('/v1/cards', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+
+    const response: CardsResponse = await buildCards(ctx, {
+      userId: c.get('userId'),
+      areaId: config.area.areaId,
+      maxSpots: config.maxSpotsPerRequest,
     })
 
     return c.json(response)
@@ -434,6 +456,7 @@ export function createRoutes(): Hono<AppEnv> {
       choiceIndex: body.choiceIndex,
       now: Date.now(),
       correctPoints: config.quizCorrectPoints,
+      maxSpots: config.maxSpotsPerRequest,
     })
 
     return c.json(response)
