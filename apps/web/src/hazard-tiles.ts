@@ -36,12 +36,6 @@ function keyOf(layer: HazardLayer, z: number, x: number, y: number): string {
   return `${layer.id}/${z}/${x}/${y}`
 }
 
-/** テストと画面の作り直しのために捨てる */
-export function resetHazardTiles(): void {
-  tiles.clear()
-  scratch = undefined
-}
-
 /**
  * タイルを1枚得る。まだ無ければ読み込みを始めて undefined を返す。
  *
