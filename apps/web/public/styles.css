@@ -58,9 +58,45 @@ button {
   min-height: 100dvh;
   display: grid;
   place-content: center;
+  justify-items: center;
+  gap: 0.7rem;
   padding: 1.5rem;
   text-align: center;
   color: var(--muted);
+}
+
+/*
+ * 待っていることを示す輪。
+ *
+ * ★ **1か所に置く。** 待つ場面は増える（起動・ログイン・チェックイン・設問の
+ * 読み込み・送信・カードの一覧…）。場面ごとに描くと、同じ「待ち」が違う見た目に
+ * なって、待っているのか壊れているのか読み手が判断できなくなる。
+ *
+ * ★ これは装飾で、伝えているのは隣の文字である（NFR-08）。
+ */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spinner-turn 0.8s linear infinite;
+}
+
+.spinner--small {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-width: 2px;
+  vertical-align: -0.1rem;
+  margin-right: 0.35rem;
+}
+
+@keyframes spinner-turn {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 .boot--failed {
@@ -414,6 +450,12 @@ button {
 
 .panel__source {
   font-size: 0.75rem;
+}
+
+/* 読み込み中の一行。輪と文字を横に並べる */
+.panel__note--loading {
+  display: flex;
+  align-items: center;
 }
 
 .tags {
@@ -1442,7 +1484,7 @@ button {
   .quiz__stamp,
   .survey__stamp,
   .waiting--shown,
-  .waiting__spinner,
+  .spinner,
   .reveal__flip,
   .mappoints--bumped,
   .sidetabs__new {
@@ -1461,7 +1503,7 @@ button {
    * 回転だけを落とし、輪はそのまま残す（消すと箱の中が文字だけになり、
    * 何かが起きている最中だという手がかりが減る）。
    */
-  .waiting__spinner {
+  .spinner {
     border-color: var(--accent);
   }
 
@@ -1653,22 +1695,6 @@ button {
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: 0 12px 32px rgb(36 31 39 / 22%);
-}
-
-.waiting__spinner {
-  flex: none;
-  width: 1.2rem;
-  height: 1.2rem;
-  border: 3px solid var(--line);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: waiting-spin 0.8s linear infinite;
-}
-
-@keyframes waiting-spin {
-  to {
-    transform: rotate(1turn);
-  }
 }
 
 .waiting__label {
@@ -2983,22 +3009,24 @@ button {
 /*
  * いまいる場所のハザード（#72）。
  *
- * ★ 上の帯として出す。**地図の絵の上に情報を積み上げない**（以前は地図の左上に
- * 箱で出していて、スマホではキャラクターや地図の文字と重なった）。
+ * ★ **状態バーの下に帯として出す**（地図の外である）。以前は地図の左上に箱で
+ * 出していて、スマホではキャラクターや地図の文字と重なった。
+ * **地図の絵の上に情報を積み上げない。**
  */
 .hazardnow {
-  /* 帯なので幅いっぱい。ポイントの丸とは違う（列の左寄せを上書きする） */
-  justify-self: stretch;
-  padding: 0.4rem 0.6rem;
-  border-radius: 10px;
-  border: 1px solid #3c4a63;
-  background: rgb(28 36 50 / 92%);
+  /*
+   * ★ 状態バーの下の帯である（地図の中ではない）。おためしの帯・有事モードの帯と
+   * 同じ場所に並ぶので、角丸も影も付けない。**地図に重ねるものではない。**
+   */
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid #3c4a63;
+  background: #1c2432;
   color: #f2f5fa;
 }
 
-/* 入った瞬間だけ枠を強くする。文言だけでなく見た目でも段の違いを出す */
+/* 入った瞬間だけ明るくする。文言だけでなく見た目でも段の違いを出す */
 .hazardnow--entered {
-  border-color: #6f86a8;
+  background: #26344a;
 }
 
 .hazardnow__line {

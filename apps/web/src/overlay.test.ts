@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { gameElements } from './emergency.js'
-import { hasNextAfterBurst, overlayStep, type OverlayInput } from './overlay.js'
+import {
+  hasNextAfterBurst,
+  overlayStep,
+  WAITING_KINDS,
+  type OverlayInput,
+} from './overlay.js'
 
 /**
  * 重ねて出すものの順番（FR-03-2・FR-12-3・FR-14-8）。
@@ -123,13 +128,27 @@ describe('overlayStep（待っているあいだ）', () => {
     expect(overlayStep(input({ waiting: 'quiz' }))).toBe('waiting')
   })
 
-  it('★ 送信中は覆わない（面が出ているので、そこで無効にすれば伝わる）', () => {
+  it('★ 送信中も覆う（送ったのに何も起きない時間を作らない）', () => {
     /*
-     * ★ ここが `waiting` を返すと、**読んでいた設問が回答のたびに隠れる。**
-     * クイズもアンケートも、送信中は自分の面が画面に残っている。
+     * ★ 当初は「面が画面に出ているものは覆わない」としていた。読んでいた設問が
+     * 隠れることを避けたかったが、**送ってから結果が出るまでが遅く、送ったのに
+     * 何も起きない時間になっていた。** 送ったあとに読み返す設問は無いので覆う。
      */
-    expect(overlayStep(input({ waiting: 'answer' }))).toBe('none')
-    expect(overlayStep(input({ waiting: 'answer', hasCards: true }))).toBe('cards')
+    expect(overlayStep(input({ waiting: 'answer' }))).toBe('waiting')
+  })
+
+  it('カードの一覧の読み込みも覆う', () => {
+    expect(overlayStep(input({ waiting: 'cards' }))).toBe('waiting')
+  })
+
+  it('★ 待つものはすべて覆う（覆わない待ちを作らない）', () => {
+    /*
+     * ★ 1つでも漏れると、そこだけ「押したのに何も起きない」場面になる。
+     * 種類を足したときに覆い忘れないよう、全種類を回して確かめる。
+     */
+    for (const kind of WAITING_KINDS) {
+      expect(overlayStep(input({ waiting: kind })), kind).toBe('waiting')
+    }
   })
 
   it('★ 有事モードでも覆いは隠さない（演出ではなく、操作を止めている表示である）', () => {

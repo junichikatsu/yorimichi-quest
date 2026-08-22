@@ -31,29 +31,23 @@ export type OverlayStep = 'waiting' | 'burst' | 'cards' | 'survey' | 'none'
 /**
  * サーバーを待っている処理。
  *
- * ★ 分けているのは、**待っている面が画面にあるかどうか**が違うためである。
- * クイズの回答は設問の面が出たままなので、そこで選択肢を無効にすれば伝わる。
- * チェックインとアンケートの読み込みは**画面に何も無い状態で待つ**ので、
- * 覆って知らせないと「押したのに何も起きない」に見える（実際にそう見えた）。
+ * ★ **待つものはすべて覆う。** 当初は「面が画面に出ているものは覆わない」と
+ * していたが、回答を送ってから結果が出るまでが遅く、**送ったのに何も起きない**
+ * 時間になっていた。送ったあとに読み返す設問は無いので、覆って困らない。
  *
- * - `checkin`: チェックインの記録。押した直後で、まだ演出も面も出ていない
- * - `survey`: アンケートの読み込み。ポイントの演出が消えたあとで、画面は空
- * - `quiz`: クイズの読み込み。アンケートを閉じた直後で、やはり画面は空
- * - `answer`: クイズ・アンケートの送信。**面が出ているので覆わない**
+ * ★ ここに並ぶのは**利用者が押して始まった待ち**だけである。裏で走る取得
+ * （スポットの取り直し・歩いた記録の送信）を入れてはいけない。歩いている最中に
+ * 画面が覆われる。
+ *
+ * - `checkin`: チェックインの記録
+ * - `survey`: アンケートの読み込み
+ * - `quiz`: クイズの読み込み
+ * - `answer`: クイズ・アンケートの送信
+ * - `cards`: カードの一覧の読み込み
  */
-export const WAITING_KINDS = ['checkin', 'survey', 'quiz', 'answer'] as const
+export const WAITING_KINDS = ['checkin', 'survey', 'quiz', 'answer', 'cards'] as const
 
 export type WaitingKind = (typeof WAITING_KINDS)[number]
-
-/**
- * 画面を覆って待つか。
- *
- * ★ **自分の面が画面に無いものだけ覆う。** 面があるのに覆うと、読んでいた設問が
- * 隠れる（クイズの回答ごとに問題文が消えることになる）。
- */
-export function waitingCoversScreen(kind: WaitingKind): boolean {
-  return kind !== 'answer'
-}
 
 /** 覆っているあいだに出す文。**何を待っているのかを書く**（「読み込み中」では分からない） */
 export const WAITING_MESSAGES: Record<WaitingKind, string> = {
@@ -61,6 +55,7 @@ export const WAITING_MESSAGES: Record<WaitingKind, string> = {
   survey: 'この場所の設問を読み込んでいます',
   quiz: '防災クイズを読み込んでいます',
   answer: '送っています',
+  cards: 'カードを読み込んでいます',
 }
 
 export interface OverlayInput {
@@ -97,7 +92,7 @@ export function overlayStep(input: OverlayInput): OverlayStep {
    * なく、操作を受け付けていないことの表示である。隠すと、押しても何も起きない
    * 画面になる。
    */
-  if (input.waiting !== undefined && waitingCoversScreen(input.waiting)) return 'waiting'
+  if (input.waiting !== undefined) return 'waiting'
 
   if (input.hasBurst && input.game.checkin) return 'burst'
   if (input.hasCards && input.game.cards) return 'cards'

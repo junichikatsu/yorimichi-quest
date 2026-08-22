@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { WAITING_MESSAGES, type WaitingKind } from '../overlay.js'
+import { Spinner } from './Spinner.js'
 
 interface WaitingOverlayProps {
   kind: WaitingKind
@@ -60,7 +61,7 @@ export function WaitingOverlay({ kind }: WaitingOverlayProps): React.JSX.Element
       {shown && (
         <div className="waiting__box">
           {/* 印は装飾。文言だけでも成立させる（読み上げでは二重に読まない） */}
-          <span className="waiting__spinner" aria-hidden="true" />
+          <Spinner />
           <p className="waiting__label">{WAITING_MESSAGES[kind]}…</p>
         </div>
       )}

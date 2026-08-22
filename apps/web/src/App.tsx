@@ -51,6 +51,7 @@ import { MapView } from './components/MapView.js'
 import { QuizPanel } from './components/QuizPanel.js'
 import { SpotList } from './components/SpotList.js'
 import { Sheet } from './components/Sheet.js'
+import { Spinner } from './components/Spinner.js'
 import { SpotPanel } from './components/SpotPanel.js'
 import { SurveyPanel } from './components/SurveyPanel.js'
 import { StartGate } from './components/StartGate.js'
@@ -1081,10 +1082,13 @@ export function App(): React.JSX.Element {
    * ★ 取得に失敗しても行き止まりにしない。読み込み中の表示のまま閉じられる。
    */
   const loadCards = useCallback(async (): Promise<void> => {
+    setWaiting('cards')
     try {
       setCards(await fetchCards())
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : 'カードを取得できませんでした。')
+    } finally {
+      setWaiting(undefined)
     }
   }, [])
 
@@ -1272,6 +1276,8 @@ export function App(): React.JSX.Element {
       if (!survey) return
 
       setBusy(true)
+      // ★ 送ってから結果が出るまでが遅い。覆わないと「送ったのに何も起きない」に見える
+      setWaiting('answer')
       try {
         const result = await submitSurvey(survey.spotId, { answers, note })
 
@@ -1318,6 +1324,8 @@ export function App(): React.JSX.Element {
         setMessage(err instanceof ApiError ? err.message : '回答を送れませんでした。')
       } finally {
         setBusy(false)
+        // ★ 覆いは必ず外す。失敗しても外さないと操作できない画面から出られない
+        setWaiting(undefined)
       }
     },
     [survey, guestProgress, updateGuestProgress, pushFlash],
@@ -1348,6 +1356,8 @@ export function App(): React.JSX.Element {
       if (!quiz) return
 
       setBusy(true)
+      // ★ 採点はサーバー。返るまでは覆う（押したのに何も起きない時間を作らない）
+      setWaiting('answer')
       try {
         const result = await answerQuiz(quiz.spotId, {
           quizId: quiz.response.quiz.quizId,
@@ -1438,6 +1448,8 @@ export function App(): React.JSX.Element {
         setMessage(err instanceof ApiError ? err.message : '回答を送れませんでした。')
       } finally {
         setBusy(false)
+        // ★ 覆いは必ず外す。失敗しても外さないと操作できない画面から出られない
+        setWaiting(undefined)
       }
     },
     [quiz, mode, guestProgress, updateGuestProgress, pushFlash],
@@ -1534,8 +1546,13 @@ export function App(): React.JSX.Element {
   /* ---------------- 表示 ---------------- */
 
   if (phase === 'booting' || phase === 'logging-in') {
+    /*
+     * ★ 文字だけにしない。**回っているものが無いと、止まっているのか読み込んで
+     * いるのか分からない。** 起動が遅いときに一番不安になるのがここである。
+     */
     return (
-      <div className="boot">
+      <div className="boot" role="status" aria-live="polite" aria-busy={true}>
+        <Spinner />
         <p>{phase === 'booting' ? '起動しています…' : 'LINE でログインしています…'}</p>
       </div>
     )
@@ -1587,6 +1604,22 @@ export function App(): React.JSX.Element {
       />
 
       {emergency && <EmergencyBanner onExit={handleToggleEmergency} />}
+
+      {/*
+        ★ いまいる場所のハザード（#72）。**状態バーの下、地図の外に出す。**
+
+        ★ 地図の中に置いてはいけない。以前は地図の左上に出していたため、スマホでは
+        キャラクターや地図の文字と重なって読めなかった。**地図の絵の上に情報を
+        積み上げない。**
+
+        ★ **有事モードでも出す。** 消すほうが危険である（キャラクターの演出だけを
+        止める）。
+
+        ★ ここに置けるのは、地図が入れ物の大きさの変化に追随するようにしたため
+        （`MapView` の `ResizeObserver`）。Mapbox は自分では追随せず、帯が出入りすると
+        キャンバスが古い大きさのまま歪む。
+      */}
+      <HazardNotice here={hazard.here} withCharacter={game.exploration} />
 
       {/*
         ★ おためしであることを隠さない。
@@ -1643,11 +1676,6 @@ export function App(): React.JSX.Element {
           Mapbox のキャンバスは自分では追随しない（歪む）。
         */}
         <div className="mapoverlay">
-          {/*
-            ★ いまいる場所のハザード（#72）。**有事モードでも出す。**
-            消すほうが危険である（キャラクターの演出だけを止める）。
-          */}
-          <HazardNotice here={hazard.here} withCharacter={game.exploration} />
           {/* 累計ポイント（FR-03-2）。有事モードでは親が undefined を渡して消す */}
           <MapPoints totalPoints={game.points ? totalPoints : undefined} />
         </div>
