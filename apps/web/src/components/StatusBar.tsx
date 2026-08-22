@@ -1,20 +1,9 @@
 import type { GeolocationStatus } from '../hooks/useGeolocation.js'
 import type { UserView } from '@imanouchi/shared'
-import { useEffect, useRef, useState } from 'react'
 import { AvatarCanvas } from './AvatarCanvas.js'
 
 interface StatusBarProps {
   user: UserView | undefined
-  /**
-   * 累計ポイント（FR-01-3・FR-03-2）。**undefined なら出さない。**
-   *
-   * ★ `user.totalPoints` を直接読まない。おためしではサーバーが累計を持たず、
-   * 端末の中の値を出す必要がある。出どころの違いを親に寄せている。
-   *
-   * ★ 有事モードでは親が undefined を渡す（FR-08-2）。ここで `emergency` を
-   * 見て分岐すると、隠す判定が画面ごとに散る。
-   */
-  totalPoints: number | undefined
   areaName: string
   geoStatus: GeolocationStatus
   spotCount: number
@@ -25,9 +14,6 @@ interface StatusBarProps {
   emergency: boolean
   onToggleEmergency: () => void
 }
-
-/** 跳ねている時間。CSS のアニメーションと同じ長さにそろえる */
-const POINTS_BUMP_MS = 700
 
 const GEO_LABELS: Record<GeolocationStatus, string> = {
   idle: '位置情報 未使用',
@@ -41,7 +27,6 @@ const GEO_LABELS: Record<GeolocationStatus, string> = {
 
 export function StatusBar({
   user,
-  totalPoints,
   areaName,
   geoStatus,
   spotCount,
@@ -51,27 +36,11 @@ export function StatusBar({
   onToggleEmergency,
 }: StatusBarProps): React.JSX.Element {
   /*
-   * 増えた瞬間だけ跳ねさせる（FR-03-2）。
+   * ★ 累計ポイントはここに出さない（`MapPoints` が地図の左上に出す）。
    *
-   * ★ 演出は地図の上に出るのに、累計はここにある。数字が静かに置き換わるだけだと、
-   * **増えたことに気づかない**。減ることは無いので、増えたときだけ動かす。
-   *
-   * ★ 動きは CSS 側で `prefers-reduced-motion` に従って落とす（NFR-08）。
-   * 印を出すこと自体は変えない。
+   * 上の帯にハザードの知らせを出すようにしたため、ここに置いたままだと横に
+   * 並んで押し合い、**スマホでは折り返して状態バーが画面を占める**。
    */
-  const [bumped, setBumped] = useState(false)
-  const previousPointsRef = useRef(totalPoints)
-
-  useEffect(() => {
-    const previous = previousPointsRef.current
-    previousPointsRef.current = totalPoints
-    if (previous === undefined || totalPoints === undefined || totalPoints <= previous) return
-
-    setBumped(true)
-    const timer = setTimeout(() => setBumped(false), POINTS_BUMP_MS)
-    return () => clearTimeout(timer)
-  }, [totalPoints])
-
   return (
     <header className="statusbar">
       <div className="statusbar__brand">
@@ -102,15 +71,6 @@ export function StatusBar({
           <p className="statusbar__sub">
             {areaName} ・ {spotCount}件
           </p>
-        </div>
-        {/* 貯まっていることが平時は常に見えるようにする（FR-03-2 の付与が実感になる） */}
-        <div className={bumped ? 'statusbar__points statusbar__points--bumped' : 'statusbar__points'}>
-          {totalPoints !== undefined && (
-            <>
-              <span className="statusbar__points-value">{totalPoints}</span>
-              <span className="statusbar__points-unit">pt</span>
-            </>
-          )}
         </div>
       </div>
       <div className="statusbar__right">

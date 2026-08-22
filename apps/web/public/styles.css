@@ -1326,30 +1326,13 @@ button {
 
 /* ---------------- チェックイン（FR-03） ---------------- */
 
-.statusbar__points {
-  display: flex;
-  align-items: baseline;
-  gap: 0.15rem;
-  margin-left: auto;
-  /* 数字は切り詰められない。名前より優先して幅を確保する */
-  flex: none;
-  white-space: nowrap;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  background: var(--chip);
-  color: var(--accent);
-}
-
 /*
  * 増えた瞬間の跳ね（FR-03-2）。
  *
- * ★ 演出は地図の上に出るのに、累計はここにある。**増えたことがこの数字に
- * つながっている**ことを一度だけ見せる。減ることは無いので増加時のみ。
+ * ★ 累計は地図の左上（`.mappoints`）に出す。状態バーには置かない
+ * （上の帯にハザードの知らせが出るため、横に並ぶと押し合う）。
+ * 動きの定義はここに残してある（跳ねる指定は `.mappoints--bumped` が参照する）。
  */
-.statusbar__points--bumped {
-  animation: points-bump 0.7s ease-out;
-}
-
 @keyframes points-bump {
   0% {
     transform: scale(1);
@@ -1361,16 +1344,6 @@ button {
   100% {
     transform: scale(1);
   }
-}
-
-.statusbar__points-value {
-  font-size: 1.05rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.statusbar__points-unit {
-  font-size: 0.7rem;
 }
 
 .checkin {
@@ -1471,7 +1444,7 @@ button {
   .waiting--shown,
   .waiting__spinner,
   .reveal__flip,
-  .statusbar__points--bumped,
+  .mappoints--bumped,
   .sidetabs__new {
     animation: none;
   }
@@ -2969,48 +2942,150 @@ button {
  * 警報ではない。警報に見せると、防災アプリが災害の発生を思わせる画面を
  * 出すことになる（FR-08-9 と同じ配慮）。
  */
-.hazardnow {
+/*
+ * 地図の上に重ねるものの列。
+ *
+ * ★ **位置を1つずつ決めない。** 上から順に積む1本の列にしてある。個別に
+ * `top` / `left` を振ると、足したときに必ずどこかで重なる（実際にハザードの
+ * 知らせがキャラクターと重なった）。
+ *
+ * ★ 地図の大きさは変えない（`position: absolute`）。流れの中に置くと地図の高さが
+ * 変わり、Mapbox のキャンバスは自分では追随せず歪む。
+ *
+ * ★ 列そのものは操作を通す。中の要素も読むだけなので押せる必要はない。
+ * ここを `auto` にすると、**帯の裏の地図が触れなくなる**。
+ */
+.mapoverlay {
   position: absolute;
   left: 0.6rem;
+  right: 0.6rem;
   top: 0.6rem;
   z-index: 3;
   pointer-events: none;
-  max-width: min(22rem, calc(100% - 5.5rem));
-  padding: 0.5rem 0.7rem;
+  display: grid;
+  gap: 0.4rem;
+  /* 左寄せ。ポイントの丸が幅いっぱいに伸びない */
+  justify-items: start;
+}
+
+/*
+ * ★ **基本の規則より後ろに置く。** 同じ詳細度なので、前に置くと後ろの
+ * `right: 0.6rem` に負けて効かない（実際に負けた）。`.sheet--spot` の逃がしも
+ * 同じ理由でそれぞれの規則の近くに置いてある。
+ */
+@media (min-width: 900px) {
+  /* サイドバー（22rem）の上に出さない。地図の側だけに収める */
+  .mapoverlay {
+    right: calc(22rem + 0.6rem);
+  }
+}
+
+/*
+ * いまいる場所のハザード（#72）。
+ *
+ * ★ 上の帯として出す。**地図の絵の上に情報を積み上げない**（以前は地図の左上に
+ * 箱で出していて、スマホではキャラクターや地図の文字と重なった）。
+ */
+.hazardnow {
+  /* 帯なので幅いっぱい。ポイントの丸とは違う（列の左寄せを上書きする） */
+  justify-self: stretch;
+  padding: 0.4rem 0.6rem;
   border-radius: 10px;
   border: 1px solid #3c4a63;
   background: rgb(28 36 50 / 92%);
   color: #f2f5fa;
 }
 
-.hazardnow__title {
+/* 入った瞬間だけ枠を強くする。文言だけでなく見た目でも段の違いを出す */
+.hazardnow--entered {
+  border-color: #6f86a8;
+}
+
+.hazardnow__line {
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
+  font-size: 0.86rem;
   line-height: 1.5;
 }
 
-.hazardnow__character {
-  margin: 0.2rem 0 0;
-  font-size: 0.82rem;
+/*
+ * 「想定」の印。
+ *
+ * ★ **短い表示でも落とさない。** これが無いと、いま水が来ていることを示す画面に
+ * 読める（FR-08-9 と同じ作法）。
+ */
+.hazardnow__badge {
+  flex: none;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: #45536b;
+  color: #f2f5fa;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hazardnow__title {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hazardnow__parts {
+  /* 暗い背景なので明度を落としすぎない（NFR-08） */
   color: #cfe0f2;
+  font-size: 0.82rem;
 }
 
 .hazardnow__note {
-  margin: 0.3rem 0 0;
+  margin: 0.25rem 0 0;
   font-size: 0.72rem;
   line-height: 1.5;
-  /* 暗い背景なので明度を落としすぎない（NFR-08） */
   color: #bcc9d9;
 }
 
-/* 確かめ方。書かなければ誰も気づかない */
-.hazardnow__hint {
-  margin: 0.25rem 0 0;
-  padding-top: 0.25rem;
-  border-top: 1px solid #45536b;
+/*
+ * 累計ポイント（FR-03-2）。
+ *
+ * ★ 状態バーから地図の左上へ移してある。上の帯にハザードの知らせを出すように
+ * したため、状態バーに置いたままだと横に並んで押し合い、**スマホでは折り返して
+ * 状態バーが画面を占める**。
+ *
+ * ★ 小さく1行に留める。大きくすると、以前のハザード表示と同じ問題
+ * （キャラクターや地図の文字と重なる）を作る。
+ */
+.mappoints {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.15rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  /* 地図の上なので、下地を必ず敷く（地図の色に溶けると読めない） */
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgb(36 31 39 / 18%);
+}
+
+.mappoints__value {
+  font-size: 1rem;
+  font-weight: 700;
+  /* 桁が変わっても幅が揺れない（増えるたびに丸が伸縮すると目が疲れる） */
+  font-variant-numeric: tabular-nums;
+}
+
+.mappoints__unit {
   font-size: 0.72rem;
-  color: #d7e2ef;
+  font-weight: 700;
+}
+
+/* 増えた瞬間だけ跳ねる。減ることは無いので、増えたときだけ動かす */
+.mappoints--bumped {
+  animation: points-bump 0.7s ease-out;
 }
 
 /* 見た目が未取得のときの現在地。濡れていることが点でも分かるように */

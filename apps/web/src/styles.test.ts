@@ -44,6 +44,46 @@ function mediaBlock(source: string, header: string): string {
   throw new Error(`${header} の波括弧が閉じていない`)
 }
 
+/**
+ * 同じ条件のメディアクエリを**すべて**取り出す。
+ *
+ * ★ `mediaBlock` は最初の1つしか見ない。同じ条件のブロックは複数あり
+ * （それぞれの規則の近くに置くため。**基本の規則より後ろに置かないと詳細度で
+ * 負ける**）、最初だけを見ると「別のブロックに書いてあるのに見つからない」と
+ * いう誤った失敗になる。**実際にそれで詰まった。**
+ */
+function mediaBlocks(source: string, header: string): string[] {
+  const blocks: string[] = []
+  let from = 0
+
+  for (;;) {
+    const start = source.indexOf(header, from)
+    if (start < 0) break
+
+    const open = source.indexOf('{', start)
+    let depth = 0
+    let end = -1
+
+    for (let i = open; i < source.length; i += 1) {
+      if (source[i] === '{') depth += 1
+      else if (source[i] === '}') {
+        depth -= 1
+        if (depth === 0) {
+          end = i
+          break
+        }
+      }
+    }
+
+    if (end < 0) throw new Error(`${header} の波括弧が閉じていない`)
+    blocks.push(source.slice(open + 1, end))
+    from = end
+  }
+
+  expect(blocks.length, `${header} が見つからない`).toBeGreaterThan(0)
+  return blocks
+}
+
 /** セレクタ1つの宣言ブロックを取り出す */
 function ruleBlock(source: string, selector: string): string {
   const start = source.indexOf(`${selector} {`)
@@ -156,9 +196,60 @@ describe('styles.css', () => {
   })
 
   it('状態バーのチップは折り返さない', () => {
-    for (const selector of ['.statusbar__geo', '.statusbar__mode', '.statusbar__points']) {
+    for (const selector of ['.statusbar__geo', '.statusbar__mode']) {
       expect(ruleBlock(css, selector), selector).toContain('white-space: nowrap')
     }
+  })
+
+  /*
+   * 地図の上に重ねるものの列。
+   *
+   * ★ ハザードの知らせを地図の左上に絶対配置していたため、スマホでは
+   * **キャラクターや地図の文字と重なって読めなかった。** 位置を1つずつ決めるのを
+   * やめ、上から積む1本の列にしてある。個別に `top` を振る形へ戻すと、
+   * 足したときに必ずどこかで重なる。
+   */
+  it('★ 地図に重ねるものは1本の列に積む（位置を個別に決めない）', () => {
+    const block = ruleBlock(css, '.mapoverlay')
+
+    expect(block, '列になっていない').toContain('display: grid')
+    expect(block, '間隔が無い（詰まって重なって見える）').toContain('gap:')
+  })
+
+  it('★ 地図に重ねる列は操作を通す（帯の裏の地図が触れなくなる）', () => {
+    expect(ruleBlock(css, '.mapoverlay')).toContain('pointer-events: none')
+  })
+
+  it('★ 地図に重ねる列は地図の大きさを変えない', () => {
+    /*
+     * ★ 流れの中に置くと地図の高さが変わり、**Mapbox のキャンバスは自分では
+     * 追随せず歪む**（`map.resize()` を呼んでいない）。絶対配置で重ねる。
+     */
+    expect(ruleBlock(css, '.mapoverlay')).toContain('position: absolute')
+  })
+
+  it('★ PC では地図に重ねる列をサイドバーの上に出さない', () => {
+    const blocks = mediaBlocks(css, '@media (min-width: 900px)')
+
+    expect(
+      blocks.some((block) => block.includes('.mapoverlay')),
+      '.mapoverlay の逃がしが無い',
+    ).toBe(true)
+  })
+
+  it('★ ハザードの知らせは「想定」の印を持つ（実況として読ませない）', () => {
+    /*
+     * ★ 短い表示（区域の中に居るあいだ）でも落とさない。これが無いと、
+     * いま水が来ていることを示す画面に読める（FR-08-9 と同じ作法）。
+     */
+    expect(css, '.hazardnow__badge が無い').toContain('.hazardnow__badge')
+  })
+
+  it('★ 地図の上のポイントは下地を敷く（地図の色に溶けると読めない）', () => {
+    const block = ruleBlock(css, '.mappoints')
+
+    expect(block, '下地が無い').toContain('background:')
+    expect(block, '折り返して2行になる').toContain('white-space: nowrap')
   })
 
   /*
@@ -333,11 +424,17 @@ describe('styles.css', () => {
    * 覆っている最中に前へ出てもいけない。
    */
   it('★ ハザードの知らせは地図の操作を通す', () => {
-    expect(ruleBlock(css, '.hazardnow')).toContain('pointer-events: none')
+    /*
+     * ★ 知らせ自体ではなく、それを載せている列（`.mapoverlay`）で担保している。
+     * 地図に重ねるものが増えても1か所で効く。個々の要素に書く形へ戻すと、
+     * 足したものだけ地図を触れなくする。
+     */
+    expect(ruleBlock(css, '.mapoverlay')).toContain('pointer-events: none')
   })
 
   it('★ ハザードの知らせは歩行中の覆いより後ろに出る', () => {
-    expect(zIndexOf(css, '.hazardnow')).toBeLessThan(zIndexOf(css, '.walkguard'))
+    // 重なりの順も列の側で持つ（知らせもポイントもこの列の中にある）
+    expect(zIndexOf(css, '.mapoverlay')).toBeLessThan(zIndexOf(css, '.walkguard'))
   })
 
   it('★ 演出が重なったときは強いものが前に出る（点数 → 帯 → カード）', () => {
@@ -375,7 +472,7 @@ describe('styles.css', () => {
       '.sheet__body',
       '.quiz__stamp',
       '.reveal__flip',
-      '.statusbar__points--bumped',
+      '.mappoints--bumped',
       '.sidetabs__new',
       '.exploration__bar-fill',
     ]) {

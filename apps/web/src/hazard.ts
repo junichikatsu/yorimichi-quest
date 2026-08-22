@@ -206,8 +206,28 @@ export interface HazardHere {
 export function hazardSentence(here: readonly HazardHere[]): string {
   if (here.length === 0) return ''
 
-  const parts = here.map((item) =>
-    item.depth === undefined ? item.label : `${item.label}（${item.depth}）`,
-  )
-  return `このあたりは ${parts.join('・')} の浸水想定区域です`
+  return `このあたりは ${hazardParts(here)} の浸水想定区域です`
 }
+
+/**
+ * 区域の内訳だけ（「洪水（3〜5m）・高潮」）。
+ *
+ * ★ 見出しと組み合わせて使う。**入った瞬間**は「入りました」を主役にしたいので、
+ * 文全体ではなく内訳だけが要る。文言を組み立てる場所を1つにしておかないと、
+ * 帯と読み上げで区分の書き方がずれる。
+ */
+export function hazardParts(here: readonly HazardHere[]): string {
+  return here
+    .map((item) => (item.depth === undefined ? item.label : `${item.label}（${item.depth}）`))
+    .join('・')
+}
+
+/**
+ * 区域に入った瞬間の見出し。
+ *
+ * ★ **祝わない**（#72・G-2）。危ないことを知らせる文にする。点数もカードも動かさない。
+ */
+export const HAZARD_ENTERED_TITLE = '浸水想定区域に入りました'
+
+/** 区域の中に居るあいだの見出し */
+export const HAZARD_INSIDE_TITLE = '浸水想定区域の中'

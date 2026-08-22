@@ -43,6 +43,7 @@ import { EmergencyBanner } from './components/EmergencyBanner.js'
 import { EmergencyPanel } from './components/EmergencyPanel.js'
 import { EventFlash, type EventFlashItem, type EventFlashKind } from './components/EventFlash.js'
 import { HazardNotice } from './components/HazardNotice.js'
+import { MapPoints } from './components/MapPoints.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
@@ -497,6 +498,10 @@ export function App(): React.JSX.Element {
    * ★ 有事モードでは出さない（FR-08-2）。ハザードそのものは地図に全面表示する。
    *
    * ★ ポイントもカードも動かさない。ここは知らせるだけである（G-2・FR-14-10）。
+   *
+   * ★ **帯（`EventFlash`）は出さない。** 上のハザードの知らせ（`HazardNotice`）が
+   * 「入りました」→「区域の中」と切り替わる形で見せている。両方出すと、同じことが
+   * 上下に二重に並ぶ。覆っている間だけは控えへ積む（見ていないので、まとめで渡す）。
    */
   const hazardSaidRef = useRef('')
   useEffect(() => {
@@ -508,6 +513,9 @@ export function App(): React.JSX.Element {
     if (sentence === '' || !game.exploration) return
 
     notifyHazard()
+
+    // ★ 覆っている間だけ控えへ積む（`WalkDigest` が読む）。画面へは帯を出さない
+    if (!walkGuardVisible) return
     announce(
       hazard.here.map((item) => ({
         kind: 'hazard' as const,
@@ -515,7 +523,7 @@ export function App(): React.JSX.Element {
         name: item.depth === undefined ? item.label : `${item.label}（${item.depth}）`,
         spotId: undefined,
       })),
-      walkGuardVisible,
+      true,
     )
   }, [hazard, game.exploration, walkGuardVisible, announce])
 
@@ -1569,7 +1577,6 @@ export function App(): React.JSX.Element {
     <div className={emergency ? 'app app--emergency' : 'app'}>
       <StatusBar
         user={user}
-        totalPoints={game.points ? totalPoints : undefined}
         areaName={config?.area.name ?? ''}
         geoStatus={geo.status}
         spotCount={sortedSpots.length}
@@ -1626,10 +1633,24 @@ export function App(): React.JSX.Element {
         )}
 
         {/*
-          ★ いまいる場所のハザード（#72）。**有事モードでも出す。**
-          消すほうが危険である（キャラクターの演出だけを止める）。
+          ★ 地図の上に重ねるものを**1本の列にまとめる。**
+
+          ★ 以前はハザードの知らせを地図の左上に絶対配置していたため、スマホでは
+          キャラクターや地図の文字と重なって読めなかった。列にして上から順に積めば、
+          何を足しても重ならない（**位置を1つずつ決めると必ずどこかで重なる**）。
+
+          ★ 地図の大きさは変えない。流れの中に置くと地図の高さが変わり、
+          Mapbox のキャンバスは自分では追随しない（歪む）。
         */}
-        <HazardNotice here={hazard.here} withCharacter={game.exploration} />
+        <div className="mapoverlay">
+          {/*
+            ★ いまいる場所のハザード（#72）。**有事モードでも出す。**
+            消すほうが危険である（キャラクターの演出だけを止める）。
+          */}
+          <HazardNotice here={hazard.here} withCharacter={game.exploration} />
+          {/* 累計ポイント（FR-03-2）。有事モードでは親が undefined を渡して消す */}
+          <MapPoints totalPoints={game.points ? totalPoints : undefined} />
+        </div>
 
         {offerDebugMove &&
           (joystickClosed ? (
