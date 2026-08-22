@@ -4,6 +4,16 @@ import { AvatarCanvas } from './AvatarCanvas.js'
 
 interface StatusBarProps {
   user: UserView | undefined
+  /**
+   * 累計ポイント（FR-01-3・FR-03-2）。**undefined なら出さない。**
+   *
+   * ★ `user.totalPoints` を直接読まない。おためしではサーバーが累計を持たず、
+   * 端末の中の値を出す必要がある。出どころの違いを親に寄せている。
+   *
+   * ★ 有事モードでは親が undefined を渡す（FR-08-2）。ここで `emergency` を
+   * 見て分岐すると、隠す判定が画面ごとに散る。
+   */
+  totalPoints: number | undefined
   areaName: string
   geoStatus: GeolocationStatus
   spotCount: number
@@ -27,6 +37,7 @@ const GEO_LABELS: Record<GeolocationStatus, string> = {
 
 export function StatusBar({
   user,
+  totalPoints,
   areaName,
   geoStatus,
   spotCount,
@@ -60,6 +71,15 @@ export function StatusBar({
           <p className="statusbar__sub">
             {areaName} ・ {spotCount}件
           </p>
+        </div>
+        {/* 貯まっていることが平時は常に見えるようにする（FR-03-2 の付与が実感になる） */}
+        <div className="statusbar__points">
+          {totalPoints !== undefined && (
+            <>
+              <span className="statusbar__points-value">{totalPoints}</span>
+              <span className="statusbar__points-unit">pt</span>
+            </>
+          )}
         </div>
       </div>
       <div className="statusbar__right">

@@ -16,6 +16,7 @@ import type { ExploredTile } from '@imanouchi/shared'
 
 const TILES_KEY = 'imanouchi.guest.tiles.v1'
 const CONSENT_KEY = 'imanouchi.guest.consent.v1'
+const PROGRESS_KEY = 'imanouchi.guest.progress.v1'
 
 /**
  * 保存するタイルの上限。
@@ -99,6 +100,94 @@ export function saveGuestConsent(agreed: boolean): void {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * チェックインとクイズの進み（FR-03・FR-04）
+ * ------------------------------------------------------------------ */
+
+/**
+ * スポットごとの進み。
+ *
+ * ★ おためしではサーバーが**再チェックイン制限を効かせられない**（前回時刻を
+ * 持たないため）。ここに置いた記録で画面側が抑える。破られても他人に影響は無く、
+ * サーバーには何も残らない。
+ */
+export interface GuestSpotProgress {
+  lastCheckinAt: number
+  visitCount: number
+  /** クイズで報酬を受け取った時刻。undefined は未正解 */
+  quizClearedAt: number | undefined
+}
+
+export interface GuestProgress {
+  /** 端末の中だけの累計ポイント。サーバーの累計とは別物である */
+  points: number
+  spots: Record<string, GuestSpotProgress>
+}
+
+export const EMPTY_GUEST_PROGRESS: GuestProgress = { points: 0, spots: {} }
+
+/** 保存するスポット数の上限。おためしでこれを超える人は LINE でログインしたほうがよい */
+const MAX_SPOTS = 500
+
+function isSpotProgress(value: unknown): value is GuestSpotProgress {
+  if (typeof value !== 'object' || value === null) return false
+  const raw = value as Record<string, unknown>
+  return typeof raw['lastCheckinAt'] === 'number' && typeof raw['visitCount'] === 'number'
+}
+
+/** 端末に残っている進み。壊れていれば空で返す */
+export function loadGuestProgress(): GuestProgress {
+  const store = storage()
+  if (!store) return EMPTY_GUEST_PROGRESS
+
+  try {
+    const raw = store.getItem(PROGRESS_KEY)
+    if (raw === null) return EMPTY_GUEST_PROGRESS
+
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return EMPTY_GUEST_PROGRESS
+    const record = parsed as Record<string, unknown>
+
+    const spots: Record<string, GuestSpotProgress> = {}
+    const rawSpots = record['spots']
+    if (typeof rawSpots === 'object' && rawSpots !== null) {
+      // ★ 1件ずつ検査する。手で書き換えられる場所なので、形を信じない
+      for (const [spotId, value] of Object.entries(rawSpots as Record<string, unknown>)) {
+        if (!isSpotProgress(value)) continue
+        const cleared = (value as unknown as Record<string, unknown>)['quizClearedAt']
+        spots[spotId] = {
+          lastCheckinAt: value.lastCheckinAt,
+          visitCount: value.visitCount,
+          quizClearedAt: typeof cleared === 'number' && cleared > 0 ? cleared : undefined,
+        }
+      }
+    }
+
+    return {
+      points: typeof record['points'] === 'number' && record['points'] >= 0 ? record['points'] : 0,
+      spots,
+    }
+  } catch {
+    return EMPTY_GUEST_PROGRESS
+  }
+}
+
+/** 進みを端末へ書く。書けなくても落とさない */
+export function saveGuestProgress(progress: GuestProgress): void {
+  const store = storage()
+  if (!store) return
+
+  try {
+    const entries = Object.entries(progress.spots).slice(0, MAX_SPOTS)
+    store.setItem(
+      PROGRESS_KEY,
+      JSON.stringify({ points: progress.points, spots: Object.fromEntries(entries) }),
+    )
+  } catch {
+    // 容量超過・書き込み禁止。記録は失うが、遊べる状態は保つ
+  }
+}
+
 /** おためしの記録を消す。「残っているのが気になる」に応えられるようにする */
 export function clearGuestData(): void {
   const store = storage()
@@ -107,6 +196,7 @@ export function clearGuestData(): void {
   try {
     store.removeItem(TILES_KEY)
     store.removeItem(CONSENT_KEY)
+    store.removeItem(PROGRESS_KEY)
   } catch {
     // 消せないときは何もできない
   }

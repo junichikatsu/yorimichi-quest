@@ -1,8 +1,26 @@
 import { formatDistance } from '@imanouchi/core'
 import { SPOT_CATEGORY_LABELS, type SpotWithDistance } from '@imanouchi/shared'
+import { buildCheckinView, type SpotProgress } from '../checkin-view.js'
 
 interface SpotPanelProps {
   spot: SpotWithDistance
+  /** チェックインできる半径（m）。サーバーから配られる（FR-03-1） */
+  checkinRadiusM: number
+  progress: SpotProgress
+  busy: boolean
+  /** 現在時刻。制限の残りを出すために受け取る（テスト可能にするため引数にする） */
+  now: number
+  /**
+   * チェックインとクイズの導線を出すか。
+   *
+   * ★ 有事モードでは出さない（FR-08-2）。有事に「ポイントが増える」操作を
+   * 見せると、点数のために危険な場所へ向かわせうる（NFR-14）。
+   * 判定は `emergency.ts` の `gameElements` に寄せてある。
+   */
+  actionsVisible: boolean
+  onCheckin: () => void
+  /** クイズを開く（FR-04-1）。チェックイン後は自動で開くので、ここは見直し用 */
+  onOpenQuiz: () => void
   onClose: () => void
 }
 
@@ -13,7 +31,24 @@ interface SpotPanelProps {
  * 「設備が無い」ではなく「未記入」であり、そこがこのサービスで埋める対象である（FR-12）。
  * 断定すると、無いはずのものを無いと言い切ったことになる。
  */
-export function SpotPanel({ spot, onClose }: SpotPanelProps): React.JSX.Element {
+export function SpotPanel({
+  spot,
+  checkinRadiusM,
+  progress,
+  busy,
+  now,
+  actionsVisible,
+  onCheckin,
+  onOpenQuiz,
+  onClose,
+}: SpotPanelProps): React.JSX.Element {
+  const checkinView = buildCheckinView({
+    distanceM: spot.distanceM,
+    radiusM: checkinRadiusM,
+    progress,
+    now,
+  })
+
   return (
     <section className="panel" aria-label="スポット詳細">
       <div className="panel__head">
@@ -51,6 +86,43 @@ export function SpotPanel({ spot, onClose }: SpotPanelProps): React.JSX.Element 
           出典 {spot.source}
           {spot.fetchedAt !== '' && `（取得 ${spot.fetchedAt}）`}
         </p>
+      )}
+
+      {/* ---------------- チェックイン（FR-03） ---------------- */}
+
+      {actionsVisible && (
+      <div className="checkin">
+        <button
+          type="button"
+          className="button button--primary checkin__button"
+          disabled={!checkinView.enabled || busy}
+          onClick={onCheckin}
+        >
+          {busy ? '記録しています…' : checkinView.label}
+        </button>
+
+        {checkinView.note !== undefined && <p className="checkin__note">{checkinView.note}</p>}
+
+        <dl className="checkin__stats">
+          <div>
+            <dt>ここへ来た回数</dt>
+            <dd>{progress.visitCount}</dd>
+          </div>
+          <div>
+            {/* みんなの回数（FR-03-4 の貢献度）。集計が無いので書き込み時に数えている */}
+            <dt>みんなの記録</dt>
+            <dd>{spot.checkinCount}</dd>
+          </div>
+        </dl>
+
+        {/*
+          ★ クイズはチェックイン後に自動で開く（FR-04-1）。
+          この導線は「解説をもう一度読みたい」「あとで挑戦したい」ための入口である。
+        */}
+        <button type="button" className="button button--ghost checkin__quiz" onClick={onOpenQuiz}>
+          {progress.quizCleared ? '防災クイズをもう一度見る' : '防災クイズに挑戦する'}
+        </button>
+      </div>
       )}
     </section>
   )
