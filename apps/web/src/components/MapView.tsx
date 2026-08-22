@@ -11,7 +11,16 @@ import {
 } from '@imanouchi/shared'
 import mapboxgl from 'mapbox-gl'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite } from '../avatar/sprite.js'
+import { SPRITE_HEIGHT, SPRITE_WIDTH, drawSprite, type Condition } from '../avatar/sprite.js'
+import {
+  HAZARD_LAYERS,
+  HAZARD_MAX_TILES,
+  HAZARD_MAX_ZOOM,
+  HAZARD_MIN_ZOOM,
+  tileNorthWest,
+  tilePointOf,
+} from '../hazard.js'
+import { getHazardTile } from '../hazard-tiles.js'
 import { mapOptions, mapStyleFor } from '../map-options.js'
 import type { Position } from '../hooks/useGeolocation.js'
 
@@ -31,6 +40,13 @@ interface MapViewProps {
   avatar: Avatar | undefined
   /** 有事モードか（FR-08-2） */
   emergency: boolean
+  /**
+   * キャラクターの状態（#72）。浸水想定区域の中では濡れた見た目にする。
+   *
+   * ★ 有事モードでは親が `dry` を渡す。逃げている最中にゲームの演出を出さない
+   * （ハザードそのものは有事でも**全面に出す**）。
+   */
+  condition: Condition
   /**
    * いまチェックインできるスポット。マーカーを目立たせる（FR-03-2）。
    *
@@ -58,6 +74,14 @@ const FOG_COLOR = 'rgba(22, 28, 17, 0.55)'
 
 /** 霧の外周をぼかす割合。1.0 だと切り抜きが真円で「穴」に見えてしまう */
 const FOG_FEATHER_START = 0.55
+
+/**
+ * ハザードの濃さ（#72）。
+ *
+ * ★ 塗りつぶさない。想定区域は広く、濃く重ねると道も避難所も見えなくなる。
+ * **有事に地図が読めなくなるのは危険である。**
+ */
+const HAZARD_ALPHA = 0.6
 
 /**
  * m からピクセルへの換算。
@@ -120,12 +144,12 @@ function createCheckinElement(spot: SpotWithDistance, onClick: () => void): HTML
  *
  * ★ 見た目が未取得のときは点で描く。キャラクターを待って現在地が出ないほうが困る。
  */
-function createMeElement(avatar: Avatar | undefined): HTMLElement {
+function createMeElement(avatar: Avatar | undefined, condition: Condition): HTMLElement {
   const el = document.createElement('div')
-  el.setAttribute('aria-label', '現在地')
+  el.setAttribute('aria-label', condition === 'wet' ? '現在地（浸水想定区域の中）' : '現在地')
 
   if (!avatar) {
-    el.className = 'me'
+    el.className = condition === 'wet' ? 'me me--wet' : 'me'
     return el
   }
 
@@ -134,9 +158,142 @@ function createMeElement(avatar: Avatar | undefined): HTMLElement {
   const scale = 1
   canvas.width = SPRITE_WIDTH * scale
   canvas.height = SPRITE_HEIGHT * scale
-  drawSprite(canvas, { avatar, frame: 0, moving: false, direction: 'down' }, scale)
+  drawSprite(canvas, { avatar, frame: 0, moving: false, direction: 'down', condition }, scale)
   el.appendChild(canvas)
   return el
+}
+
+/**
+ * 霧を晴らす形を描く（歩いたところ）。
+ *
+ * ★ 霧の切り抜きと、ハザードの切り抜きで**同じ形**を使う。二重に持つと
+ * 「霧は晴れているのにハザードが出ない」がすぐ起きる。合成のしかた
+ * （`destination-out` か `destination-in` か）だけを呼ぶ側が決める。
+ */
+function paintRevealShapes(
+  ctx: CanvasRenderingContext2D,
+  map: mapboxgl.Map,
+  areas: readonly UnlockedAreaBounds[],
+  tiles: readonly ExploredTile[],
+  revealRadiusM: number,
+  width: number,
+  height: number,
+): void {
+  const zoom = map.getZoom()
+
+  /*
+   * 先に開放済みの町丁目を塗る。
+   *
+   * 円だけでは道に沿った筋しか消えず、区画の内側が残る。
+   * 隣の町丁目と辺を共有しているので、同じ経路を太い線でなぞって塗り足す
+   * （塗るだけだと境界に髪の毛のような隙間が残る）。
+   */
+  ctx.fillStyle = 'rgba(0, 0, 0, 1)'
+  ctx.strokeStyle = 'rgba(0, 0, 0, 1)'
+  ctx.lineWidth = 2
+  ctx.lineJoin = 'round'
+
+  for (const area of areas) {
+    const chome = chomeByCode(area.areaKey)
+    if (!chome) continue
+
+    // 画面外の区画は描かない。外接矩形で弾く
+    const [minLng, minLat, maxLng, maxLat] = chome.bbox
+    const topLeft = map.project([minLng, maxLat])
+    const bottomRight = map.project([maxLng, minLat])
+    if (
+      Math.max(topLeft.x, bottomRight.x) < 0 ||
+      Math.max(topLeft.y, bottomRight.y) < 0 ||
+      Math.min(topLeft.x, bottomRight.x) > width ||
+      Math.min(topLeft.y, bottomRight.y) > height
+    ) {
+      continue
+    }
+
+    ctx.beginPath()
+    for (const ring of chome.rings) {
+      ring.forEach(([lng, lat], index) => {
+        const point = map.project([lng, lat])
+        if (index === 0) ctx.moveTo(point.x, point.y)
+        else ctx.lineTo(point.x, point.y)
+      })
+      ctx.closePath()
+    }
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  for (const tile of tiles) {
+    const point = map.project([tile.lng, tile.lat])
+    const radius = metersToPixels(revealRadiusM, tile.lat, zoom)
+    // 画面外のタイルは描かない（歩くほど件数が増えるため）
+    if (
+      point.x < -radius ||
+      point.y < -radius ||
+      point.x > width + radius ||
+      point.y > height + radius
+    ) {
+      continue
+    }
+
+    const gradient = ctx.createRadialGradient(
+      point.x,
+      point.y,
+      radius * FOG_FEATHER_START,
+      point.x,
+      point.y,
+      radius,
+    )
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = gradient
+
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+/**
+ * ハザード（浸水想定）のタイルを描く（#72）。
+ *
+ * ★ Mapbox のラスタレイヤでは**多角形で切り抜けない**。素直にレイヤとして足すと、
+ * 半透明の霧の下から未踏の範囲でも透けて見える。霧と同じ作法で自前に描く。
+ *
+ * ★ 描く枚数に上限を置く。引きの画では意味が薄いのに枚数だけ増える。
+ */
+function paintHazardTiles(
+  ctx: CanvasRenderingContext2D,
+  map: mapboxgl.Map,
+  onTileReady: () => void,
+): void {
+  const zoom = Math.round(map.getZoom())
+  if (zoom < HAZARD_MIN_ZOOM) return
+  const z = Math.min(HAZARD_MAX_ZOOM, zoom)
+
+  const bounds = map.getBounds()
+  if (!bounds) return
+
+  const nw = tilePointOf(bounds.getNorth(), bounds.getWest(), z)
+  const se = tilePointOf(bounds.getSouth(), bounds.getEast(), z)
+  const count = (se.x - nw.x + 1) * (se.y - nw.y + 1)
+  if (count <= 0 || count > HAZARD_MAX_TILES) return
+
+  for (const layer of HAZARD_LAYERS) {
+    for (let x = nw.x; x <= se.x; x += 1) {
+      for (let y = nw.y; y <= se.y; y += 1) {
+        const image = getHazardTile(layer, z, x, y, onTileReady)
+        if (!image) continue
+
+        const topLeft = tileNorthWest(z, x, y)
+        const bottomRight = tileNorthWest(z, x + 1, y + 1)
+        const a = map.project([topLeft.lng, topLeft.lat])
+        const b = map.project([bottomRight.lng, bottomRight.lat])
+        // 1px の隙間が縞になって見えるので、わずかに広げて描く
+        ctx.drawImage(image, a.x, a.y, b.x - a.x + 1, b.y - a.y + 1)
+      }
+    }
+  }
 }
 
 /**
@@ -157,6 +314,7 @@ export function MapView({
   revealRadiusM,
   avatar,
   emergency,
+  condition,
   readySpotIds,
   checkinSpotId,
   onCheckinSpot,
@@ -164,6 +322,8 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const fogRef = useRef<HTMLCanvasElement>(null)
+  /** ハザードを切り抜くための作業用キャンバス（画面には出さない） */
+  const hazardCanvasRef = useRef<HTMLCanvasElement | undefined>(undefined)
   const markersRef = useRef<Map<SpotId, mapboxgl.Marker>>(new Map())
   const meMarkerRef = useRef<mapboxgl.Marker | null>(null)
   /** 地図上のチェックインボタン。出しているスポットも一緒に覚える */
@@ -314,7 +474,7 @@ export function MapView({
     marker.remove()
     meMarkerRef.current = null
     // 次の描画で作り直される（下の効果が position を見て作る）
-  }, [avatar])
+  }, [avatar, condition])
 
   /** 現在地のマーカーと追従 */
   useEffect(() => {
@@ -328,7 +488,7 @@ export function MapView({
     }
 
     if (!meMarkerRef.current) {
-      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar) })
+      meMarkerRef.current = new mapboxgl.Marker({ element: createMeElement(avatar, condition) })
         .setLngLat([position.lng, position.lat])
         .addTo(map)
     } else {
@@ -343,7 +503,7 @@ export function MapView({
       map.jumpTo({ center: [position.lng, position.lat] })
       centeredRef.current = true
     }
-  }, [position, following, avatar])
+  }, [position, following, avatar, condition])
 
   /**
    * 有事モードの配色へ切り替える（FR-08-2・FR-08-8）。
@@ -361,10 +521,16 @@ export function MapView({
   }, [emergency])
 
   /**
-   * 霧を描く（フォグ・オブ・ウォー）。
+   * 霧とハザードを描く（フォグ・オブ・ウォー ＋ #72）。
    *
    * 画面全体を霧で塗ったあと、歩いたところを destination-out で削る。
    * 重なりの合成はブラウザに任せられるので、円の和集合を自前で計算しなくてよい。
+   *
+   * ★ ハザードは**歩いたところにだけ**出す。別のキャンバスに描いてから
+   * 同じ形で destination-in で切り抜き、霧の穴の中へ重ねる。
+   *
+   * ★ 有事モードでは霧を出さず、ハザードを**切り抜かずに全面へ出す**。
+   * 「歩いていないから危険が見えない」は有事に人を危険へ晒す（FR-08-2 と同じ理由）。
    */
   const drawFog = useCallback(() => {
     const map = mapRef.current
@@ -387,99 +553,83 @@ export function MapView({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
     ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 1
     ctx.clearRect(0, 0, width, height)
+
+    /* ---------------- ハザード（#72） ---------------- */
+
+    // タイルが届いたら描き直す。ref 越しに最新の描画を呼ぶ（自分自身を依存にしない）
+    const onTileReady = (): void => drawRef.current?.()
+
+    const hazard = hazardCanvasRef.current ?? document.createElement('canvas')
+    hazardCanvasRef.current = hazard
+    if (hazard.width !== canvas.width || hazard.height !== canvas.height) {
+      hazard.width = canvas.width
+      hazard.height = canvas.height
+    }
+
+    const hazardCtx = hazard.getContext('2d')
+    if (hazardCtx) {
+      hazardCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      hazardCtx.globalCompositeOperation = 'source-over'
+      hazardCtx.globalAlpha = 1
+      hazardCtx.clearRect(0, 0, width, height)
+
+      paintHazardTiles(hazardCtx, map, onTileReady)
+
+      /*
+       * ★ 平時は歩いたところだけに残す。
+       * 有事モードでは切り抜かない（全面に出す）。
+       */
+      if (!emergency) {
+        hazardCtx.globalCompositeOperation = 'destination-in'
+        paintRevealShapes(
+          hazardCtx,
+          map,
+          areasRef.current,
+          tilesRef.current,
+          revealRadiusM,
+          width,
+          height,
+        )
+        hazardCtx.globalCompositeOperation = 'source-over'
+      }
+    }
+
+    /* ---------------- 霧（FR-02-7） ---------------- */
 
     /*
      * ★ 有事モードでは霧を出さない（FR-08-2）。
      * 未踏のエリアが霧のままでは、そこにある避難所へ向かえない。
      * 霧はゲーム要素であり、有事に残しておくと**それ自体が危険**である。
      */
-    if (emergency) return
+    if (!emergency) {
+      ctx.fillStyle = FOG_COLOR
+      ctx.fillRect(0, 0, width, height)
 
-    ctx.fillStyle = FOG_COLOR
-    ctx.fillRect(0, 0, width, height)
-
-    ctx.globalCompositeOperation = 'destination-out'
-    const zoom = map.getZoom()
+      ctx.globalCompositeOperation = 'destination-out'
+      paintRevealShapes(ctx, map, areasRef.current, tilesRef.current, revealRadiusM, width, height)
+      ctx.globalCompositeOperation = 'source-over'
+    }
 
     /*
-     * 先に開放済みの町丁目をくり抜く。
+     * ハザードを最後に重ねる。
      *
-     * 円だけで晴らすと道に沿った筋しか消えず、区画の内側が白いまま残る。
-     *
-     * ★ 形は API から来ない。コードから境界データを引く。256区画ぶんの座標を
-     * 毎回送る意味がない。
-     *
-     * 隣の町丁目と辺を共有しているので、塗るだけだと境界に髪の毛のような隙間が
-     * 残る。同じ経路を太い線でなぞって塗り足す。
+     * ★ 地図が読めなくなるほど濃くしない。想定区域は広く、真上から塗りつぶすと
+     * 道も避難所も見えなくなる（有事にそれは危険である）。
      */
-    ctx.fillStyle = 'rgba(0, 0, 0, 1)'
-    ctx.strokeStyle = 'rgba(0, 0, 0, 1)'
-    ctx.lineWidth = 2
-    ctx.lineJoin = 'round'
-
-    for (const area of areasRef.current) {
-      const chome = chomeByCode(area.areaKey)
-      if (!chome) continue
-
-      // 画面外の区画は描かない。外接矩形で弾く
-      const [minLng, minLat, maxLng, maxLat] = chome.bbox
-      const topLeft = map.project([minLng, maxLat])
-      const bottomRight = map.project([maxLng, minLat])
-      if (
-        Math.max(topLeft.x, bottomRight.x) < 0 ||
-        Math.max(topLeft.y, bottomRight.y) < 0 ||
-        Math.min(topLeft.x, bottomRight.x) > width ||
-        Math.min(topLeft.y, bottomRight.y) > height
-      ) {
-        continue
-      }
-
-      ctx.beginPath()
-      for (const ring of chome.rings) {
-        ring.forEach(([lng, lat], index) => {
-          const point = map.project([lng, lat])
-          if (index === 0) ctx.moveTo(point.x, point.y)
-          else ctx.lineTo(point.x, point.y)
-        })
-        ctx.closePath()
-      }
-      ctx.fill()
-      ctx.stroke()
+    if (hazardCtx) {
+      ctx.globalAlpha = HAZARD_ALPHA
+      ctx.drawImage(hazard, 0, 0, width, height)
+      ctx.globalAlpha = 1
     }
-
-    for (const tile of tilesRef.current) {
-      const point = map.project([tile.lng, tile.lat])
-      const radius = metersToPixels(revealRadiusM, tile.lat, zoom)
-      // 画面外のタイルは描かない（歩くほど件数が増えるため）
-      if (
-        point.x < -radius ||
-        point.y < -radius ||
-        point.x > width + radius ||
-        point.y > height + radius
-      ) {
-        continue
-      }
-
-      const gradient = ctx.createRadialGradient(
-        point.x,
-        point.y,
-        radius * FOG_FEATHER_START,
-        point.x,
-        point.y,
-        radius,
-      )
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 1)')
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-      ctx.fillStyle = gradient
-
-      ctx.beginPath()
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    ctx.globalCompositeOperation = 'source-over'
   }, [revealRadiusM, emergency])
+
+  /** 最新の描画関数。タイルが遅れて届いたときに呼ぶ */
+  const drawRef = useRef<(() => void) | undefined>(undefined)
+  useEffect(() => {
+    drawRef.current = drawFog
+  }, [drawFog])
 
   // 地図が動いている間ずっと追従させる（move はアニメーション中も毎フレーム発火する）
   useEffect(() => {

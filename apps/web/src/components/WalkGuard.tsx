@@ -1,3 +1,7 @@
+import type { Avatar } from '@imanouchi/shared'
+import { AvatarCanvas } from './AvatarCanvas.js'
+import type { Condition } from '../avatar/sprite.js'
+
 interface WalkGuardProps {
   /** 直近の速度（km/h）。歩いていることが伝わるように出す */
   speedKmh: number
@@ -12,6 +16,17 @@ interface WalkGuardProps {
   unlockedCount: number
   /** 音を鳴らせているか。鳴らせないなら知らせが届かないので、そう書く */
   soundReady: boolean
+  /**
+   * 覆っている間に入った浸水想定区域（#72）。
+   *
+   * ★ 覆っていても知らせる。音（`notifyHazard`）だけでは聞き逃す。
+   * **危ないところを歩いていることは、止まったときに残っていなければならない。**
+   */
+  hazards: readonly string[]
+  /** 覆いの上に出すキャラクター。見た目が未取得なら出さない */
+  avatar: Avatar | undefined
+  /** キャラクターの状態。浸水想定区域の中では濡れている */
+  condition: Condition
   /** 「今すぐ見る」。歩いていても本人が必要なら開けなければならない */
   onDismiss: () => void
 }
@@ -31,13 +46,34 @@ interface WalkGuardProps {
 export function WalkGuard({
   speedKmh,
   arrivals,
+  hazards,
   unlockedCount,
   soundReady,
+  avatar,
+  condition,
   onDismiss,
 }: WalkGuardProps): React.JSX.Element {
   return (
     <div className="walkguard" role="alertdialog" aria-label="歩行中">
       <div className="walkguard__body">
+        {/*
+          ★ キャラクターを出す。覆っている間は地図も進捗も見せないが、
+          **歩いていることが自分のキャラクターに起きている**ことは見せてよい。
+          画面を見に来る動機にはならず（情報を持たない）、状態の変化（濡れ）だけは
+          止まったときに分かる。
+        */}
+        {avatar && (
+          <div className="walkguard__avatar">
+            <AvatarCanvas
+              avatar={avatar}
+              scale={2.4}
+              animated
+              condition={condition}
+              label={condition === 'wet' ? '歩いているキャラクター（足元が濡れている）' : '歩いているキャラクター'}
+            />
+          </div>
+        )}
+
         <p className="walkguard__title">歩いている間は画面を見ないでください</p>
 
         <p className="walkguard__lead">
@@ -59,6 +95,24 @@ export function WalkGuard({
             </ul>
             <p className="walkguard__arrival-note">
               立ち止まると自動で戻ります。<strong>止まってから</strong>記録してください。
+            </p>
+          </div>
+        )}
+
+        {/*
+          ★ ハザードは到着より前に出す。**危ないことのほうが先に読まれるべき**である。
+          ここも「立ち止まってから」の導線で、覆いを外させる誘いは置かない。
+        */}
+        {hazards.length > 0 && (
+          <div className="walkguard__hazard" role="status">
+            <p className="walkguard__hazard-title">浸水想定区域を通りました</p>
+            <ul className="walkguard__hazard-list">
+              {hazards.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+            <p className="walkguard__hazard-note">
+              想定です。いま水が来ていることを示すものではありません。
             </p>
           </div>
         )}

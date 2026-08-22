@@ -37,6 +37,7 @@ import { ConsentGate } from './components/ConsentGate.js'
 import { EmergencyBanner } from './components/EmergencyBanner.js'
 import { EmergencyPanel } from './components/EmergencyPanel.js'
 import { EventFlash, type EventFlashItem, type EventFlashKind } from './components/EventFlash.js'
+import { HazardNotice } from './components/HazardNotice.js'
 import { ExplorationPanel } from './components/ExplorationPanel.js'
 import { JoystickControl } from './components/JoystickControl.js'
 import { DataCredits } from './components/DataCredits.js'
@@ -72,9 +73,12 @@ import {
   notifyAreaUnlocked,
   notifyArrival,
   notifyCheckin,
+  notifyHazard,
   notifyQuizResult,
   notifyWalkGuard,
 } from './feedback.js'
+import { HAZARD_CREDITS } from './hazard.js'
+import { useHazard } from './hooks/useHazard.js'
 import { initialNearby, trackNearby } from './nearby.js'
 import {
   appendWalkEvents,
@@ -113,6 +117,8 @@ type Mode = 'line' | 'guest'
 const FLASH_TITLES: Record<WalkEventKind, string> = {
   arrival: 'チェックインできます',
   area: '町丁目を歩ききった',
+  // ★ 祝わない。危ないことを知らせる文にする（#72・G-2）
+  hazard: '浸水想定区域に入りました',
 }
 
 /**
@@ -249,6 +255,14 @@ export function App(): React.JSX.Element {
     mode === 'guest' ? 'local' : 'server',
   )
   const wakeLock = useWakeLock(walkStarted)
+
+  /**
+   * いまいる場所のハザード（#72）。
+   *
+   * ★ 同意していない間は位置を持たないので、何も判定しない（FR-01-4）。
+   * 判定に使うのは表示と同じタイルで、ポイントは一切動かさない（G-2）。
+   */
+  const hazard = useHazard(geo.position, phase === 'ready')
 
   /**
    * 有事モードで隠すもの（FR-08-2）。判定は emergency.ts に寄せている。
@@ -405,6 +419,37 @@ export function App(): React.JSX.Element {
       walkGuardVisible,
     )
   }, [walkStarted, exploration.unlockedAreas, game.exploration, walkGuardVisible, announce])
+
+  /**
+   * 浸水想定区域に入ったことを知らせる（#72）。
+   *
+   * ★ **入った一度だけ**鳴らす。湾岸は広範囲が想定区域なので、居るあいだ鳴らすと
+   * 鳴り続ける。出たら武装し直す（`hazard.sentence` が変わったときだけ動く）。
+   *
+   * ★ 有事モードでは出さない（FR-08-2）。ハザードそのものは地図に全面表示する。
+   *
+   * ★ ポイントもカードも動かさない。ここは知らせるだけである（G-2・FR-14-10）。
+   */
+  const hazardSaidRef = useRef('')
+  useEffect(() => {
+    const sentence = hazard.sentence
+    if (hazardSaidRef.current === sentence) return
+    hazardSaidRef.current = sentence
+
+    // 区域を出たときは黙って戻す（出たことを祝わない）
+    if (sentence === '' || !game.exploration) return
+
+    notifyHazard()
+    announce(
+      hazard.here.map((item) => ({
+        kind: 'hazard' as const,
+        key: item.id,
+        name: item.depth === undefined ? item.label : `${item.label}（${item.depth}）`,
+        spotId: undefined,
+      })),
+      walkGuardVisible,
+    )
+  }, [hazard, game.exploration, walkGuardVisible, announce])
 
   const handleStartWalk = useCallback(() => {
     // ★ ユーザー操作の中で解錠する。ここを外すと iOS では以降ずっと無音になる
@@ -1322,6 +1367,7 @@ export function App(): React.JSX.Element {
             revealRadiusM={config.exploration.revealRadiusM}
             avatar={user?.avatar}
             emergency={emergency}
+            condition={game.exploration && hazard.wet ? 'wet' : 'dry'}
             readySpotIds={readySpotIds}
             checkinSpotId={mapCheckinSpotId}
             onCheckinSpot={handleMapCheckin}
@@ -1333,6 +1379,12 @@ export function App(): React.JSX.Element {
             </p>
           </div>
         )}
+
+        {/*
+          ★ いまいる場所のハザード（#72）。**有事モードでも出す。**
+          消すほうが危険である（キャラクターの演出だけを止める）。
+        */}
+        <HazardNotice here={hazard.here} withCharacter={game.exploration} />
 
         {offerDebugMove &&
           (joystickClosed ? (
@@ -1467,8 +1519,11 @@ export function App(): React.JSX.Element {
         <WalkGuard
           speedKmh={speedKmh(walk)}
           arrivals={namesOf(walkLog, 'arrival')}
+          hazards={namesOf(walkLog, 'hazard')}
           unlockedCount={exploration.unlockedAreas.length}
           soundReady={soundReady && canPlaySound()}
+          avatar={user?.avatar}
+          condition={hazard.wet ? 'wet' : 'dry'}
           onDismiss={() => setGuardDismissed(true)}
         />
       )}
@@ -1597,7 +1652,8 @@ export function App(): React.JSX.Element {
             スポットは千代田区・港区の公開オープンデータです。属性の空欄は「設備が無い」ではなく「未記入」で、現地で確かめられる項目です。
           </p>
         )}
-        <DataCredits sources={config?.dataSources ?? []} />
+        {/* ★ ハザードのタイルの出典も並べる（#72）。規約で出典表示が必要である */}
+        <DataCredits sources={[...(config?.dataSources ?? []), ...HAZARD_CREDITS]} />
       </footer>
     </div>
   )
