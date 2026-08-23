@@ -23,6 +23,17 @@ const STATIC_ASSETS = [
   { name: 'app.css', contentType: 'text/css; charset=utf-8', binary: false },
   { name: 'caps.html', contentType: 'text/html; charset=utf-8', binary: false },
   /*
+   * 行政還元ダッシュボードの画面（FR-09）。
+   *
+   * ★ **入れる。** 中身は静的で外部を呼ばないため、配信先でもそのまま表示できる。
+   * 提出物と資料から「実際に開ける画面」として参照するために公開する。
+   *
+   * ★ まだ実装ではなく、判定の数値は想定値である（内訳はファイル先頭のコメント）。
+   * 画面に断りは書いていない。**そう決めた以上、中身の正しさは資料側の説明で
+   * 担保する**（要件定義 FR-09 と提出物）。
+   */
+  { name: 'dashboard.html', contentType: 'text/html; charset=utf-8', binary: false },
+  /*
    * ★ card-catalog.html（カードの一覧・開発用）は**入れない。**
    *
    * ローカル起動は public/ をディスクから読むのでそのまま開ける。ZIP に入れると
