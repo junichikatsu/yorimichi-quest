@@ -37,7 +37,7 @@ export function StartGate({
   return (
     <div className="start">
       <div className="start__body">
-        <h1 className="start__title">イマノウチ</h1>
+        <h1 className="start__title">イマノウチ・ヨリミチ</h1>
         <p className="start__lead">
           歩いて集める防災データ。千代田区・港区の避難所・給水・AED・
           バリアフリートイレを地図で見て、歩いたところを記録します。

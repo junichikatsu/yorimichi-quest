@@ -1,5 +1,5 @@
 /*
- * イマノウチ
+ * イマノウチ・ヨリミチ
  *
  * 配色と字の大きさは NFR-08（WCAG AA・シニアでも読める）を前提に決めている。
  * 本文は 16px を下回らせない。装飾でコントラストを落とさない。
@@ -2405,8 +2405,12 @@ button {
 
 .reveal__word {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.3em;
+  /*
+   * ★ サービス名は10文字ある。札の幅は 9rem（.reveal__slot）なので、
+   * 0.72rem × 0.3em のままだと**幅を超えて札からはみ出す**。
+   */
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
 }
 
 @keyframes card-flip {

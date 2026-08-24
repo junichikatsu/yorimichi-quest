@@ -67,7 +67,7 @@ export function StatusBar({
           （日本語はどこでも改行できるため、最小幅が1文字になる）。
         */}
         <div className="statusbar__names">
-          <p className="statusbar__title">イマノウチ</p>
+          <p className="statusbar__title">イマノウチ・ヨリミチ</p>
           <p className="statusbar__sub">
             {areaName} ・ {spotCount}件
           </p>

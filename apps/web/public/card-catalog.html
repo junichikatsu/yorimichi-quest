@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
-    <title>カードの種類と中身 — イマノウチ</title>
+    <title>カードの種類と中身 — イマノウチ・ヨリミチ</title>
     <!--
       開発用の一覧ページ（FR-14 のカードを確認する）。
 
@@ -170,7 +170,8 @@
       }
       .back__word {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.72rem; letter-spacing: 0.3em;
+        /* ★ 10文字を 9rem の札に収める。0.3em のままだと幅を超えてはみ出す */
+        font-size: 0.62rem; letter-spacing: 0.08em;
       }
     </style>
   </head>
@@ -218,7 +219,7 @@
     <p class="howto">獲得の演出でめくる前に見える面です。</p>
     <div class="back">
       <div class="back__mark">今</div>
-      <div class="back__word">イマノウチ</div>
+      <div class="back__word">イマノウチ・ヨリミチ</div>
     </div>
 
     <p class="note">

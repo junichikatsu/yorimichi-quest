@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.0.0",
-  "description": "イマノウチ — 歩いて集める防災データ",
+  "description": "イマノウチ・ヨリミチ — 歩いて集める防災データ",
   "scripts": {
     "dev": "pnpm --filter @imanouchi/function dev",
     "dev:web": "pnpm --filter @imanouchi/web dev",
