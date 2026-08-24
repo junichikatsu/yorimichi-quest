@@ -1,4 +1,4 @@
-name: イマノウチ deploy (enebular)
+name: イマノウチ・ヨリミチ deploy (enebular)
 
 # ★ サンプルとは enebular プロジェクトが別。値の取り違えを防ぐため、
 #   変数名を PROD_ で始める別の名前にしている。同じ名前を使い回すと、

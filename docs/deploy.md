@@ -109,7 +109,7 @@ UUID を envVars に入れないと `/v1/health` の `configOk` が false にな
 
 ## 3. デプロイ
 
-Actions →「イマノウチ deploy (enebular)」→ Run workflow → environment に `production`。
+Actions →「イマノウチ・ヨリミチ deploy (enebular)」→ Run workflow → environment に `production`。
 
 意図しないタイミングで環境が入れ替わらないよう、**手動実行のみ**にしている。
 
