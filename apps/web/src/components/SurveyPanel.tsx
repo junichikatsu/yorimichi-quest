@@ -127,7 +127,7 @@ export function SurveyPanel({
           */}
           {result.verifiedFieldKeys.length > 0 && (
             <p className="survey__verified">
-              {result.verifiedFieldKeys.length}件が、別の人の回答と一致して「確認済み」になりました。
+              {result.verifiedFieldKeys.length}件が、別の人の回答と一致して「検証済み」になりました。
             </p>
           )}
 
@@ -138,7 +138,7 @@ export function SurveyPanel({
             </p>
           ) : (
             <p className="panel__note">
-              同じ場所で別の人が同じ答えを出すと「確認済み」になり、行政へ渡すデータに入ります。
+              同じ場所で別の人が同じ答えを出すと「検証済み」になり、行政へ渡すデータに入ります。
             </p>
           )}
         </div>
