@@ -32,10 +32,27 @@
     -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <link rel="stylesheet" href="styles.css?v=__ASSET_VERSION__" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9B%A9%3C/text%3E%3C/svg%3E"
-    />
+    <!--
+      ファビコン。**絵文字を使わない。色は提出資料から採る。**
+
+      以前は ⛩ の絵文字を SVG に流し込んでいた。絵文字は端末ごとに別の絵で描かれ、
+      16px では潰れて何の形か分からない。自前で描いた図案に置き換えた。
+
+      ★ 図案は「寄り道の道すじ＋現在地」。まっすぐではなく曲がってたどり着く道と、
+        その先の到達点の丸。サービス名（ヨリミチ）と形を一致させている。
+      ★ **色はアプリ画面の --accent（紫）ではなく、提出資料の配色を使う。**
+        資料の図形色は23色すべてが緑系と無彩色で、**紫は一度も出てこない**。表紙の
+        ロゴタイプも緑である。外から見える顔は資料の側なので、そちらへ合わせた。
+        使うのは #1B3B2B（資料で最多・86回）と #7CB342（次に多い・59回）。対比は 4.9:1。
+      ★ **16px を基準に決めてある。** 線は 4.6/32（16px で約2.3px）、丸は半径 3.8/32。
+        これより細くすると 16px で消える。装飾を足さないのも同じ理由である。
+      ★ ダッシュボード（dashboard.html）は**同じ図案・同じ2色で、地と線を入れ替える**。
+        暗い地と明るい地になるので、デモで両方開いても 16px のタブで見分けられる。
+        色を足さずに区別できるので、資料の配色から外れない。
+      ★ data URI で持つ。ファイルにすると配信の経路と前段キャッシュ対策（?v=）が増える。
+        300バイト強なので、起動時のリクエストを増やさないこちらを採る。
+    -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231B3B2B'/%3E%3Cpath d='M8.5 25C8.5 19 17 20.5 19.5 15' fill='none' stroke='%237CB342' stroke-width='4.6' stroke-linecap='round'/%3E%3Ccircle cx='22.5' cy='8.5' r='3.8' fill='%237CB342'/%3E%3C/svg%3E" />
   </head>
   <body>
     <!--
