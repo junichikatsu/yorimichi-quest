@@ -72,8 +72,12 @@ describe('ファビコン', () => {
   it('★ 2ページは同じ図案で色だけ違う（別の図案にすると別サービスに見える）', () => {
     const [app, dashboard] = PAGES.map(iconHref)
 
-    // 色を伏せれば同じ文字列になる＝形は一致している
-    const shape = (href: string): string => href.replace(/fill='[^']+'/g, "fill='X'")
+    /*
+     * 色（fill と stroke）を伏せれば同じ文字列になる＝形は一致している。
+     * ★ **stroke も伏せる。** 2ページは地と線を入れ替えてあるので、線の色も違う。
+     */
+    const shape = (href: string): string =>
+      href.replace(/fill='[^']+'/g, "fill='X'").replace(/stroke='[^']+'/g, "stroke='X'")
     expect(shape(app!)).toBe(shape(dashboard!))
 
     // 板の色（1つめの fill）は違う。デモで両方開いたときにタブを見分けるため
