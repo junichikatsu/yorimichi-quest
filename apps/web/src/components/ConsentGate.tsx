@@ -21,7 +21,7 @@ export function ConsentGate({ displayName, busy, onAgree }: ConsentGateProps): R
       </h1>
 
       <p className="consent__lead">
-        イマノウチは、歩いて防災データを集めるアプリです。現在地を使います。
+        イマノウチ・ヨリミチは、歩いて防災データを集めるアプリです。現在地を使います。
       </p>
 
       <dl className="consent__uses">
