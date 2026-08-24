@@ -81,6 +81,12 @@ UUID を envVars に入れないと `/v1/health` の `configOk` が false にな
 `USE_FAKE_DATASTORE` は**設定しない**。true だとインメモリ実装になり、再起動で
 データが消える。
 
+`GA_MEASUREMENT_ID` は**任意**である（#82）。設定すると GA4 の計測タグを
+`index.html` と `dashboard.html` へ配信時に差し込む。**未設定なら1バイトも出さない**ので、
+計測を止めたいときは値を消すだけでよい（再デプロイは不要）。形が `G-XXXXXXXX` に
+合わない値は未設定として扱い、実行環境のログに警告が出る。**`configOk` には影響しない**
+（必須ではない設定でスモークテストを落とさないため）。
+
 `ENABLE_DEV_LOGIN` も**設定しない**。ローカルで LINE ログインが完走しないための
 開発用ログイン（`POST /v1/auth/dev`）を開ける変数である。**誰でもログインできる
 経路**なので本番に出してはいけない。なお経路そのものが `USE_FAKE_DATASTORE` が
@@ -299,6 +305,7 @@ curl -s "$HTTP_TRIGGER_URL/v1/admin/config" -H "x-admin-key: $ADMIN_KEY"
 | **カード一覧だけ 500** | `user_cards` または `DS_TABLE_USER_CARDS` の作成漏れ | 同上 |
 | **チェックインは通るが履歴の並びが変** | `checkins` のサブキー `checkinAt` を**文字列**で作った | 数値型で作り直す（辞書順になるため後から直せない） |
 | **デプロイは成功するがスモークテストで `configOk が false`** | 必須の環境変数が足りない（テーブル追加後に起きやすい） | `/v1/admin/config` で名前を確認する。**コードは既に稼働しているので再デプロイは不要** |
+| **GA4 に何も出ない（configOk は true）** | `GA_MEASUREMENT_ID` が未設定、または形が違って未設定として扱われている | 実行環境のログに `GA_MEASUREMENT_ID の形が違う` が出ていないか。配信された HTML に `googletagmanager` が入っているかを見る |
 | 霧が出ない（地図がそのまま） | `MAPBOX_ACCESS_TOKEN` 未設定で一覧表示になっている | `/v1/client-config` の `mapboxToken` を確認 |
 | 地図が動かない・ピンが押せない | 霧のキャンバスが操作を奪っている | `.map__fog` の `pointer-events: none` が効いているか |
 | **ジョイスティックが出ない** | LINE アプリ内で開いている（仕様）／スマートフォンで測位できている／`ENABLE_DEBUG_MOVE=false` | `/v1/client-config` の `debugMoveEnabled` を確認 |

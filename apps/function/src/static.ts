@@ -1,5 +1,5 @@
 import type { Context } from 'hono'
-import { buildInfo } from './config.js'
+import { buildInfo, loadConfig } from './config.js'
 import { AppError } from './errors.js'
 
 /**
@@ -16,6 +16,16 @@ export interface StaticAsset {
 }
 
 export const ASSET_VERSION_PLACEHOLDER = '__ASSET_VERSION__'
+
+/**
+ * 計測タグ（GA4・#82）の差し込み位置。
+ *
+ * ★ **HTML 側にタグを書かない。** 測定IDは環境変数で渡すので、リポジトリにも
+ * バンドルにも入らない。ここを置換する形にしてあるのは、**未設定のときに
+ * 1バイトも出さない**ためである（空の測定IDでタグだけ置くと、意味のない
+ * 外部リクエストが残る）。
+ */
+export const ANALYTICS_PLACEHOLDER = '<!--__ANALYTICS__-->'
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -77,6 +87,42 @@ export function applyAssetVersion(text: string): string {
   return text.split(ASSET_VERSION_PLACEHOLDER).join(assetVersion())
 }
 
+/**
+ * GA4 の計測タグ。測定IDが無ければ空文字を返す。
+ *
+ * ★ 形の検査は `loadConfig()` 側で済んでいる（`G-XXXXXXXX` 以外は未設定として扱う）。
+ * **環境変数の値をそのまま HTML へ書き出すため**、検査を通っていない値がここへ
+ * 来ないようにしてある。
+ *
+ * ★ 送る内容の設計は `apps/web/src/analytics.ts` にある。ここは読み込むだけで、
+ * 何を送るかは決めない。
+ */
+export function analyticsTag(measurementId: string): string {
+  if (measurementId === '') return ''
+
+  const src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`
+  return (
+    `<script async src="${src}"></script>` +
+    '<script>' +
+    'window.dataLayer=window.dataLayer||[];' +
+    'function gtag(){dataLayer.push(arguments)}' +
+    "gtag('js',new Date());" +
+    `gtag('config','${measurementId}');` +
+    '</script>'
+  )
+}
+
+/**
+ * テキストの静的ファイルへ配信時の差し込みをまとめて行う。
+ *
+ * ★ 差し込みを1か所に集める。HTML を増やしたときに**片方だけ置換されない**のを
+ * 防ぐため、`sendAsset` からしか通らない形にしてある。
+ */
+export function applyPlaceholders(text: string): string {
+  const tag = analyticsTag(loadConfig().gaMeasurementId)
+  return applyAssetVersion(text).split(ANALYTICS_PLACEHOLDER).join(tag)
+}
+
 export function sendAsset(c: Context, name: string): Response {
   const asset = getAsset(name)
   if (!asset) {
@@ -95,5 +141,5 @@ export function sendAsset(c: Context, name: string): Response {
     return c.body(bytes, 200, headers)
   }
 
-  return c.body(applyAssetVersion(asset.body), 200, headers)
+  return c.body(applyPlaceholders(asset.body), 200, headers)
 }
