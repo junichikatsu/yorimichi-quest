@@ -65,7 +65,7 @@ export function CardReveal({ cards, onDone }: CardRevealProps): React.JSX.Elemen
               {/* 裏面。めくる前に見える面（決定した案：ドット枠＋ロゴ） */}
               <div className="reveal__back" aria-hidden="true">
                 <span className="reveal__mark">今</span>
-                <span className="reveal__word">イマノウチ</span>
+                <span className="reveal__word">イマノウチ・ヨリミチ</span>
               </div>
               <article
                 className={`reveal__front card card--${card.kind} card--achieved`}
