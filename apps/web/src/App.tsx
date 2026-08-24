@@ -37,6 +37,13 @@ import {
   fetchSurvey,
   submitSurvey,
 } from './api.js'
+import {
+  trackAppStart,
+  trackCheckin,
+  trackEmergencyMode,
+  trackQuizAnswered,
+  trackSurveyAnswered,
+} from './analytics.js'
 import { AvatarCreator } from './components/AvatarCreator.js'
 import { CardPanel } from './components/CardPanel.js'
 import { CardReveal } from './components/CardReveal.js'
@@ -594,6 +601,12 @@ export function App(): React.JSX.Element {
    * 探索の進捗も非表示になる（FR-08-2）ので、続ける意味が無い。
    */
   const handleToggleEmergency = useCallback(() => {
+    /*
+     * ★ 計測は**更新関数の外**で送る（#82）。React は更新関数を複数回呼びうるので、
+     * 中に置くと二重に数える。他の setter が中にあるのは同じ値で冪等だからである。
+     */
+    trackEmergencyMode(!emergency)
+
     setEmergency((current) => {
       if (!current) {
         handleStopWalk()
@@ -616,7 +629,7 @@ export function App(): React.JSX.Element {
       }
       return !current
     })
-  }, [handleStopWalk])
+  }, [emergency, handleStopWalk])
 
   /* ---------------- 起動 → 設定取得 → LINE ログイン ---------------- */
 
@@ -692,6 +705,7 @@ export function App(): React.JSX.Element {
 
         setToken(result.token)
         setUser(result.user)
+        trackAppStart('line')
         // ここまで来たら取り直しは成功している。次回のために印を消す
         clearReloginMark()
         setPhase(result.user.locationConsentGiven ? 'ready' : 'consent')
@@ -713,6 +727,7 @@ export function App(): React.JSX.Element {
       const result = await guestLogin()
       setToken(result.token)
       setMode('guest')
+      trackAppStart('guest')
 
       const agreed = loadGuestConsent()
       setUser({ ...result.user, locationConsentGiven: agreed })
@@ -1212,6 +1227,8 @@ export function App(): React.JSX.Element {
 
         // ★ 音でも知らせる。歩行中モードでは画面を見ていない（FR-02-10・NFR-14）
         notifyCheckin()
+        // 種類だけを送る。どのスポットかは送らない（#82・analytics.ts）
+        trackCheckin(spot.category)
         setBurst(result)
         /*
          * ★ カードの演出はポイントの演出が消えてから出す（同時に出すと何も伝わらない）。
@@ -1346,6 +1363,8 @@ export function App(): React.JSX.Element {
         const result = await submitSurvey(survey.spotId, { answers, note })
 
         setSurveyResult(result)
+        // ★ 集めたいデータが増えるのはここだけである（#82）
+        trackSurveyAnswered()
 
         // 手に入れたカードは結果の上に重ねて見せる（FR-14-8）
         if (result.acquiredCards.length > 0) {
@@ -1429,6 +1448,7 @@ export function App(): React.JSX.Element {
         })
 
         notifyQuizResult(result.correct)
+        trackQuizAnswered(result.correct)
         // 手に入れたカードは結果の上に重ねて見せる（FR-14-8）
         if (result.acquiredCards.length > 0) {
           setRevealCards(result.acquiredCards)

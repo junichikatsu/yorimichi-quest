@@ -13,6 +13,15 @@ import { asAreaId, DEFAULT_SURVEY_CONSENSUS, type AreaId, type AreaSummary } fro
 
 const PLACEHOLDERS = new Set(['', '00000000-0000-0000-0000-000000000000', 'change-me'])
 
+/**
+ * GA4 の測定ID の形（#82）。
+ *
+ * ★ **形を検査するのは、値をそのまま HTML へ書き出すからである。**
+ * 計測タグは配信時に組み立てる（static.ts）ので、ここを通らない文字列が
+ * HTML へ入る経路を作らない。
+ */
+const GA_MEASUREMENT_ID_PATTERN = /^G-[A-Z0-9]{4,20}$/i
+
 function readString(key: string): string {
   const value = process.env[key]?.trim()
   if (value === undefined || PLACEHOLDERS.has(value)) return ''
@@ -30,6 +39,17 @@ function readBoolean(key: string, fallback: boolean): boolean {
   const raw = readString(key).toLowerCase()
   if (raw === '') return fallback
   return raw === 'true' || raw === '1' || raw === 'yes'
+}
+
+/**
+ * GA4 の測定ID。形が違えば未設定として扱う。
+ *
+ * ★ 打ち間違いを黙って通すと「計測しているつもりで何も取れていない」になる。
+ * 気づけるように `logConfigIssues` で警告を出す。
+ */
+function readGaMeasurementId(): string {
+  const raw = readString('GA_MEASUREMENT_ID')
+  return GA_MEASUREMENT_ID_PATTERN.test(raw) ? raw : ''
 }
 
 /**
@@ -74,6 +94,14 @@ export interface AppConfig {
   sessionTtlHours: number
   mapboxToken: string
   adminKey: string
+  /**
+   * GA4 の測定ID（#82）。**任意である。**
+   *
+   * ★ 未設定なら計測タグを1バイトも出さない。必須にしないのは、これが無くても
+   * サービスは成り立ち、**ローカル開発で外へ送りたくない**ためである。
+   * 形が違う値も未設定として扱う（起動時ログに出す）。
+   */
+  gaMeasurementId: string
   /**
    * チェックインできる半径（m）。FR-03-1 の「例：100m」を設定可能にしたもの。
    *
@@ -201,6 +229,7 @@ export function loadConfig(): AppConfig {
     sessionTtlHours: readNumber('SESSION_TTL_HOURS', 12),
     mapboxToken: readString('MAPBOX_ACCESS_TOKEN'),
     adminKey: readString('ADMIN_KEY'),
+    gaMeasurementId: readGaMeasurementId(),
     checkinRadiusM: readNumber('CHECKIN_RADIUS_M', 100),
     checkinCooldownHours: readNumber('CHECKIN_COOLDOWN_HOURS', 24),
     quizCorrectPoints: readNumber('QUIZ_CORRECT_POINTS', 30),
@@ -293,5 +322,14 @@ export function logConfigIssues(): void {
   const missing = missingConfigKeys(config)
   if (missing.length > 0) {
     console.warn(`[config] missing: ${missing.join(', ')}`)
+  }
+
+  /*
+   * ★ 測定ID の打ち間違いは `missingConfigKeys` へ入れない。**任意の設定なので、
+   * これで /v1/health の configOk を false にすると、デプロイのスモークテストが
+   * 計測の設定ミスで落ちる。** 気づける必要はあるので、ログにだけ出す。
+   */
+  if (readString('GA_MEASUREMENT_ID') !== '' && config.gaMeasurementId === '') {
+    console.warn('[config] GA_MEASUREMENT_ID の形が違うため計測タグを出しません（G-XXXXXXXX）')
   }
 }
