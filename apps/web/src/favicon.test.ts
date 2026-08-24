@@ -18,6 +18,12 @@ const publicDir = join(here, '..', 'public')
 
 const PAGES = ['index.html', 'dashboard.html'] as const
 
+/** LINE ミニアプリのアイコンの元データ（doc/brand/） */
+const brandSvg = readFileSync(
+  join(here, '..', '..', '..', 'doc', 'brand', 'icon-line-miniapp.svg'),
+  'utf-8',
+)
+
 function iconHref(page: string): string {
   const html = readFileSync(join(publicDir, page), 'utf-8')
   const match = html.match(/<link rel="icon" href="([^"]+)"/)
@@ -77,7 +83,7 @@ describe('ファビコン', () => {
   it('★ 16px で消えない太さを保つ（線幅と丸の半径の下限）', () => {
     /*
      * viewBox は 32 なので、16px 表示では半分の太さになる。
-     * 線 4.6 → 約2.3px、丸の半径 4.2 → 直径約4.2px。ここを下回ると 16px で読めない。
+     * 線 4.6 → 約2.3px、丸の半径 3.8 → 直径約3.8px。ここを下回ると 16px で読めない。
      */
     for (const page of PAGES) {
       const href = iconHref(page)
@@ -87,5 +93,28 @@ describe('ファビコン', () => {
       expect(stroke, `${page} の線が細すぎる`).toBeGreaterThanOrEqual(4)
       expect(radius, `${page} の丸が小さすぎる`).toBeGreaterThanOrEqual(3.5)
     }
+  })
+
+  it('★ LINE ミニアプリのアイコンと同じ図案である（片方だけ直すと別サービスに見える）', () => {
+    /*
+     * ★ doc/brand/ の SVG は LINE Developers コンソールへ上げる PNG の元データである。
+     * 置き方（地の大きさ・輪郭・拡大率）は LINE の指定に合わせて違うが、**図案そのものは
+     * 同じでなければならない。** タブと LINE で形が違うと、同じサービスに見えない。
+     */
+    /*
+     * ★ ファビコンは data URI（`%23` などで包まれている）、doc/brand/ は素の SVG である。
+     * ファビコン側だけ復号して比べる。**brandSvg を復号してはいけない**（説明文に
+     * 「8%」が入っており、URI の脱出記号として壊れた並びに見える）。
+     */
+    // 引用符の種類は問わない（doc/brand/ 側は整形の都合で変わりうる）
+    const shape = (svg: string): { d: string; r: string } => {
+      const d = svg.match(/d=['"]([^'"]+)['"]/)
+      const r = svg.match(/r=['"]([^'"]+)['"]/)
+      expect(d, '道の指定（d）が見つからない').not.toBeNull()
+      expect(r, '丸の半径（r）が見つからない').not.toBeNull()
+      return { d: d![1]!, r: r![1]! }
+    }
+
+    expect(shape(brandSvg)).toEqual(shape(decodeURIComponent(iconHref('index.html'))))
   })
 })
