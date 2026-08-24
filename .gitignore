@@ -14,3 +14,6 @@ apps/function/*.zip
 
 # 取込スクリプトのダウンロードキャッシュ（避難所CSVが13MBあるためコミットしない）
 tools/ingest/.cache/
+
+# 提出したプレゼン資料（pptx が10MB超あるためコミットしない。置き場所は doc/submission-final/assets/README.md）
+doc/submission-final/assets/*.pptx
