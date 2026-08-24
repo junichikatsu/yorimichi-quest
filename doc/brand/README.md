@@ -49,23 +49,32 @@
 SVG から PNG を作る。専用のライブラリを入れず、手元にあるブラウザで描かせている。
 
 ```sh
-# 1. 元データを作業用の場所へ置く（相対パスだと Edge が書き出し先を見つけられない）
-cp doc/brand/icon-line-miniapp.svg /tmp/icon/icon-src.svg
-
-# 2. 寸法ぶんの HTML を作る（N は 1024 / 390 / 130）
+# 1. 寸法ぶんの HTML を作る（N は 1024 / 390 / 130）。
+#    ★ SVG の中身を **直接貼る。** <img src="….svg" width="N"> にすると寸法が二重に
+#      かかり、指定より小さく描かれる。**PNG は出るので気づきにくい。**
+#    ★ 貼った svg の width/height を N に書き換える（viewBox は 130 のまま）。
 cat > /tmp/icon/render-N.html <<'EOF'
-<!doctype html><html><head><style>html,body{margin:0;padding:0;overflow:hidden}img{display:block}</style></head>
-<body><img src="icon-src.svg" width="N" height="N"></body></html>
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;overflow:hidden}svg{display:block}</style></head>
+<body><!-- ここに icon-line-miniapp.svg の中身を貼る --></body></html>
 EOF
 
-# 3. 書き出す。--screenshot と file:// は**絶対パス**で渡すこと
-"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
-  --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
-  --window-size=N,N --screenshot="<絶対パス>/doc/brand/icon-line-miniapp-N.png" \
-  "file:///tmp/icon/render-N.html"
+# 2. 書き出す。--screenshot と file:// は**絶対パス**で渡すこと
+#    （相対パスだと Edge が書き出し先を見つけられず、エラーだけ出して何も作らない）
+EDGE="/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+OUT="<リポジトリの絶対パス>/doc/brand"
+"$EDGE" --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=N,N --screenshot="$OUT/icon-line-miniapp-N.png" "file:///tmp/icon/render-N.html"
 ```
 
 ★ **`--force-device-scale-factor=1` を外さないこと。** 端末の拡大率が乗って、指定した寸法と違う PNG が出る。
+
+★ **書き出したら中身を確かめる。** 寸法と、地・図案の画素の色を見る。**描画に失敗しても PNG は出る**ので、ファイルができたことは確認にならない。地は `#1B3B2B`、図案は `#7CB342`。
+
+## 元データを直すときの注意
+
+★ **コメントに `-` が2つ続く並びを書かないこと。** XML のコメントでは使えず、**ファイル全体が不正な XML になって画像として認識されなくなる**。`--accent` と書いて一度踏んだ。
+
+この壊れ方は見つけにくい。HTML のコメントは同じ並びを許すので `index.html` 側では起きず、**上の手順で書き出した PNG も正しく出る**（ブラウザの HTML パーサが寛容なため）。SVG を直接開いたときだけ壊れる。`apps/web/src/favicon.test.ts` で検査している。
 
 ## これは何ではないか
 
