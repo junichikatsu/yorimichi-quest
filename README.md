@@ -9,6 +9,9 @@
 | オープンデータ一覧 | [doc/opendata-sources.md](doc/opendata-sources.md) |
 | 都民ヒアリング（n=37） | [doc/hearing-citizens.md](doc/hearing-citizens.md) |
 | 8/23 提出物の草案 | [doc/submission-20260823.md](doc/submission-20260823.md) |
+| **提出物（確定版・送信済み）** | [doc/submission-final/README.md](doc/submission-final/README.md) |
+| **First Stage プレゼン（実際に発表した内容）** | [doc/submission-final/pitch-first-stage-delivered.md](doc/submission-final/pitch-first-stage-delivered.md) |
+| First Stage プレゼン原稿（事前の計画・未使用） | [doc/submission-final/pitch-first-stage.md](doc/submission-final/pitch-first-stage.md) |
 
 ## このリポジトリの構成
 

@@ -162,6 +162,8 @@ https://lcdp002.enebular.com/imanouchi/dashboard.html
 | 5-1 | プレゼン資料（PowerPoint/PDF） | イマノウチヨリミチ2026082302.pptx |
 | 5-2 | 画面キャプチャ（JPEG/PNG, 最大3枚） | 1枚目.png / 2枚目.PNG / 3枚目.PNG |
 
+収録で実際に使った資料（ノート付き PDF）は [assets/FirstStage_プレゼン.pdf](assets/FirstStage_プレゼン.pdf)。
+
 ---
 
 ## 6. First Stage 収録日予約
@@ -171,6 +173,14 @@ https://lcdp002.enebular.com/imanouchi/dashboard.html
 | 6-1 | 収録方法 | 対面収録（都内会場, 8/29のみ） |
 | 6-2 | 収録予約 | 2026-08-29（土）14:30–15:00 Asia/Tokyo |
 | 6-3 | 収録時の言語 | 日本語 |
+
+**収録は 2026-08-29 に実施済み。** 実際に発表した内容の記録は
+[pitch-first-stage-delivered.md](pitch-first-stage-delivered.md)、
+一次ソースは [assets/FirstStage_プレゼン.pdf](assets/FirstStage_プレゼン.pdf)。
+
+事前に組んだ原稿 [pitch-first-stage.md](pitch-first-stage.md) は**本番では使っていない**。
+そこで用意した材料（370件中232件の空欄・歩きスマホ対策・町丁目・実地の避難訓練）は
+**First Stage で1つも使っていないので、Final Stage の手札として残っている**。
 
 ---
 
