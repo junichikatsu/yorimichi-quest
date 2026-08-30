@@ -57,7 +57,12 @@ export async function getQuiz(ctx: DataStoreContext, input: GetQuizInput): Promi
   })
   if (!entry) throw notFound('このスポットに対応するクイズがありません')
 
-  return { quiz: toPrompt(entry, 'fixture'), alreadyCleared }
+  /*
+   * ★ 出どころは**出題そのものが持っている値**を使う。ここで 'fixture' と決め打つと、
+   * 生成へ切り替えても画面には常に fixture と出て、**生成が動いているのか落ちて
+   * いるのかが分からない。**
+   */
+  return { quiz: toPrompt(entry, entry.generatedBy ?? 'fixture'), alreadyCleared }
 }
 
 export interface AnswerQuizInput {

@@ -1,0 +1,142 @@
+{
+  "gen-accessible_toilet-1": {
+    "fingerprint": "c5723ad9b3df44bc",
+    "approved": false,
+    "claim": "オストメイト設備は、給水と給湯の蛇口を実際にひねり、汚物流しの排水が流れるところまで確かめて記録する。"
+  },
+  "gen-accessible_toilet-2": {
+    "fingerprint": "63e7dba0469b3791",
+    "approved": false,
+    "claim": "手すりは体重をかけて押し引きし、ぐらつきや固定部のゆるみがないところまで確かめる。"
+  },
+  "gen-accessible_toilet-3": {
+    "fingerprint": "017fcb79e9c4f8ca",
+    "approved": false,
+    "claim": "オストメイト用の汚物流しは水と排水があって初めて機能し、断水すると装具の洗浄も排出物の処理も代わりがきかない。"
+  },
+  "gen-accessible_toilet-4": {
+    "fingerprint": "b82075507e1734c0",
+    "approved": false,
+    "claim": "バリアフリートイレは建物に1か所しかないことが多く、車いす利用者、オストメイト、乳幼児連れ、介助が必要な人の利用が重なる。"
+  },
+  "gen-aed-1": {
+    "fingerprint": "a4ec61d05731fea4",
+    "approved": false,
+    "claim": "AEDを取りに行く人を「あなたが行ってください」と指名して頼む。"
+  },
+  "gen-aed-2": {
+    "fingerprint": "3b27b1ad14d9db36",
+    "approved": false,
+    "claim": "AEDのふたを開けて電源を入れ、音声ガイダンスの指示どおりに操作する。"
+  },
+  "gen-aed-3": {
+    "fingerprint": "0f7cd0e516ced9cb",
+    "approved": false,
+    "claim": "AEDが建物の外に設置されていれば、施設が閉まっている夜間や休日でも取りに行ける。"
+  },
+  "gen-aed-4": {
+    "fingerprint": "441188321a7823f0",
+    "approved": false,
+    "claim": "AEDは入口から見える位置にあるほど、到着した人が迷わず取り出せる。"
+  },
+  "gen-shelter-1": {
+    "fingerprint": "7fd3dbe67fad2562",
+    "approved": false,
+    "claim": "避難所に着いたら、まず受付で名簿に自分と家族の名前を登録する。"
+  },
+  "gen-shelter-2": {
+    "fingerprint": "1788d1be252e24a6",
+    "approved": false,
+    "claim": "入口の段差やドアの幅で入れないときは、その場で運営者や職員に伝えて、別の出入口や介助の手配を求める。"
+  },
+  "gen-shelter-3": {
+    "fingerprint": "e484b12ae18b2d7b",
+    "approved": false,
+    "claim": "オストメイト対応の設備（装具を洗浄・処理できる流しなど）は多機能トイレの中に置かれることが多いが、すべての避難所にあるわけではない。"
+  },
+  "gen-shelter-4": {
+    "fingerprint": "1a65a5adeca73d63",
+    "approved": false,
+    "claim": "ペットと一緒に避難すること（同行避難）と、屋内で同じ空間に滞在できること（同伴避難）は別の扱いで、居場所の条件は施設ごとに決められている。"
+  },
+  "gen-water-1": {
+    "fingerprint": "b6ab33c65d4463e6",
+    "approved": false,
+    "claim": "給水スポットへ向かう前に、口の広い空容器と、運搬用の台車やキャリーカートを用意する。"
+  },
+  "gen-water-2": {
+    "fingerprint": "f571a680cb3f491b",
+    "approved": false,
+    "claim": "使う前に、その給水スポットが改札の内側など入場や利用手続きが必要な区域にあるかを確認する。"
+  },
+  "gen-water-3": {
+    "fingerprint": "0fda006706061f50",
+    "approved": false,
+    "claim": "蛇口や給水口の高さと足元の空間の広さが、車いすの人や子どもが自分で水をくめるかどうかを決める。"
+  },
+  "gen-water-4": {
+    "fingerprint": "92d3130237e66fb4",
+    "approved": false,
+    "claim": "給水口にボトルを直接置けるかどうかで、その場で飲むだけの設備か、水を持ち帰れる設備かが変わる。"
+  },
+  "seed-aed-time-1": {
+    "fingerprint": "9519ef3873b13281",
+    "approved": true,
+    "claim": "24時間使える場所にあるか"
+  },
+  "seed-aed-use-1": {
+    "fingerprint": "c4b62c62cab090b0",
+    "approved": true,
+    "claim": "大声で助けを呼び、胸骨圧迫を始める"
+  },
+  "seed-shelter-action-1": {
+    "fingerprint": "75c95ba743505c50",
+    "approved": true,
+    "claim": "頭を守って身を低くし、揺れが収まるのを待つ"
+  },
+  "seed-shelter-flood-1": {
+    "fingerprint": "7ca2de832f4c535f",
+    "approved": true,
+    "claim": "外れたマンホールや側溝に落ちる"
+  },
+  "seed-shelter-open-1": {
+    "fingerprint": "12522c7d68efe13e",
+    "approved": true,
+    "claim": "その時に開設されているか"
+  },
+  "seed-shelter-toilet-1": {
+    "fingerprint": "8d8e192859aa5337",
+    "approved": true,
+    "claim": "水を飲むのを控えてしまい、脱水から血栓ができやすくなる"
+  },
+  "seed-toilet-access-1": {
+    "fingerprint": "f2d2c327c662ab06",
+    "approved": true,
+    "claim": "中で向きを変えられる広さがあるか"
+  },
+  "seed-toilet-action-1": {
+    "fingerprint": "344ad13f9228c134",
+    "approved": true,
+    "claim": "通る道に段差や工事がないか"
+  },
+  "seed-toilet-water-1": {
+    "fingerprint": "a9c08f9efc6f3da2",
+    "approved": true,
+    "claim": "水洗が使えなくなり、携帯トイレや仮設の備えが必要になる"
+  },
+  "seed-water-action-1": {
+    "fingerprint": "4f1013520c3d1bd6",
+    "approved": true,
+    "claim": "断水する前に、浴槽などへ生活用水を確保する"
+  },
+  "seed-water-route-1": {
+    "fingerprint": "1c19e748e3513ced",
+    "approved": true,
+    "claim": "そこまでの道に段差や坂がないか"
+  },
+  "seed-water-supply-1": {
+    "fingerprint": "388cf54e88467786",
+    "approved": true,
+    "claim": "約3リットル"
+  }
+}

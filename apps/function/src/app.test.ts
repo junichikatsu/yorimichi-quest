@@ -2032,3 +2032,90 @@ describe('CSV での書き出し（FR-09-4）', () => {
     expect(response.headers.get('content-disposition')).toMatch(/imanouchi_chome_\d{4}-\d{2}-\d{2}\.csv/)
   })
 })
+
+describe('ナレッジからの出題（FR-04-2・#75）', () => {
+  /*
+   * ★ 既定は「切」である。審査中に本番の出題が勝手に変わらないようにしてある。
+   * ここを緩めると、環境変数を1つ入れ忘れただけで文言が入れ替わる。
+   */
+  it('★ 既定では固定データのまま出す', async () => {
+    const { token } = await loginOk()
+    const spots = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    const spot = spots.spots[0]!
+
+    const body = await json<QuizResponse>(
+      await app.request(`/v1/spots/${spot.spotId}/quiz`, { headers: auth(token) }),
+    )
+
+    expect(body.quiz.generatedBy).toBe('fixture')
+    expect(body.quiz.quizId.startsWith('kb-')).toBe(false)
+  })
+
+  it('ENABLE_AI_QUIZ を入れるとナレッジから出す', async () => {
+    process.env['ENABLE_AI_QUIZ'] = 'true'
+    delete process.env['ORCAROUTER_API_KEY']
+
+    const { token } = await loginOk()
+    const spots = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    const spot = spots.spots[0]!
+
+    const body = await json<QuizResponse>(
+      await app.request(`/v1/spots/${spot.spotId}/quiz`, { headers: auth(token) }),
+    )
+    delete process.env['ENABLE_AI_QUIZ']
+
+    expect(body.quiz.quizId.startsWith('kb-')).toBe(true)
+    expect(body.quiz.options.length).toBeGreaterThanOrEqual(3)
+    // 鍵が無いので言い回しは素のまま。**それでも出題は成立する**
+    expect(body.quiz.generatedBy).toBe('fixture')
+  })
+
+  /*
+   * ★ 出題と採点は別のリクエストで、間に Lambda のインスタンスが入れ替わりうる。
+   * ナレッジから作り直せるので、キャッシュが無くても採点できる。
+   */
+  it('★ ナレッジの出題を採点できる（正解はサーバーが持つ）', async () => {
+    process.env['ENABLE_AI_QUIZ'] = 'true'
+    delete process.env['ORCAROUTER_API_KEY']
+
+    const { token } = await loginOk()
+    const spots = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    const spot = spots.spots[0]!
+
+    const quiz = await json<QuizResponse>(
+      await app.request(`/v1/spots/${spot.spotId}/quiz`, { headers: auth(token) }),
+    )
+
+    // ★ 全選択肢を試し、ちょうど1つだけが正解であることを確かめる
+    const results: boolean[] = []
+    for (let index = 0; index < quiz.quiz.options.length; index += 1) {
+      const answer = await json<QuizAnswerResponse>(
+        await app.request(`/v1/spots/${spot.spotId}/quiz/answer`, {
+          method: 'POST',
+          headers: auth(token),
+          body: JSON.stringify({ quizId: quiz.quiz.quizId, choiceIndex: index }),
+        }),
+      )
+      results.push(answer.correct)
+      expect(answer.explanation).not.toBe('')
+    }
+    delete process.env['ENABLE_AI_QUIZ']
+
+    expect(results.filter(Boolean).length).toBe(1)
+  })
+
+  it('★ 正解を画面へ渡さない（配信された JavaScript から読めない）', async () => {
+    process.env['ENABLE_AI_QUIZ'] = 'true'
+    const { token } = await loginOk()
+    const spots = await json<SpotsResponse>(await app.request('/v1/spots', { headers: auth(token) }))
+    const spot = spots.spots[0]!
+
+    const raw = await (
+      await app.request(`/v1/spots/${spot.spotId}/quiz`, { headers: auth(token) })
+    ).text()
+    delete process.env['ENABLE_AI_QUIZ']
+
+    expect(raw).not.toContain('answerIndex')
+    expect(raw).not.toContain('explanation')
+  })
+})
