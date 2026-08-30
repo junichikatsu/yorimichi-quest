@@ -8,6 +8,7 @@
 | 要件定義書 | [doc/requirements.md](doc/requirements.md) |
 | オープンデータ一覧 | [doc/opendata-sources.md](doc/opendata-sources.md) |
 | 都民ヒアリング（n=37） | [doc/hearing-citizens.md](doc/hearing-citizens.md) |
+| **First Stage 審査後の手順** | [doc/next-steps.md](doc/next-steps.md) |
 | **ナレッジのレビュー**（防災士向け・自動生成） | [doc/knowledge-review.md](doc/knowledge-review.md) |
 | 8/23 提出物の草案 | [doc/submission-20260823.md](doc/submission-20260823.md) |
 | **提出物（確定版・送信済み）** | [doc/submission-final/README.md](doc/submission-final/README.md) |
