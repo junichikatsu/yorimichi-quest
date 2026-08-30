@@ -134,9 +134,36 @@
         background: var(--chip);
         color: var(--muted);
         font-size: 0.85rem;
-        cursor: default;
+        /*
+         * ★ 押せる見た目にする。以前は `cursor: default` だった——**押せない飾り**
+         * だったので、押せないことを見た目で示していた。実際に飛ぶようになったので
+         * 外している。
+         */
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
       }
+      .tab:hover { color: var(--ink); background: var(--surface); }
+      /*
+       * ★ キーボードの居場所を必ず出す（NFR-08）。`outline: none` にしてはいけない。
+       * タブ移動で操作する人が、いまどこにいるか分からなくなる。
+       */
+      .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .tab--on { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 0 var(--surface); }
+
+      /*
+       * ★ 飛び先が画面の一番上に貼り付かないよう余白を取る。見出しが上端に接すると
+       * 「どこへ来たのか」が読み取りにくい。
+       */
+      .panel[id] { scroll-margin-top: 0.8rem; }
+
+      /*
+       * ★ なめらかに動かすのは、動きを減らす設定をしていない人だけにする。
+       * 前庭障害のある人には、勝手なスクロールが症状を起こしうる。
+       */
+      @media (prefers-reduced-motion: no-preference) {
+        html { scroll-behavior: smooth; }
+      }
 
       /* ---------------- 部品 ---------------- */
 
@@ -287,12 +314,24 @@
             <p style="margin: 0">対象 避難所 <b id="shelter-count">72</b> ／ 全スポット <b id="spot-count">370</b></p>
           </div>
         </div>
-        <div class="tabs">
-          <p class="tab tab--on" style="margin: 0">概況</p>
-          <p class="tab" style="margin: 0">避難所一覧</p>
-          <p class="tab" style="margin: 0">町丁目</p>
-          <p class="tab" style="margin: 0">データ出力</p>
-        </div>
+        <!--
+          ★ **リンクにしてある。** 以前は `<p>` で、押しても何も起きない飾りだった。
+          ページの一部が実データになった以上、押して無反応の部品が残っていると、
+          **動いている側まで疑われる。**
+
+          ★ 表示を切り替えて隠すのではなく、その場所まで運ぶ。この画面は1枚の
+          スクロールとして作られており、隠すと**行政の担当者が全体を一度に
+          見渡せなくなる**（印刷・スクリーンショットでも欠ける）。
+
+          ★ JavaScript が無くても動く。素の `href="#id"` なので、下のスクリプトが
+          読めなくても飛べる。スクリプトがやるのは現在位置の色付けだけである。
+        -->
+        <nav class="tabs" aria-label="セクション">
+          <a class="tab tab--on" href="#sec-overview" aria-current="true">概況</a>
+          <a class="tab" href="#sec-shelters">避難所一覧</a>
+          <a class="tab" href="#sec-chome">町丁目</a>
+          <a class="tab" href="#sec-export">データ出力</a>
+        </nav>
       </div>
     </header>
 
@@ -309,7 +348,7 @@
         ★ 初期値は実データの値を書いてある（370・232・1,005 など）。API が落ちても
         嘘にならない値が残る。通信できたら実測で上書きする。
       -->
-      <section class="panel">
+      <section class="panel" id="sec-overview">
         <div class="panel__head">
           <h2 class="panel__title">いま分かっていること</h2>
           <p class="panel__action sub" id="collection-note">実測値のみ。想定値は含みません</p>
@@ -392,7 +431,7 @@
       </section>
 
       <!-- ---------------- 地図 ＋ 充足率 ---------------- -->
-      <section class="panel">
+      <section class="panel" id="sec-shelters">
         <div class="panel__head">
           <h2 class="panel__title">避難所の基準充足と、データの空白</h2>
           <p class="panel__action sub">スフィア基準の判定は<strong>想定値</strong>（FR-05・FR-06 が未実装）</p>
@@ -613,7 +652,7 @@
       </section>
 
       <!-- ---------------- 町丁目 ---------------- -->
-      <section class="panel">
+      <section class="panel" id="sec-chome">
         <div class="panel__head">
           <h2 class="panel__title">町丁目ごとの記録件数</h2>
           <p class="panel__action sub">記録のある <span id="chome-total">123</span> 町丁目のうち上位 8 件</p>
@@ -649,7 +688,7 @@
       </section>
 
       <!-- ---------------- 出力 ---------------- -->
-      <section class="panel">
+      <section class="panel" id="sec-export">
         <div class="panel__head">
           <h2 class="panel__title">オープンデータとして書き出す</h2>
         </div>
@@ -755,6 +794,71 @@
               '）。'
           }
         }
+
+        /* ---------------- タブの現在位置 ---------------- */
+
+        /*
+         * ★ 移動そのものは CSS と `href="#id"` がやる。ここでやるのは
+         * **いまどこを読んでいるかの色付けだけ**である。スクリプトが落ちても
+         * タブは飛べる。
+         *
+         * ★ スクロールでも追随させる。押したときだけ光らせる作りにすると、
+         * 手でスクロールして別の節に来たときにタブが嘘をつく。
+         */
+        ;(function initTabs() {
+          var tabs = [].slice.call(document.querySelectorAll('.tab[href^="#"]'))
+          if (tabs.length === 0) return
+
+          var sections = tabs.map(function (tab) {
+            return document.getElementById(tab.getAttribute('href').slice(1))
+          })
+
+          function sync() {
+            /*
+             * 画面の上から少し下がった位置を基準に、そこより上で最後に始まった節を
+             * 現在地とする。上端ちょうどで判定すると、境目で行ったり来たりする。
+             */
+            var line = 120
+            var current = 0
+            for (var i = 0; i < sections.length; i += 1) {
+              var section = sections[i]
+              if (section && section.getBoundingClientRect().top <= line) current = i
+            }
+
+            /*
+             * ★ 最下部に着いたら最後のタブを点ける。ページの終わりでは、最後の節が
+             * 短いと基準線に届かず、**一番下まで来たのに手前のタブが点いたまま**になる。
+             */
+            var atBottom =
+              window.innerHeight + window.pageYOffset >= document.body.scrollHeight - 2
+            if (atBottom) current = tabs.length - 1
+
+            for (var k = 0; k < tabs.length; k += 1) {
+              var on = k === current
+              tabs[k].className = on ? 'tab tab--on' : 'tab'
+              if (on) tabs[k].setAttribute('aria-current', 'true')
+              else tabs[k].removeAttribute('aria-current')
+            }
+          }
+
+          /*
+           * ★ スクロールのたびに数えない。読むのは節ごとの位置だけなので、
+           * 次の描画まで待ってからまとめて1回にする。
+           */
+          var queued = false
+          function onScroll() {
+            if (queued) return
+            queued = true
+            window.requestAnimationFrame(function () {
+              queued = false
+              sync()
+            })
+          }
+
+          window.addEventListener('scroll', onScroll, { passive: true })
+          window.addEventListener('resize', onScroll)
+          sync()
+        })()
 
         fetch(base + '/v1/dashboard/summary', { headers: { accept: 'application/json' } })
           .then(function (response) {
