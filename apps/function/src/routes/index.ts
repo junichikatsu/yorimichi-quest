@@ -54,6 +54,7 @@ import { buildCards, buildCatalog } from '../services/card-service.js'
 import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
+import { installQuizSource } from '../services/ai/install.js'
 import {
   buildCsv,
   getDashboardData,
@@ -598,6 +599,8 @@ export function createRoutes(): Hono<AppEnv> {
   /* ---------------- クイズ（FR-04） ---------------- */
 
   routes.get('/v1/spots/:spotId/quiz', async (c) => {
+    // ★ 設定が変わったときだけ差し替わる（毎回作り直さない＝キャッシュを捨てない）
+    installQuizSource(loadConfig())
     const config = loadConfig()
     const spotIdRaw = c.req.param('spotId')
     if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')
@@ -619,6 +622,8 @@ export function createRoutes(): Hono<AppEnv> {
    * JavaScript を読むだけで答えが分かる。
    */
   routes.post('/v1/spots/:spotId/quiz/answer', async (c) => {
+    // ★ 採点側でも取り付ける。出題と採点で供給元が違うと quizId を引けない
+    installQuizSource(loadConfig())
     const config = loadConfig()
     const spotIdRaw = c.req.param('spotId')
     if (!isSpotId(spotIdRaw)) throw badRequest('spotId の形式が不正です')

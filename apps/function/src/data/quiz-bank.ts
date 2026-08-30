@@ -35,6 +35,14 @@ export interface QuizEntry {
   /** 正解・不正解のどちらでも表示する（FR-04-6） */
   explanation: string
   kind: QuizKind
+  /**
+   * どこから来た出題か。
+   *
+   * ★ **画面と運用で見分けられるようにするため**（quiz.ts の QuizPrompt と同じ理由）。
+   * 生成が落ちて固定データへ落ちたことに気づけないと、生成の不具合が隠れる。
+   * 固定データは省略でき、既定は 'fixture' である。
+   */
+  generatedBy?: QuizPrompt['generatedBy']
 }
 
 const QUIZ_ENTRIES: QuizEntry[] = [

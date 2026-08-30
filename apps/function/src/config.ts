@@ -153,6 +153,27 @@ export interface AppConfig {
    * 集計の正しさである。同じ値に縛る理由が無い。
    */
   dashboardMaxSpots: number
+  /**
+   * ナレッジからのクイズ生成（FR-04-2・#75）。
+   *
+   * ★ **既定は false。** 審査中に本番の出題が勝手に変わらないようにする。
+   * 切っていても、ナレッジそのものは使わない（固定データのまま）。
+   */
+  aiQuizEnabled: boolean
+  /** OrcaRouter。空なら生成は動かず、固定データのまま出る */
+  orcaRouterBaseUrl: string
+  orcaRouterApiKey: string
+  /** 取り込み用の高性能モデル。**実行時には使わない**（pnpm build:kb だけ） */
+  aiIngestModel: string
+  /** 利用時の軽量モデル */
+  aiRuntimeModel: string
+  /**
+   * 出題を作るのに待てる時間。
+   *
+   * ★ **短い。** 利用者はチェックインの直後にこの画面を見ている。数秒待たせる
+   * くらいなら、素の言い回しで即座に出すほうがよい（G-7）。
+   */
+  aiQuizTimeoutMs: number
   rateLimitPerMinute: number
   /**
    * デモ用の移動操作を許すか。
@@ -254,6 +275,12 @@ export function loadConfig(): AppConfig {
     surveyConsensusCount: readNumber('SURVEY_CONSENSUS_COUNT', DEFAULT_SURVEY_CONSENSUS),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
     dashboardMaxSpots: readNumber('DASHBOARD_MAX_SPOTS', 2000),
+    aiQuizEnabled: readBoolean('ENABLE_AI_QUIZ', false),
+    orcaRouterBaseUrl: readString('ORCAROUTER_BASE_URL') || 'https://api.orcarouter.ai/v1',
+    orcaRouterApiKey: readString('ORCAROUTER_API_KEY'),
+    aiIngestModel: readString('AI_INGEST_MODEL') || 'anthropic/claude-opus-5',
+    aiRuntimeModel: readString('AI_RUNTIME_MODEL') || 'google/gemini-2.5-flash-lite',
+    aiQuizTimeoutMs: readNumber('AI_QUIZ_TIMEOUT_MS', 5000),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),
     // デモの導線に要るため既定で出す。実利用者へ配るときは false にする

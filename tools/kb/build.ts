@@ -322,7 +322,7 @@ function configFromEnv(): OrcaRouterConfig {
      * モデルID の間違いだと気づきにくい。**
      */
     ingestModel: process.env['AI_INGEST_MODEL'] ?? 'anthropic/claude-opus-5',
-    runtimeModel: process.env['AI_RUNTIME_MODEL'] ?? 'google/gemini-2.5-flash',
+    runtimeModel: process.env['AI_RUNTIME_MODEL'] ?? 'google/gemini-2.5-flash-lite',
     timeoutMs: Number(process.env['AI_TIMEOUT_MS'] ?? 60000),
     maxRetries: 2,
   }
