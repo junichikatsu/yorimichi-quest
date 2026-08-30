@@ -30,7 +30,7 @@
     "claim": "AEDのふたを開けて電源を入れ、音声ガイダンスの指示どおりに操作する。"
   },
   "gen-aed-3": {
-    "fingerprint": "0f7cd0e516ced9cb",
+    "fingerprint": "fe26808bc1daf5a8",
     "approved": false,
     "claim": "AEDが建物の外に設置されていれば、施設が閉まっている夜間や休日でも取りに行ける。"
   },
