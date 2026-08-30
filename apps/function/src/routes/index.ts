@@ -54,6 +54,12 @@ import { buildCards, buildCatalog } from '../services/card-service.js'
 import { getProgress, performCheckin } from '../services/checkin-service.js'
 import { getExploration, recordExploration } from '../services/exploration-service.js'
 import { answerQuiz, getQuiz } from '../services/quiz-service.js'
+import {
+  buildCsv,
+  getDashboardData,
+  type CsvKind,
+  type DashboardData,
+} from '../services/dashboard-service.js'
 import { findSpot, listSpots } from '../services/spot-service.js'
 import { getSurvey, submitSurvey, type SurveyPointRules } from '../services/survey-service.js'
 import {
@@ -83,6 +89,26 @@ function surveyRules(config: AppConfig): SurveyPointRules {
     fillBonus: config.surveyFillBonusPoints,
     consensus: config.surveyConsensusCount,
   }
+}
+
+/**
+ * ダッシュボードの読み出し（FR-09）。
+ *
+ * ★ 集計と CSV の両方から呼ぶ。**上限と閾値の組み立てを1か所に置く。**
+ * 別々に書くと、画面に出た件数と CSV の行数が食い違う。
+ */
+async function dashboardDataFor(
+  ctx: DataStoreContext,
+  config: AppConfig,
+): Promise<DashboardData> {
+  return getDashboardData(ctx, {
+    areaId: config.area.areaId,
+    areaName: config.area.name,
+    limit: config.dashboardMaxSpots,
+    threshold: config.surveyConsensusCount,
+    chomeTopLimit: 8,
+    now: new Date(),
+  })
 }
 
 export function createRoutes(): Hono<AppEnv> {
@@ -701,6 +727,49 @@ export function createRoutes(): Hono<AppEnv> {
     }
     return c.json(response)
   })
+
+  /* ---------------- 行政還元ダッシュボード（FR-09） ---------------- */
+
+  /**
+   * 集計（FR-09-1・FR-09-8・FR-12-5）。**認証なしの閲覧専用**（FR-09-5）。
+   *
+   * ★ 返すのは**実測だけ**である。まだ誰も答えていなければ 0 を返す。画面側で
+   * 想定値に差し替えてはいけない。0 を隠すと「行政データにこれだけ穴がある」と
+   * いう主張そのものが確かめられなくなる。
+   */
+  routes.get('/v1/dashboard/summary', async (c) => {
+    const config = loadConfig()
+    const ctx = await contextFor()
+    const data = await dashboardDataFor(ctx, config)
+
+    return c.json({ ...data.summary, truncated: data.truncated })
+  })
+
+  /**
+   * CSV での書き出し（FR-09-4）。
+   *
+   * ★ 提出物 2-3・2-5 とスライド8で言い切った出力である。**実際に落とせること**が
+   * 主張の裏づけになる。
+   *
+   * ★ `Content-Disposition` を付けてダウンロードにする。ブラウザで開くと BOM が
+   * 見えるだけで、受け取った側が Excel へ持っていく手間が増える。
+   */
+  for (const [path, kind] of [
+    ['/v1/dashboard/export/verified.csv', 'verified'],
+    ['/v1/dashboard/export/gaps.csv', 'gaps'],
+    ['/v1/dashboard/export/chome.csv', 'chome'],
+  ] as const satisfies readonly (readonly [string, CsvKind])[]) {
+    routes.get(path, async (c) => {
+      const config = loadConfig()
+      const ctx = await contextFor()
+      const data = await dashboardDataFor(ctx, config)
+      const csv = buildCsv(kind, data, config.surveyConsensusCount)
+
+      c.header('Content-Type', 'text/csv; charset=utf-8')
+      c.header('Content-Disposition', `attachment; filename="${csv.filename}"`)
+      return c.body(csv.body)
+    })
+  }
 
   /* ---------------- 探索（FR-02-7） ---------------- */
 

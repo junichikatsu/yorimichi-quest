@@ -37,6 +37,17 @@ const NO_SESSION_SUFFIXES = [
   '/v1/admin/seed',
   '/v1/admin/purge',
   '/v1/admin/config',
+  /*
+   * ★ ダッシュボード（FR-09-5）。**認証なしの閲覧専用デモである。**
+   *
+   * 要件どおり行政の認証は将来拡張とし、いまは誰でも開ける。書き込む経路が無く、
+   * 返すのは公開オープンデータと、検証済みになった集計だけである。
+   * **個人を特定できるものは1つも通らない**（誰が答えたかはスポット側に無い）。
+   */
+  '/v1/dashboard/summary',
+  '/v1/dashboard/export/verified.csv',
+  '/v1/dashboard/export/gaps.csv',
+  '/v1/dashboard/export/chome.csv',
 ]
 
 export function skipsSessionGate(path: string): boolean {

@@ -142,6 +142,17 @@ export interface AppConfig {
    */
   surveyConsensusCount: number
   maxSpotsPerRequest: number
+  /**
+   * ダッシュボードの集計で読むスポットの上限（FR-09）。
+   *
+   * ★ `maxSpotsPerRequest`（既定 200）を使い回してはいけない。**取り込んだ実データは
+   * 370 件あり、200 で切ると集計が黙って狂う。** 「AED 224 件のうち属性が空なのは
+   * 何件か」という、この画面の主題そのものが間違った数で出る。
+   *
+   * ★ 地図に返す件数の上限とは目的が違う。あちらは端末へ送る量の制御、こちらは
+   * 集計の正しさである。同じ値に縛る理由が無い。
+   */
+  dashboardMaxSpots: number
   rateLimitPerMinute: number
   /**
    * デモ用の移動操作を許すか。
@@ -242,6 +253,7 @@ export function loadConfig(): AppConfig {
     surveyFillBonusPoints: readNumber('SURVEY_FILL_BONUS_POINTS', 5),
     surveyConsensusCount: readNumber('SURVEY_CONSENSUS_COUNT', DEFAULT_SURVEY_CONSENSUS),
     maxSpotsPerRequest: readNumber('MAX_SPOTS_PER_REQUEST', 200),
+    dashboardMaxSpots: readNumber('DASHBOARD_MAX_SPOTS', 2000),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),
     debugMoveEnabled: readBoolean('ENABLE_DEBUG_MOVE', true),
     // デモの導線に要るため既定で出す。実利用者へ配るときは false にする
