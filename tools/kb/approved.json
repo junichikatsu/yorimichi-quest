@@ -1,0 +1,62 @@
+{
+  "seed-aed-time-1": {
+    "fingerprint": "9519ef3873b13281",
+    "approved": true,
+    "claim": "24時間使える場所にあるか"
+  },
+  "seed-aed-use-1": {
+    "fingerprint": "c4b62c62cab090b0",
+    "approved": true,
+    "claim": "大声で助けを呼び、胸骨圧迫を始める"
+  },
+  "seed-shelter-action-1": {
+    "fingerprint": "75c95ba743505c50",
+    "approved": true,
+    "claim": "頭を守って身を低くし、揺れが収まるのを待つ"
+  },
+  "seed-shelter-flood-1": {
+    "fingerprint": "7ca2de832f4c535f",
+    "approved": true,
+    "claim": "外れたマンホールや側溝に落ちる"
+  },
+  "seed-shelter-open-1": {
+    "fingerprint": "12522c7d68efe13e",
+    "approved": true,
+    "claim": "その時に開設されているか"
+  },
+  "seed-shelter-toilet-1": {
+    "fingerprint": "8d8e192859aa5337",
+    "approved": true,
+    "claim": "水を飲むのを控えてしまい、脱水から血栓ができやすくなる"
+  },
+  "seed-toilet-access-1": {
+    "fingerprint": "f2d2c327c662ab06",
+    "approved": true,
+    "claim": "中で向きを変えられる広さがあるか"
+  },
+  "seed-toilet-action-1": {
+    "fingerprint": "344ad13f9228c134",
+    "approved": true,
+    "claim": "通る道に段差や工事がないか"
+  },
+  "seed-toilet-water-1": {
+    "fingerprint": "a9c08f9efc6f3da2",
+    "approved": true,
+    "claim": "水洗が使えなくなり、携帯トイレや仮設の備えが必要になる"
+  },
+  "seed-water-action-1": {
+    "fingerprint": "4f1013520c3d1bd6",
+    "approved": true,
+    "claim": "断水する前に、浴槽などへ生活用水を確保する"
+  },
+  "seed-water-route-1": {
+    "fingerprint": "1c19e748e3513ced",
+    "approved": true,
+    "claim": "そこまでの道に段差や坂がないか"
+  },
+  "seed-water-supply-1": {
+    "fingerprint": "388cf54e88467786",
+    "approved": true,
+    "claim": "約3リットル"
+  }
+}
