@@ -16,8 +16,8 @@
  *   台帳は指紋を持っており、**中身が変われば承認は自動で外れる**（継ぎ足せない）。
  *
  * 生成時点: 2026-08-30
- * 件数: 全 12 件（確認済み 12 件 / **未確認 0 件**）
- * 内訳: カテゴリ 12 / 町丁目 0 / スポット 0
+ * 件数: 全 28 件（確認済み 12 件 / **未確認 16 件**）
+ * 内訳: カテゴリ 28 / 町丁目 0 / スポット 0
  *
  * 取り込み元の出典
  * - 避難所一覧データ（東京都総務局）（取得 2026-08-20）
@@ -31,6 +31,358 @@ import type { KnowledgeBase } from '@imanouchi/shared'
 export const KNOWLEDGE_BASE: KnowledgeBase = {
   "generatedAt": "2026-08-30",
   "entries": [
+    {
+      "entryId": "gen-accessible_toilet-1",
+      "scope": "category",
+      "key": "accessible_toilet",
+      "category": "accessible_toilet",
+      "context": "",
+      "kind": "action",
+      "claim": "オストメイト設備は、給水と給湯の蛇口を実際にひねり、汚物流しの排水が流れるところまで確かめて記録する。",
+      "distractors": [
+        "案内表示やマークにオストメイト対応と出ていれば、使える状態だと判断してよい",
+        "使えるかどうかは、実際にオストメイトの人が来たときに確かめればよい"
+      ],
+      "why": "ストーマ装具の交換と洗浄には流水が必要で、水が出なければその場では対応できません。使えないことを災害後に初めて知ると、他のトイレを探して移動する時間と体力を失います。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-accessible_toilet-2",
+      "scope": "category",
+      "key": "accessible_toilet",
+      "category": "accessible_toilet",
+      "context": "",
+      "kind": "action",
+      "claim": "手すりは体重をかけて押し引きし、ぐらつきや固定部のゆるみがないところまで確かめる。",
+      "distractors": [
+        "手すりが取り付けられていることを目で見て確認できれば十分",
+        "手すりがなくても、壁や便器のふたに手をついて立ち座りすればよい"
+      ],
+      "why": "手すりは全体重を預ける場所なので、ゆるんでいれば体を支えられず転倒します。避難生活中の骨折は歩けなくなることに直結し、その後の避難や受診が難しくなります。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-accessible_toilet-3",
+      "scope": "category",
+      "key": "accessible_toilet",
+      "category": "accessible_toilet",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "オストメイト用の汚物流しは水と排水があって初めて機能し、断水すると装具の洗浄も排出物の処理も代わりがきかない。",
+      "distractors": [
+        "オストメイトの人も、一般の便器を使えば同じように処理できる",
+        "オストメイト設備は水が止まっていても使える"
+      ],
+      "why": "処理できないと排出物が皮膚に触れ続け、皮膚障害や感染につながります。トイレを我慢するために水分を控えると、脱水や血栓のリスクが上がります。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-accessible_toilet-4",
+      "scope": "category",
+      "key": "accessible_toilet",
+      "category": "accessible_toilet",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "バリアフリートイレは建物に1か所しかないことが多く、車いす利用者、オストメイト、乳幼児連れ、介助が必要な人の利用が重なる。",
+      "distractors": [
+        "バリアフリートイレは車いす利用者専用なので、他の人と重なることはない",
+        "一般トイレが混雑していても、バリアフリートイレは空いている"
+      ],
+      "why": "1か所しかない設備が使用中や故障だと、待てない人がその場で行き詰まります。近くの別のバリアフリートイレをあらかじめ知っておくことが、我慢による体調悪化を防ぎます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-aed-1",
+      "scope": "category",
+      "key": "aed",
+      "category": "aed",
+      "context": "",
+      "kind": "action",
+      "claim": "AEDを取りに行く人を「あなたが行ってください」と指名して頼む。",
+      "distractors": [
+        "周りの人全員に呼びかければ、誰かが自然にAEDを持ってきてくれる",
+        "救急隊が到着するまで待ち、AEDは隊員に使ってもらう"
+      ],
+      "why": "漠然と呼びかけると全員が「自分以外が動く」と考えて誰も動かず、AEDの到着が数分遅れます。心停止では1分ごとに救命率が約7〜10%下がるため、指名して役割を確定させることが生死を分けます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-aed-2",
+      "scope": "category",
+      "key": "aed",
+      "category": "aed",
+      "context": "",
+      "kind": "action",
+      "claim": "AEDのふたを開けて電源を入れ、音声ガイダンスの指示どおりに操作する。",
+      "distractors": [
+        "使い方を知らない人が触ると危険なので、講習を受けた人が来るまで待つ",
+        "電気ショックが必要かどうかを自分で判断してからパッドを貼る"
+      ],
+      "why": "AEDは心電図を自動解析し、ショックが不要なら通電しない仕組みで、資格がなくても市民が使えます。ためらって待つ時間がそのまま心停止の時間になり、脳へのダメージが進みます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-aed-3",
+      "scope": "category",
+      "key": "aed",
+      "category": "aed",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "AEDが建物の外に設置されていれば、施設が閉まっている夜間や休日でも取りに行ける。",
+      "distractors": [
+        "AEDは精密機器なので、屋内の受付や事務室に置くのが望ましい",
+        "屋外設置のAEDは雨や気温の影響で作動しないことがある"
+      ],
+      "why": "心停止は深夜や休日にも起こりますが、屋内設置だと施錠された時間帯はまったく使えません。屋外設置なら時間帯を問わず取り出せるため、設置場所が屋内か屋外かを事前に知っておくことが重要です。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-aed-4",
+      "scope": "category",
+      "key": "aed",
+      "category": "aed",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "AEDは入口から見える位置にあるほど、到着した人が迷わず取り出せる。",
+      "distractors": [
+        "AEDは目立たない場所に置いたほうが、いたずらや盗難を防げて安全",
+        "設置場所は施設の職員が把握していれば、案内表示は必要ない"
+      ],
+      "why": "探し回る時間は胸骨圧迫が止まる時間でもあり、そのまま救命率の低下につながります。初めて訪れた人でも入口から視認できることが、数分の短縮を生みます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-shelter-1",
+      "scope": "category",
+      "key": "shelter",
+      "category": "shelter",
+      "context": "",
+      "kind": "action",
+      "claim": "避難所に着いたら、まず受付で名簿に自分と家族の名前を登録する。",
+      "distractors": [
+        "短時間だけ休むつもりなら受付を通さなくてよい",
+        "物資や毛布を受け取らないなら名簿の記入は必要ない"
+      ],
+      "why": "名簿は安否確認と家族の再会、必要な物資量の把握に使われ、登録がないと救助側から「所在不明」のまま扱われます。医療や配慮の必要も受付を通して初めて共有されます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-shelter-2",
+      "scope": "category",
+      "key": "shelter",
+      "category": "shelter",
+      "context": "",
+      "kind": "action",
+      "claim": "入口の段差やドアの幅で入れないときは、その場で運営者や職員に伝えて、別の出入口や介助の手配を求める。",
+      "distractors": [
+        "段差がある施設は車いすやベビーカーでは使えないので、別の避難所を探すしかない",
+        "バリアフリー表示がない避難所は受け入れを断られる決まりになっている"
+      ],
+      "why": "多くの施設は仮設スロープや人手による介助、通常は使わない出入口で対応できますが、伝えない限り運営者は困っている人がいることに気づけません。入口で引き返して屋外や自宅に戻ることが、低体温症や余震による被害につながります。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-shelter-3",
+      "scope": "category",
+      "key": "shelter",
+      "category": "shelter",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "オストメイト対応の設備（装具を洗浄・処理できる流しなど）は多機能トイレの中に置かれることが多いが、すべての避難所にあるわけではない。",
+      "distractors": [
+        "多機能トイレがあればオストメイト対応の設備も必ず備わっている",
+        "装具の交換は一般の個室トイレでも同じように行える"
+      ],
+      "why": "装具を適切に交換・洗浄できないと排泄物の漏れによる皮膚障害や感染が起こり、避難生活の中では治療が遅れて重症化しやすくなります。設備の有無を先に確認できれば、予備の装具や洗浄用の水を持って避難する判断ができます。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-shelter-4",
+      "scope": "category",
+      "key": "shelter",
+      "category": "shelter",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "ペットと一緒に避難すること（同行避難）と、屋内で同じ空間に滞在できること（同伴避難）は別の扱いで、居場所の条件は施設ごとに決められている。",
+      "distractors": [
+        "同行避難が認められている避難所では、ペットと同じ部屋で過ごせる",
+        "ペットは避難所に連れて行けないと全国一律で決まっている"
+      ],
+      "why": "多くの場合ケージや屋根のある別スペースでの受け入れとなるため、キャリーやリード、数日分の餌を用意しておけば受け入れ条件を満たせます。「連れて行けない」と思い込んで自宅に留まる選択が、津波や火災、家屋倒壊からの逃げ遅れに直結します。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-water-1",
+      "scope": "category",
+      "key": "water",
+      "category": "water",
+      "context": "",
+      "kind": "action",
+      "claim": "給水スポットへ向かう前に、口の広い空容器と、運搬用の台車やキャリーカートを用意する。",
+      "distractors": [
+        "断水時は給水場所で容器が配られるので、手ぶらで行けばよい",
+        "運ぶ回数を減らせるので、容器は20リットルなど大きいものを選ぶとよい"
+      ],
+      "why": "水は1リットルで約1キログラムあり、抱えて運べる量は思ったより少ないため、容器と運搬手段がないと必要量を持ち帰れません。無理に抱えて運ぶと転倒やけが、腰の故障につながり、その後の避難行動ができなくなります。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-water-2",
+      "scope": "category",
+      "key": "water",
+      "category": "water",
+      "context": "",
+      "kind": "action",
+      "claim": "使う前に、その給水スポットが改札の内側など入場や利用手続きが必要な区域にあるかを確認する。",
+      "distractors": [
+        "駅の構内にある給水スポットは、駅の外からでも自由に使える",
+        "地図やアプリに載っている給水スポットは、いつでも誰でも入れる場所にある"
+      ],
+      "why": "断水時は容器を持って移動するだけで体力と時間を消耗するため、到着してから入れないと分かると次の場所へ向かう余力が残りません。真夏や高齢者・小さな子ども連れでは、この一往復の無駄が脱水や熱中症に直結します。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-water-3",
+      "scope": "category",
+      "key": "water",
+      "category": "water",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "蛇口や給水口の高さと足元の空間の広さが、車いすの人や子どもが自分で水をくめるかどうかを決める。",
+      "distractors": [
+        "付き添う人がいれば、設備の高さや足元の広さは問題にならない",
+        "しゃがんだり背伸びをすれば誰でも使えるので、高さは気にしなくてよい"
+      ],
+      "why": "自分で水を確保できるかどうかは、支援が届かない時間帯に飲む水があるかどうかを分けます。無理な姿勢での給水は転倒や容器の落下を招き、災害時のけがは治療も避難も難しくなります。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
+    {
+      "entryId": "gen-water-4",
+      "scope": "category",
+      "key": "water",
+      "category": "water",
+      "context": "",
+      "kind": "knowledge",
+      "claim": "給水口にボトルを直接置けるかどうかで、その場で飲むだけの設備か、水を持ち帰れる設備かが変わる。",
+      "distractors": [
+        "給水スポットと呼ばれる設備なら、どれでも容器に直接水を入れられる",
+        "上向きに水が出る水飲み場でも、時間をかければ同じように容器を満たせる"
+      ],
+      "why": "断水時に必要なのは持ち帰れる水であり、その場で飲めるだけの設備では自宅や避難先で使う分を確保できません。家族の分を運べる場所かどうかを事前に知っておくと、断水直後の限られた時間を移動に無駄にしません。",
+      "sources": [
+        {
+          "title": "生成（OrcaRouter 経由 anthropic/claude-opus-5）。**未レビュー。一次資料の確認が必要**",
+          "url": "",
+          "fetchedAt": "2026-08-30"
+        }
+      ],
+      "reviewed": false
+    },
     {
       "entryId": "seed-aed-time-1",
       "scope": "category",

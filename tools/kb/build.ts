@@ -44,6 +44,19 @@ const OUT = join(ROOT, 'apps/function/src/data/knowledge-base.ts')
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
+/*
+ * ★ `.env` は**このスクリプトが自分で読む。**
+ *
+ * `tsx --env-file` は起動時の作業ディレクトリからの相対で解決され、
+ * pnpm のフィルタ経由だとどこから走るかが変わる。**読めていないのに黙って進む**ので、
+ * 鍵が無いのか場所が違うのかが切り分けられない。ROOT からの絶対パスで読む。
+ */
+try {
+  process.loadEnvFile(join(ROOT, '.env'))
+} catch {
+  // 無くてよい。--expand しないなら鍵は要らない
+}
+
 /* ------------------------------------------------------------------ *
  * 承認台帳
  * ------------------------------------------------------------------ */
@@ -302,8 +315,14 @@ function configFromEnv(): OrcaRouterConfig {
   return {
     baseUrl: process.env['ORCAROUTER_BASE_URL'] ?? 'https://api.orcarouter.ai/v1',
     apiKey: process.env['ORCAROUTER_API_KEY'] ?? '',
-    ingestModel: process.env['AI_INGEST_MODEL'] ?? 'claude-opus-5',
-    runtimeModel: process.env['AI_RUNTIME_MODEL'] ?? 'gemini-2.5-flash',
+    /*
+     * ★ **プロバイダの接頭辞が要る**（`anthropic/...`・`google/...`）。
+     * 無いと OrcaRouter は 404 model_not_found を返す。文面は
+     * 「No available capacity」と出るので、**混んでいるだけに見えて
+     * モデルID の間違いだと気づきにくい。**
+     */
+    ingestModel: process.env['AI_INGEST_MODEL'] ?? 'anthropic/claude-opus-5',
+    runtimeModel: process.env['AI_RUNTIME_MODEL'] ?? 'google/gemini-2.5-flash',
     timeoutMs: Number(process.env['AI_TIMEOUT_MS'] ?? 60000),
     maxRetries: 2,
   }
