@@ -1,10 +1,12 @@
 import {
+  findChomeAt,
   materialFor,
   selectEntries,
   type KnowledgeBase,
   type KnowledgeEntry,
   type QuizKind,
 } from '@imanouchi/shared'
+import { chomeHazardOf } from '../../data/chome-hazard.js'
 import { fixtureQuizSource, type PickQuizInput, type QuizEntry, type QuizSource } from '../../data/quiz-bank.js'
 import { chat, isConfigured, parseJson, type OrcaRouterConnection } from './orcarouter.js'
 
@@ -250,17 +252,40 @@ export function createKnowledgeQuizSource(options: QuizGeneratorOptions): QuizSo
 
   return {
     async pick(input: PickQuizInput): Promise<QuizEntry | undefined> {
+      /*
+       * ★ 位置からハザードの型を引く（#72）。区域の外なら undefined で、
+       * **区域の知識は出ない**（カテゴリの一般論へ落ちる）。
+       * 引けなかった場合も同じ扱いになる＝安全側である。
+       */
+      const chome = findChomeAt(input.lat, input.lng)
+      const chomeCode = chome?.code
+      const hazardProfile = chomeCode === undefined ? undefined : chomeHazardOf(chomeCode)?.profile
+
       const candidates = selectEntries(options.base, {
         category: input.category,
         spotId: input.spotId,
-        // ★ 町丁目層はまだ無い。位置はここまで渡ってこないので undefined のまま
-        chomeCode: undefined,
+        chomeCode,
+        hazardProfile,
         prefer: input.alreadyCleared ? 'knowledge' : 'action',
       })
 
       // 配れるナレッジが1件も無ければ固定データ（未承認しか無いときに起きる）
-      const entry = candidates[hashCode(input.spotId) % Math.max(1, candidates.length)]
-      if (!entry) return fixtureQuizSource.pick(input)
+      const head = candidates[0]
+      if (!head) return fixtureQuizSource.pick(input)
+
+      /*
+       * ★ **いちばん近い層の中から選ぶ。** `selectEntries` は近い順（spot → chome →
+       * hazard → category）に並べているのに、全候補からハッシュで選ぶと**その並びが
+       * 無意味になる**。浸水想定区域の中に立っているのに、カテゴリの一般論が出ることが
+       * ありうる。その場所でしか言えないことを出すのがこの機能の値打ちである。
+       *
+       * ★ 層の中では散らす。同じ層に複数あるとき、どのスポットでも同じ1件しか
+       * 出ないと、歩いても同じ問題を繰り返すことになる。
+       */
+      const best = candidates.filter(
+        (candidate) => candidate.scope === head.scope && candidate.kind === head.kind,
+      )
+      const entry = best[hashCode(input.spotId) % best.length]!
 
       const cached = cache.get(quizIdFor(entry))
       if (cached) return cached

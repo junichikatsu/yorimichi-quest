@@ -17,6 +17,7 @@
  * 取得日: 2026-08-30
  * 標本の間隔: 25m ／ 判定ズーム: z16
  * 町丁目: 全 256 のうち、区域にかかるもの 249
+ * ハザードの型: 8 通り
  */
 
 export interface ChomeHazardLayer {
@@ -38,7 +39,121 @@ export interface ChomeHazard {
   code: string
   samples: number
   layers: ChomeHazardLayer[]
+  /**
+   * ハザードの型（避難行動が変わる境目でまとめたもの）。
+   *
+   * ★ 249 区画それぞれにナレッジを作ると防災士が読み切れないので、
+   * **行動が変わるところだけで割ってある**（`HAZARD_PROFILES` を参照）。
+   */
+  profile: string
 }
+
+export interface HazardProfile {
+  id: string
+  label: string
+  /** 層のID。'flood' ｜ 'hightide' */
+  layers: string[]
+  /** 'shallow' ｜ 'mid' ｜ 'deep' ｜ 'unknown' */
+  depthBucket: string
+  depthLabel: string
+  /** この型に属する町丁目の数 */
+  chomeCount: number
+}
+
+/**
+ * ハザードの型の一覧。
+ *
+ * ★ 深さの3段は建物の階と対応している：
+ *   0.5m未満   足首程度。屋内に留まれる
+ *   0.5〜3m    1階が水没しうる。上の階へ
+ *   3m以上     2階でも危ない。区域の外へ立ち退く
+ * **独自の危険度ではなく**、浸水想定区域図の一般的な読み方に沿っている。
+ */
+export const HAZARD_PROFILES: readonly HazardProfile[] = [
+  {
+    "id": "flood-hightide-mid",
+    "label": "洪水と高潮の浸水想定区域（最大 0.5〜3m未満）",
+    "layers": [
+      "flood",
+      "hightide"
+    ],
+    "depthBucket": "mid",
+    "depthLabel": "0.5〜3m未満",
+    "chomeCount": 83
+  },
+  {
+    "id": "flood-mid",
+    "label": "洪水の浸水想定区域（最大 0.5〜3m未満）",
+    "layers": [
+      "flood"
+    ],
+    "depthBucket": "mid",
+    "depthLabel": "0.5〜3m未満",
+    "chomeCount": 68
+  },
+  {
+    "id": "flood-hightide-deep",
+    "label": "洪水と高潮の浸水想定区域（最大 3m以上）",
+    "layers": [
+      "flood",
+      "hightide"
+    ],
+    "depthBucket": "deep",
+    "depthLabel": "3m以上",
+    "chomeCount": 41
+  },
+  {
+    "id": "flood-shallow",
+    "label": "洪水の浸水想定区域（最大 0.5m未満）",
+    "layers": [
+      "flood"
+    ],
+    "depthBucket": "shallow",
+    "depthLabel": "0.5m未満",
+    "chomeCount": 32
+  },
+  {
+    "id": "flood-deep",
+    "label": "洪水の浸水想定区域（最大 3m以上）",
+    "layers": [
+      "flood"
+    ],
+    "depthBucket": "deep",
+    "depthLabel": "3m以上",
+    "chomeCount": 12
+  },
+  {
+    "id": "hightide-mid",
+    "label": "高潮の浸水想定区域（最大 0.5〜3m未満）",
+    "layers": [
+      "hightide"
+    ],
+    "depthBucket": "mid",
+    "depthLabel": "0.5〜3m未満",
+    "chomeCount": 8
+  },
+  {
+    "id": "flood-hightide-shallow",
+    "label": "洪水と高潮の浸水想定区域（最大 0.5m未満）",
+    "layers": [
+      "flood",
+      "hightide"
+    ],
+    "depthBucket": "shallow",
+    "depthLabel": "0.5m未満",
+    "chomeCount": 4
+  },
+  {
+    "id": "hightide-unknown",
+    "label": "高潮の浸水想定区域（最大 深さ不明）",
+    "layers": [
+      "hightide"
+    ],
+    "depthBucket": "unknown",
+    "depthLabel": "深さ不明",
+    "chomeCount": 1
+  }
+]
 
 export const CHOME_HAZARDS: readonly ChomeHazard[] = [
   {
@@ -57,7 +172,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.92,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101001002",
@@ -75,7 +191,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.991,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101001003",
@@ -93,7 +210,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.845,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101002001",
@@ -111,7 +229,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.582,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101002002",
@@ -129,7 +248,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.711,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101003001",
@@ -147,7 +267,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.938,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101003002",
@@ -165,7 +286,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.28,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101004001",
@@ -183,7 +305,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101004002",
@@ -201,7 +324,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.857,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101005001",
@@ -213,7 +337,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.266,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101005002",
@@ -225,7 +350,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.231,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101005003",
@@ -237,7 +363,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.093,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13101006001",
@@ -249,7 +376,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.252,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13101006002",
@@ -261,7 +389,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.196,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010070",
@@ -273,7 +402,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.115,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101008001",
@@ -285,7 +415,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.032,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101008002",
@@ -297,7 +428,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.34,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13101009001",
@@ -309,7 +441,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.048,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101009002",
@@ -321,7 +454,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.04,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101009003",
@@ -333,7 +467,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.013,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101009004",
@@ -345,7 +480,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.045,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101009005",
@@ -357,7 +493,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.188,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101009006",
@@ -369,7 +506,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.22,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "131010100",
@@ -381,7 +519,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.192,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "131010110",
@@ -393,7 +532,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.065,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "131010120",
@@ -411,7 +551,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.385,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010130",
@@ -429,7 +570,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.572,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131010140",
@@ -447,7 +589,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.06,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010150",
@@ -465,7 +608,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.05,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101016001",
@@ -483,7 +627,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.447,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101016002",
@@ -495,7 +640,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.124,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101016003",
@@ -507,7 +653,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.118,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101016004",
@@ -519,7 +666,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.034,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101017001",
@@ -537,7 +685,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.447,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101017002",
@@ -549,7 +698,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.076,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101017003",
@@ -561,7 +711,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.101,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101017004",
@@ -573,7 +724,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.175,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101018001",
@@ -585,7 +737,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.196,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101018002",
@@ -603,7 +756,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.103,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101019001",
@@ -621,7 +775,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.481,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101019002",
@@ -639,7 +794,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.989,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101019003",
@@ -657,7 +813,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.884,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101019004",
@@ -675,7 +832,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.646,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101020001",
@@ -693,7 +851,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.487,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101020002",
@@ -711,7 +870,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101021001",
@@ -729,7 +889,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.702,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101021002",
@@ -747,7 +908,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101021003",
@@ -765,7 +927,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101022001",
@@ -783,7 +946,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.738,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101022002",
@@ -801,7 +965,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.956,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101022003",
@@ -819,7 +984,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.976,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101023001",
@@ -837,7 +1003,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101023002",
@@ -855,7 +1022,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101023003",
@@ -873,7 +1041,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101024001",
@@ -885,7 +1054,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.193,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101024002",
@@ -903,7 +1073,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.406,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101025001",
@@ -915,7 +1086,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.098,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101025002",
@@ -932,7 +1104,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.286,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101025003",
@@ -944,7 +1117,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.215,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101025004",
@@ -956,7 +1130,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.08,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13101026001",
@@ -974,7 +1149,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.342,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101026002",
@@ -992,7 +1168,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.229,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101026003",
@@ -1010,7 +1187,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.733,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101027001",
@@ -1022,7 +1200,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.556,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101027002",
@@ -1034,7 +1213,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.167,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101027003",
@@ -1051,7 +1231,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.123,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-shallow"
   },
   {
     "code": "131010280",
@@ -1063,7 +1244,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.313,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101029001",
@@ -1081,7 +1263,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.281,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101029002",
@@ -1098,7 +1281,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.302,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-shallow"
   },
   {
     "code": "13101029003",
@@ -1110,7 +1294,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.765,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010300",
@@ -1122,7 +1307,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.148,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "131010310",
@@ -1134,7 +1320,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.587,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13101032001",
@@ -1146,7 +1333,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.5,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101032002",
@@ -1158,7 +1346,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.656,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101033001",
@@ -1170,7 +1359,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.742,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101033002",
@@ -1188,7 +1378,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.939,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101034001",
@@ -1206,7 +1397,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101034002",
@@ -1224,7 +1416,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.233,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101034003",
@@ -1242,7 +1435,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.991,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101034004",
@@ -1260,7 +1454,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101034005",
@@ -1277,7 +1472,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101034006",
@@ -1294,7 +1490,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.926,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101035001",
@@ -1306,7 +1503,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.833,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101035002",
@@ -1318,7 +1516,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.973,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010360",
@@ -1330,7 +1529,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010370",
@@ -1347,7 +1547,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010370",
@@ -1359,7 +1560,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010380",
@@ -1376,7 +1578,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010390",
@@ -1388,7 +1591,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010400",
@@ -1400,7 +1604,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13101041001",
@@ -1417,7 +1622,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101041002",
@@ -1435,7 +1641,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101041003",
@@ -1453,7 +1660,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010420",
@@ -1465,7 +1673,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010430",
@@ -1483,7 +1692,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010440",
@@ -1500,7 +1710,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010450",
@@ -1518,7 +1729,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101046001",
@@ -1536,7 +1748,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101046002",
@@ -1554,7 +1767,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101046003",
@@ -1572,7 +1786,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131010470",
@@ -1590,7 +1805,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13101048001",
@@ -1608,7 +1824,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101048002",
@@ -1626,7 +1843,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101048003",
@@ -1644,7 +1862,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13101048004",
@@ -1662,7 +1881,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010490",
@@ -1680,7 +1900,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010500",
@@ -1698,7 +1919,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010510",
@@ -1716,7 +1938,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010520",
@@ -1734,7 +1957,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131010530",
@@ -1752,7 +1976,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131010540",
@@ -1770,7 +1995,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131010550",
@@ -1782,7 +2008,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.246,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010560",
@@ -1794,7 +2021,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.116,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "131010570",
@@ -1806,7 +2034,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.108,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "131010580",
@@ -1818,7 +2047,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.329,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131010590",
@@ -1830,7 +2060,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.104,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103001001",
@@ -1848,7 +2079,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.892,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103001002",
@@ -1866,7 +2098,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.923,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103001003",
@@ -1884,7 +2117,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.616,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103001004",
@@ -1902,7 +2136,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.748,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103001005",
@@ -1920,7 +2155,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.257,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103002001",
@@ -1938,7 +2174,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.738,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103002002",
@@ -1956,7 +2193,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.299,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103002003",
@@ -1974,7 +2212,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.248,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103003001",
@@ -1992,7 +2231,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.172,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103003002",
@@ -2010,7 +2250,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.825,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103004001",
@@ -2028,7 +2269,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.504,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103004002",
@@ -2046,7 +2288,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.669,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103004003",
@@ -2064,7 +2307,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.861,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103004004",
@@ -2082,7 +2326,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.923,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103004005",
@@ -2100,7 +2345,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.782,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103004006",
@@ -2118,7 +2364,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.772,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103005001",
@@ -2130,7 +2377,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.17,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103005002",
@@ -2148,7 +2396,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.241,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-shallow"
   },
   {
     "code": "13103005003",
@@ -2166,7 +2415,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.284,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-shallow"
   },
   {
     "code": "13103006001",
@@ -2184,7 +2434,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.419,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103006002",
@@ -2201,7 +2452,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.263,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103006003",
@@ -2219,7 +2471,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.179,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103006004",
@@ -2231,7 +2484,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.067,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103006005",
@@ -2243,7 +2497,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.834,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103007001",
@@ -2261,7 +2516,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.993,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103007002",
@@ -2279,7 +2535,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.985,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103008001",
@@ -2297,7 +2554,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.993,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103008002",
@@ -2315,7 +2573,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.944,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103009001",
@@ -2333,7 +2592,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.94,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103009002",
@@ -2351,7 +2611,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.962,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103009003",
@@ -2368,7 +2629,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.108,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103009004",
@@ -2386,7 +2648,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.253,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103010001",
@@ -2398,7 +2661,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.174,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103010002",
@@ -2410,7 +2674,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.234,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103010003",
@@ -2422,7 +2687,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.072,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103010004",
@@ -2434,7 +2700,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.111,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103010005",
@@ -2446,7 +2713,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.08,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103011001",
@@ -2458,7 +2726,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.286,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103011002",
@@ -2470,7 +2739,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.121,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "131030120",
@@ -2482,7 +2752,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.467,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131030130",
@@ -2494,7 +2765,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.063,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103014001",
@@ -2512,7 +2784,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.597,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103014002",
@@ -2530,7 +2803,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.711,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103014003",
@@ -2548,7 +2822,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.261,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103014004",
@@ -2560,7 +2835,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.261,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103014005",
@@ -2572,7 +2848,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.212,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103015001",
@@ -2584,7 +2861,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.092,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103015002",
@@ -2596,7 +2874,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.164,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103015003",
@@ -2608,7 +2887,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.189,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103016001",
@@ -2620,7 +2900,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.044,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103016002",
@@ -2632,7 +2913,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.079,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103016003",
@@ -2644,7 +2926,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.027,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103016004",
@@ -2656,7 +2939,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.183,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103017001",
@@ -2668,7 +2952,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.098,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103017002",
@@ -2680,7 +2965,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.079,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103017003",
@@ -2692,7 +2978,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.047,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103017004",
@@ -2704,7 +2991,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.076,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103017005",
@@ -2716,7 +3004,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.088,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103017006",
@@ -2728,7 +3017,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.153,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103017007",
@@ -2740,7 +3030,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.126,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103018001",
@@ -2752,7 +3043,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.117,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103018002",
@@ -2764,7 +3056,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.033,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103018003",
@@ -2776,7 +3069,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.086,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103019001",
@@ -2794,7 +3088,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.483,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103019002",
@@ -2812,7 +3107,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.615,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103019003",
@@ -2830,7 +3126,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.654,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103019004",
@@ -2848,7 +3145,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 1,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103020001",
@@ -2866,7 +3164,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.599,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103020002",
@@ -2884,7 +3183,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.484,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103020003",
@@ -2902,7 +3202,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.697,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103021001",
@@ -2914,7 +3215,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.266,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103021002",
@@ -2926,7 +3228,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.087,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022001",
@@ -2938,7 +3241,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.235,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022002",
@@ -2950,7 +3254,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.309,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022003",
@@ -2962,7 +3267,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.5,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022004",
@@ -2974,7 +3280,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.232,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022005",
@@ -2986,7 +3293,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.041,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022006",
@@ -2998,7 +3306,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.198,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022007",
@@ -3010,7 +3319,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.219,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022008",
@@ -3022,7 +3332,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.155,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103022009",
@@ -3034,7 +3345,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.097,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103023001",
@@ -3046,7 +3358,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.106,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023002",
@@ -3058,7 +3371,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.05,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023003",
@@ -3070,7 +3384,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.116,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023004",
@@ -3082,7 +3397,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.101,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023005",
@@ -3094,7 +3410,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.047,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023006",
@@ -3106,7 +3423,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.157,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103023007",
@@ -3118,7 +3436,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.063,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103024001",
@@ -3130,7 +3449,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.008,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103024002",
@@ -3142,7 +3462,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.173,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103024003",
@@ -3154,7 +3475,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.038,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103025001",
@@ -3166,7 +3488,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.173,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103025002",
@@ -3184,7 +3507,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.334,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103025003",
@@ -3202,7 +3526,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.164,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103025004",
@@ -3219,7 +3544,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.101,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103026001",
@@ -3237,7 +3563,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.766,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103026002",
@@ -3249,7 +3576,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.135,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103026003",
@@ -3261,7 +3589,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.375,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103026004",
@@ -3273,7 +3602,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.09,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103026005",
@@ -3285,7 +3615,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.522,
         "worstDepth": "5〜10m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103026006",
@@ -3297,7 +3628,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.202,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103027001",
@@ -3309,7 +3641,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.262,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-deep"
   },
   {
     "code": "13103027002",
@@ -3321,7 +3654,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.146,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103027003",
@@ -3333,7 +3667,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.043,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103027004",
@@ -3345,7 +3680,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.011,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-shallow"
   },
   {
     "code": "13103027005",
@@ -3357,7 +3693,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.159,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "13103028001",
@@ -3375,7 +3712,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.294,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103028002",
@@ -3393,7 +3731,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.037,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103028003",
@@ -3411,7 +3750,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.264,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103028004",
@@ -3429,7 +3769,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.261,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103029001",
@@ -3447,7 +3788,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.192,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103029002",
@@ -3465,7 +3807,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.492,
         "worstDepth": "3〜5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103029003",
@@ -3483,7 +3826,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.481,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103029004",
@@ -3501,7 +3845,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.351,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103029005",
@@ -3519,7 +3864,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.384,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "13103030001",
@@ -3537,7 +3883,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.086,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "13103030002",
@@ -3555,7 +3902,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.303,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131030310",
@@ -3573,7 +3921,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.028,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131030310",
@@ -3585,7 +3934,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.25,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-mid"
   },
   {
     "code": "131030310",
@@ -3603,7 +3953,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.333,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131030310",
@@ -3615,7 +3966,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.083,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3627,7 +3979,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.125,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3639,7 +3992,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.045,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3651,7 +4005,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.182,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3662,7 +4017,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "label": "高潮",
         "ratio": 0.091
       }
-    ]
+    ],
+    "profile": "hightide-unknown"
   },
   {
     "code": "131030310",
@@ -3674,7 +4030,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.048,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3686,7 +4043,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.113,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3698,7 +4056,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.053,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3716,7 +4075,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.002,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-deep"
   },
   {
     "code": "131030310",
@@ -3728,7 +4088,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.011,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "hightide-mid"
   },
   {
     "code": "131030310",
@@ -3746,7 +4107,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.037,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131030310",
@@ -3764,7 +4126,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.053,
         "worstDepth": "0.5m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   },
   {
     "code": "131030310",
@@ -3782,7 +4145,8 @@ export const CHOME_HAZARDS: readonly ChomeHazard[] = [
         "ratio": 0.009,
         "worstDepth": "0.5〜3m未満"
       }
-    ]
+    ],
+    "profile": "flood-hightide-mid"
   }
 ]
 
@@ -3791,4 +4155,10 @@ const BY_CODE = new Map<string, ChomeHazard>(CHOME_HAZARDS.map((entry) => [entry
 /** 町丁目の浸水想定。区域にかからなければ undefined */
 export function chomeHazardOf(code: string): ChomeHazard | undefined {
   return BY_CODE.get(code)
+}
+
+const PROFILE_BY_ID = new Map<string, HazardProfile>(HAZARD_PROFILES.map((entry) => [entry.id, entry]))
+
+export function hazardProfileOf(id: string): HazardProfile | undefined {
+  return PROFILE_BY_ID.get(id)
 }

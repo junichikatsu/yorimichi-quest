@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url'
 import { CHOMES, pointInChome, type Chome } from '@imanouchi/shared'
 import {
   classifyPixel,
+  DEPTH_LEGEND,
   hazardTileUrl,
   HAZARD_LAYERS,
   HAZARD_SAMPLE_ZOOM,
@@ -278,11 +279,113 @@ async function analyze(chome: Chome): Promise<ChomeHazardResult> {
 }
 
 /* ------------------------------------------------------------------ *
+ * ハザードの型（プロファイル）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 町丁目を**避難行動が変わる境目**でまとめる。
+ *
+ * ★ 249 区画それぞれにナレッジを作ると、**防災士が読み切れない。** かといって
+ * 全部を「浸水想定区域」と一括りにすると、垂直避難でよいのか立ち退くべきなのかが
+ * 言えなくなる。**行動が変わるところだけで割る。**
+ *
+ * ★ 深さの3段は、建物の階と対応させてある：
+ *   浅（0.5m未満）  足首程度。屋内に留まれる
+ *   中（0.5〜3m）   1階が水没しうる。上の階へ
+ *   深（3m以上）    2階でも危ない。区域の外へ立ち退く
+ * この境目は浸水想定区域図の一般的な読み方に沿っている。**独自の危険度ではない。**
+ *
+ * ★ 層の組み合わせ（洪水／高潮／両方）も分ける。**同じ深さでも、川からの水と
+ * 海からの水では、いつ・どこから来るかが違う。**
+ */
+type DepthBucket = 'shallow' | 'mid' | 'deep' | 'unknown'
+
+const DEPTH_BUCKET_LABELS: Record<DepthBucket, string> = {
+  shallow: '0.5m未満',
+  mid: '0.5〜3m未満',
+  deep: '3m以上',
+  unknown: '深さ不明',
+}
+
+/** 深さの区分を3段へ畳む。**凡例の並び（深い順）を使う**ので、文言を写していない */
+function bucketOf(depth: string | undefined): DepthBucket {
+  if (depth === undefined) return 'unknown'
+  const index = DEPTH_LEGEND.findIndex((entry) => entry.label === depth)
+  if (index < 0) return 'unknown'
+  // DEPTH_LEGEND は深い順。0〜3 が 3m以上、4 が 0.5〜3m、5 が 0.5m未満
+  if (index <= 3) return 'deep'
+  if (index === 4) return 'mid'
+  return 'shallow'
+}
+
+interface Profile {
+  id: string
+  label: string
+  /** 層のID（'flood' | 'hightide'）を並べたもの */
+  layers: string[]
+  depthBucket: DepthBucket
+  depthLabel: string
+  /** この型に属する町丁目の数。レビューのときに重みが分かる */
+  chomeCount: number
+}
+
+function profileOf(result: ChomeHazardResult): { id: string; layers: string[]; bucket: DepthBucket } | undefined {
+  if (result.layers.length === 0) return undefined
+
+  const layers = result.layers.map((layer) => layer.id).sort()
+
+  // 全層のうち、いちばん深い区分を採る（安全側）
+  let worst: string | undefined
+  let worstIndex = Number.POSITIVE_INFINITY
+  for (const layer of result.layers) {
+    const index = layer.worstDepth === undefined ? 98 : DEPTH_LEGEND.findIndex((e) => e.label === layer.worstDepth)
+    if (index < worstIndex) {
+      worstIndex = index
+      worst = layer.worstDepth
+    }
+  }
+
+  const bucket = bucketOf(worst)
+  return { id: `${layers.join('-')}-${bucket}`, layers, bucket }
+}
+
+function buildProfiles(results: ChomeHazardResult[]): Profile[] {
+  const counts = new Map<string, { layers: string[]; bucket: DepthBucket; count: number }>()
+
+  for (const result of results) {
+    const profile = profileOf(result)
+    if (!profile) continue
+    const entry = counts.get(profile.id)
+    if (entry) entry.count += 1
+    else counts.set(profile.id, { layers: profile.layers, bucket: profile.bucket, count: 1 })
+  }
+
+  const layerLabel = (ids: string[]): string =>
+    ids
+      .map((id) => HAZARD_LAYERS.find((layer) => layer.id === id)?.label ?? id)
+      .join('と')
+
+  return [...counts.entries()]
+    .map(([id, entry]) => ({
+      id,
+      label: `${layerLabel(entry.layers)}の浸水想定区域（最大 ${DEPTH_BUCKET_LABELS[entry.bucket]}）`,
+      layers: entry.layers,
+      depthBucket: entry.bucket,
+      depthLabel: DEPTH_BUCKET_LABELS[entry.bucket],
+      chomeCount: entry.count,
+    }))
+    .sort((a, b) => b.chomeCount - a.chomeCount || a.id.localeCompare(b.id))
+}
+
+/* ------------------------------------------------------------------ *
  * 出力
  * ------------------------------------------------------------------ */
 
 function emit(results: ChomeHazardResult[]): string {
-  const withZone = results.filter((result) => result.layers.length > 0)
+  const withZone = results
+    .filter((result) => result.layers.length > 0)
+    .map((result) => ({ ...result, profile: profileOf(result)!.id }))
+  const profiles = buildProfiles(results)
 
   return `/**
  * ★ 自動生成ファイル。手で編集しないこと。
@@ -303,6 +406,7 @@ function emit(results: ChomeHazardResult[]): string {
  * 取得日: ${TODAY}
  * 標本の間隔: ${SAMPLE_STEP_M}m ／ 判定ズーム: z${HAZARD_SAMPLE_ZOOM}
  * 町丁目: 全 ${results.length} のうち、区域にかかるもの ${withZone.length}
+ * ハザードの型: ${profiles.length} 通り
  */
 
 export interface ChomeHazardLayer {
@@ -324,7 +428,37 @@ export interface ChomeHazard {
   code: string
   samples: number
   layers: ChomeHazardLayer[]
+  /**
+   * ハザードの型（避難行動が変わる境目でまとめたもの）。
+   *
+   * ★ 249 区画それぞれにナレッジを作ると防災士が読み切れないので、
+   * **行動が変わるところだけで割ってある**（\`HAZARD_PROFILES\` を参照）。
+   */
+  profile: string
 }
+
+export interface HazardProfile {
+  id: string
+  label: string
+  /** 層のID。'flood' ｜ 'hightide' */
+  layers: string[]
+  /** 'shallow' ｜ 'mid' ｜ 'deep' ｜ 'unknown' */
+  depthBucket: string
+  depthLabel: string
+  /** この型に属する町丁目の数 */
+  chomeCount: number
+}
+
+/**
+ * ハザードの型の一覧。
+ *
+ * ★ 深さの3段は建物の階と対応している：
+ *   0.5m未満   足首程度。屋内に留まれる
+ *   0.5〜3m    1階が水没しうる。上の階へ
+ *   3m以上     2階でも危ない。区域の外へ立ち退く
+ * **独自の危険度ではなく**、浸水想定区域図の一般的な読み方に沿っている。
+ */
+export const HAZARD_PROFILES: readonly HazardProfile[] = ${JSON.stringify(profiles, null, 2)}
 
 export const CHOME_HAZARDS: readonly ChomeHazard[] = ${JSON.stringify(withZone, null, 2)}
 
@@ -333,6 +467,12 @@ const BY_CODE = new Map<string, ChomeHazard>(CHOME_HAZARDS.map((entry) => [entry
 /** 町丁目の浸水想定。区域にかからなければ undefined */
 export function chomeHazardOf(code: string): ChomeHazard | undefined {
   return BY_CODE.get(code)
+}
+
+const PROFILE_BY_ID = new Map<string, HazardProfile>(HAZARD_PROFILES.map((entry) => [entry.id, entry]))
+
+export function hazardProfileOf(id: string): HazardProfile | undefined {
+  return PROFILE_BY_ID.get(id)
 }
 `
 }
@@ -361,6 +501,10 @@ async function main(): Promise<void> {
   for (const layer of HAZARD_LAYERS) {
     const hit = withZone.filter((result) => result.layers.some((entry) => entry.id === layer.id))
     console.log(`  ${layer.label}: ${hit.length} 区画`)
+  }
+  console.log(`ハザードの型 ${buildProfiles(results).length} 通り`)
+  for (const profile of buildProfiles(results)) {
+    console.log(`    ${String(profile.chomeCount).padStart(3)} 区画  ${profile.label}`)
   }
   console.log(`取得したタイル ${tiles.size} 枚`)
 }
