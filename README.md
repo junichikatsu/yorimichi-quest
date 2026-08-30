@@ -8,6 +8,7 @@
 | 要件定義書 | [doc/requirements.md](doc/requirements.md) |
 | オープンデータ一覧 | [doc/opendata-sources.md](doc/opendata-sources.md) |
 | 都民ヒアリング（n=37） | [doc/hearing-citizens.md](doc/hearing-citizens.md) |
+| **First Stage 審査後の手順** | [doc/next-steps.md](doc/next-steps.md) |
 | **ナレッジのレビュー**（防災士向け・自動生成） | [doc/knowledge-review.md](doc/knowledge-review.md) |
 | 8/23 提出物の草案 | [doc/submission-20260823.md](doc/submission-20260823.md) |
 | **提出物（確定版・送信済み）** | [doc/submission-final/README.md](doc/submission-final/README.md) |
@@ -103,6 +104,7 @@ LINE ログインが完走しないため、**ログインが要る機能（チ�
 | `pnpm verify` | typecheck → lint → test → ZIP ビルド |
 | `pnpm ingest` | スポットを取り込む（FR-10） |
 | `pnpm ingest:boundaries` | 町丁目境界256区画を取り込む（FR-02-7 で使う） |
+| `pnpm ingest:hazard` | 町丁目ごとの浸水想定を取り込む（#72 の判定をサーバー側へ） |
 | `pnpm build:zip` | デプロイ用 ZIP を生成 |
 | `pnpm seed` | デプロイ先へスポットを投入（終わるまで繰り返す。`--reset` で消してから） |
 

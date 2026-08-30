@@ -47,7 +47,7 @@ describe('人が確かめていないものは配らない', () => {
     const base = baseOf([entryOf({ reviewed: false })])
 
     expect(usableEntries(base)).toEqual([])
-    expect(selectEntries(base, { category: 'aed', spotId: 's1', chomeCode: undefined, prefer: 'action' })).toEqual([])
+    expect(selectEntries(base, { category: 'aed', spotId: 's1', chomeCode: undefined, hazardProfile: undefined, prefer: 'action' })).toEqual([])
   })
 
   it('★ reviewed が true でも、壊れていれば使わない', () => {
@@ -127,6 +127,7 @@ describe('近いものから使う', () => {
       category: 'aed',
       spotId: 'spot-1',
       chomeCode: '13103008001',
+      hazardProfile: undefined,
       prefer: 'action',
     })
 
@@ -138,6 +139,7 @@ describe('近いものから使う', () => {
       category: 'aed',
       spotId: 'other-spot',
       chomeCode: undefined,
+      hazardProfile: undefined,
       prefer: 'action',
     })
 
@@ -149,6 +151,7 @@ describe('近いものから使う', () => {
       category: 'aed',
       spotId: 'other-spot',
       chomeCode: undefined,
+      hazardProfile: undefined,
       prefer: 'action',
     })
 
@@ -160,6 +163,7 @@ describe('近いものから使う', () => {
       category: 'water',
       spotId: 'spot-1',
       chomeCode: '13103008001',
+      hazardProfile: undefined,
       prefer: 'action',
     })
 
@@ -173,12 +177,12 @@ describe('行動を先に出す（FR-04-7・G-8）', () => {
   const base = baseOf([knowledge, action])
 
   it('action を望めば action が先に来る', () => {
-    const got = selectEntries(base, { category: 'aed', spotId: 's', chomeCode: undefined, prefer: 'action' })
+    const got = selectEntries(base, { category: 'aed', spotId: 's', chomeCode: undefined, hazardProfile: undefined, prefer: 'action' })
     expect(got[0]?.entryId).toBe('e-action')
   })
 
   it('knowledge を望めば knowledge が先に来る', () => {
-    const got = selectEntries(base, { category: 'aed', spotId: 's', chomeCode: undefined, prefer: 'knowledge' })
+    const got = selectEntries(base, { category: 'aed', spotId: 's', chomeCode: undefined, hazardProfile: undefined, prefer: 'knowledge' })
     expect(got[0]?.entryId).toBe('e-knowledge')
   })
 
@@ -187,6 +191,7 @@ describe('行動を先に出す（FR-04-7・G-8）', () => {
       category: 'aed',
       spotId: 's',
       chomeCode: undefined,
+      hazardProfile: undefined,
       prefer: 'action',
     })
 
@@ -229,6 +234,65 @@ describe('集計', () => {
     expect(stats.reviewed).toBe(2)
     expect(stats.unreviewed).toBe(1)
     expect(stats.invalid).toBe(1)
-    expect(stats.byScope).toEqual({ category: 2, chome: 0, spot: 1 })
+    expect(stats.byScope).toEqual({ category: 2, hazard: 0, chome: 0, spot: 1 })
+  })
+})
+
+describe('ハザードの型（#72・FR-04-4）', () => {
+  const hazard = entryOf({ entryId: 'e-haz', scope: 'hazard', key: 'flood-hightide-deep' })
+  const category = entryOf({ entryId: 'e-cat', scope: 'category', key: 'aed' })
+  const base = baseOf([category, hazard])
+
+  it('区域の中なら、区域の知識をカテゴリの一般論より先に出す', () => {
+    const got = selectEntries(base, {
+      category: 'aed',
+      spotId: 's',
+      chomeCode: undefined,
+      hazardProfile: 'flood-hightide-deep',
+      prefer: 'action',
+    })
+
+    expect(got.map((e) => e.entryId)).toEqual(['e-haz', 'e-cat'])
+  })
+
+  /*
+   * ★ 区域外と「位置が引けなかった」を同じ扱いにしている。どちらも区域の知識を
+   * 出さないだけで、カテゴリの一般論には落ちる。**安全側である。**
+   */
+  it('★ 区域外なら区域の知識を出さない', () => {
+    const got = selectEntries(base, {
+      category: 'aed',
+      spotId: 's',
+      chomeCode: undefined,
+      hazardProfile: undefined,
+      prefer: 'action',
+    })
+
+    expect(got.map((e) => e.entryId)).toEqual(['e-cat'])
+  })
+
+  it('★ 別の型の区域の知識を混ぜない（深さが違えば取るべき行動が違う）', () => {
+    const got = selectEntries(base, {
+      category: 'aed',
+      spotId: 's',
+      chomeCode: undefined,
+      hazardProfile: 'flood-shallow',
+      prefer: 'action',
+    })
+
+    expect(got.map((e) => e.entryId)).toEqual(['e-cat'])
+  })
+
+  it('町丁目の知識のほうが、区域の知識より近い', () => {
+    const chome = entryOf({ entryId: 'e-chome', scope: 'chome', key: '13103008001' })
+    const got = selectEntries(baseOf([category, hazard, chome]), {
+      category: 'aed',
+      spotId: 's',
+      chomeCode: '13103008001',
+      hazardProfile: 'flood-hightide-deep',
+      prefer: 'action',
+    })
+
+    expect(got.map((e) => e.entryId)).toEqual(['e-chome', 'e-haz', 'e-cat'])
   })
 })

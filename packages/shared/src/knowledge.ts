@@ -48,19 +48,23 @@ export interface KnowledgeSource {
 /**
  * ナレッジが効く範囲。
  *
- * ★ 3層に分けているのは、**スポット単体では材料が足りない**ためである。
+ * ★ `hazard` は「この種類の浸水想定区域」に効くもので、**特定の町丁目のものではない。**
+ * 249 区画それぞれにナレッジを作ると防災士が読み切れないので、避難行動が変わる
+ * 境目（1階が水没するか・2階でも危ないか）だけで束ねてある。
+ *
+ * ★ 4層に分けているのは、**スポット単体では材料が足りない**ためである。
  * AED は取り込んだ 224 件すべてで属性が空で、避難所もオストメイトの記載は
  * 72 件中 10 件しかない。「このAEDについての知識」は書けないので、
  * カテゴリと町丁目の層で厚みを作り、スポット層は分かっていることだけを持つ。
  */
-export type KnowledgeScope = 'category' | 'chome' | 'spot'
+export type KnowledgeScope = 'category' | 'hazard' | 'chome' | 'spot'
 
 export interface KnowledgeEntry {
   entryId: string
   scope: KnowledgeScope
   /**
-   * 効く相手。`category` なら SpotCategory、`chome` なら小地域コード、
-   * `spot` なら spotId。
+   * 効く相手。`category` なら SpotCategory、`hazard` ならハザードの型のID、
+   * `chome` なら小地域コード、`spot` なら spotId。
    */
   key: string
   /** どのカテゴリの出題に使えるか。町丁目層でも対象カテゴリを絞る */
@@ -187,6 +191,14 @@ export interface KnowledgeQuery {
   /** 現在地の町丁目コード。分からなければ undefined */
   chomeCode: string | undefined
   /**
+   * 現在地のハザードの型（`chome-hazard.ts` の profile）。
+   *
+   * ★ 区域外なら undefined。**undefined を「区域外」として扱ってよい**のは、
+   * 呼ぶ側が位置から引けなかった場合も同じ扱いで安全側だからである
+   * （区域の知識を出さないだけで、カテゴリの一般論には落ちる）。
+   */
+  hazardProfile: string | undefined
+  /**
    * 行動を先に出す（FR-04-7・G-8）。
    *
    * ★ すでに行動の出題を終えているなら知識側へ回す。順序を取り違えると
@@ -198,7 +210,7 @@ export interface KnowledgeQuery {
 /**
  * そのスポットで使えるエントリを、**近い順**に並べて返す。
  *
- * ★ 並びは spot → chome → category である。そのスポットについて分かっていることが
+ * ★ 並びは spot → chome → hazard → category である。そのスポットについて分かっていることが
  * あればそれを使い、無ければ町丁目、それも無ければカテゴリの一般論へ落ちる。
  * **落ちても必ず何か出る**ようにしてあるのは、生成が空を返すと画面が詰まるためで、
  * 固定データへ落ちる経路（`fixtureQuizSource`）と同じ考え方である。
@@ -208,10 +220,17 @@ export function selectEntries(base: KnowledgeBase, query: KnowledgeQuery): Knowl
     if (entry.category !== query.category) return false
     if (entry.scope === 'spot') return entry.key === query.spotId
     if (entry.scope === 'chome') return query.chomeCode !== undefined && entry.key === query.chomeCode
+    if (entry.scope === 'hazard') {
+      return query.hazardProfile !== undefined && entry.key === query.hazardProfile
+    }
     return true
   })
 
-  const scopeRank: Record<KnowledgeScope, number> = { spot: 0, chome: 1, category: 2 }
+  /*
+   * ★ 近い順。ハザードは町丁目より広く、カテゴリより狭い。
+   * その場所について言えることを優先し、無ければ順に一般論へ落ちる。
+   */
+  const scopeRank: Record<KnowledgeScope, number> = { spot: 0, chome: 1, hazard: 2, category: 3 }
 
   return matched.sort((a, b) => {
     // 望む種類を先に。無ければもう一方でも出す（詰まらせない）
@@ -274,7 +293,7 @@ export interface KnowledgeStats {
 }
 
 export function statsOf(base: KnowledgeBase): KnowledgeStats {
-  const byScope: Record<KnowledgeScope, number> = { category: 0, chome: 0, spot: 0 }
+  const byScope: Record<KnowledgeScope, number> = { category: 0, hazard: 0, chome: 0, spot: 0 }
   let reviewed = 0
   let invalid = 0
 

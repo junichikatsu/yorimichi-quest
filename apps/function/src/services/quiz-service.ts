@@ -53,6 +53,9 @@ export async function getQuiz(ctx: DataStoreContext, input: GetQuizInput): Promi
   const entry = await quizSource().pick({
     spotId: spot.spotId,
     category: spot.category,
+    // ★ 位置からハザードの型を引く（#72）。区域の中なら区域の知識が出る
+    lat: spot.lat,
+    lng: spot.lng,
     alreadyCleared,
   })
   if (!entry) throw notFound('このスポットに対応するクイズがありません')

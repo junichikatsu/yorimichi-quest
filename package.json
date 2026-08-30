@@ -17,6 +17,7 @@
     "build:kb": "pnpm --filter @imanouchi/function exec tsx ../../tools/kb/build.ts",
     "ingest": "node tools/ingest/ingest.mjs",
     "ingest:boundaries": "node tools/ingest/boundaries.mjs",
+    "ingest:hazard": "pnpm --filter @imanouchi/function exec tsx ../../tools/ingest/hazard.ts",
     "seed": "node tools/seed/seed.mjs"
   },
   "devDependencies": {

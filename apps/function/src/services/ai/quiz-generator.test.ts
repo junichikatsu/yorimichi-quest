@@ -52,6 +52,9 @@ function reply(payload: unknown): Response {
 
 const SPOT = asSpotId('aed-0001')
 
+/** 港区芝浦二丁目あたり。**実在の浸水想定区域**を使う（座標を偵っても意味がない） */
+const AT = { lat: 35.6455, lng: 139.7495 }
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -113,7 +116,7 @@ describe('採点は生成に依存しない', () => {
     )
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const picked = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const picked = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
     const rebuilt = entryFromKnowledge(entryOf())
 
     expect(picked?.answerIndex).toBe(rebuilt.answerIndex)
@@ -128,7 +131,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
     )
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(quiz?.question).toBe('倒れた人を見つけました。まずどうしますか。')
     expect(quiz?.card.scene).toBe('人が倒れている')
@@ -148,7 +151,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
     )
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(quiz?.question).toBe(entryFromKnowledge(entryOf()).question)
   })
@@ -159,7 +162,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
     )
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(quiz?.card.scene).not.toContain('ふたを開けて電源を入れ')
   })
@@ -168,7 +171,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
     vi.stubGlobal('fetch', async () => reply({ question: '', explanation: '', scene: '' }))
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(quiz?.question).toBe(entryFromKnowledge(entryOf()).question)
     expect(quiz?.explanation).toBe(entryOf().why)
@@ -180,7 +183,7 @@ describe('落ちても画面を止めない（G-7）', () => {
     vi.stubGlobal('fetch', async () => new Response('boom', { status: 500 }))
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(quiz?.options[quiz.answerIndex]).toBe(CLAIM)
     expect(quiz?.generatedBy).toBe('fixture')
@@ -196,7 +199,7 @@ describe('落ちても画面を止めない（G-7）', () => {
       base: baseOf([entryOf()]),
       timeoutMs: 100,
     })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(spy).not.toHaveBeenCalled()
     expect(quiz?.options[quiz.answerIndex]).toBe(CLAIM)
@@ -209,7 +212,7 @@ describe('落ちても画面を止めない（G-7）', () => {
       base: baseOf([entryOf({ reviewed: false })]),
       timeoutMs: 100,
     })
-    const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    const quiz = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     // 固定データ側の AED 出題が返る
     expect(quiz).toBeDefined()
@@ -227,8 +230,8 @@ describe('モデルを呼ぶ回数を抑える', () => {
     })
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
-    await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
+    await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
+    await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
 
     expect(calls).toBe(1)
   })
@@ -241,8 +244,8 @@ describe('モデルを呼ぶ回数を抑える', () => {
     })
 
     const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
-    await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
-    await source.pick({ spotId: asSpotId('aed-9999'), category: 'aed', alreadyCleared: false })
+    await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
+    await source.pick({ spotId: asSpotId('aed-9999'), category: 'aed', ...AT, alreadyCleared: false })
 
     expect(calls).toBe(1)
   })
@@ -259,10 +262,94 @@ describe('行動を先に出す（FR-04-7・G-8）', () => {
       timeoutMs: 100,
     })
 
-    const first = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
-    const second = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: true })
+    const first = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: false })
+    const second = await source.pick({ spotId: SPOT, category: 'aed', ...AT, alreadyCleared: true })
 
     expect(first?.kind).toBe('action')
     expect(second?.kind).toBe('knowledge')
+  })
+})
+
+describe('場所に応じた知識を出す（#72）', () => {
+  const hazardEntry = entryOf({
+    entryId: 'haz-test-1',
+    scope: 'hazard',
+    // ★ 実データの型ID。芝浦二丁目は高潮93%・洪水ありなので両方の型に入る
+    key: 'flood-hightide-mid',
+    category: 'shelter',
+    claim: 'この場所の浸水想定は1階が水没しうる深さのため、避難するときは建物の2階以上に上がる',
+  })
+  const categoryEntry = entryOf({ entryId: 'cat-shelter-1', category: 'shelter' })
+
+  it('★ 浸水想定区域の中のスポットでは、区域の知識が先に出る', async () => {
+    const source = createKnowledgeQuizSource({
+      connection: { ...connection, apiKey: '' },
+      model: MODEL,
+      base: baseOf([categoryEntry, hazardEntry]),
+      timeoutMs: 100,
+    })
+
+    // 港区芝浦二丁目（実在の浸水想定区域）
+    const quiz = await source.pick({
+      spotId: asSpotId('shelter-0001'),
+      category: 'shelter',
+      lat: 35.6455,
+      lng: 139.7495,
+      alreadyCleared: false,
+    })
+
+    expect(quiz?.quizId).toBe('kb-haz-test-1')
+  })
+
+  it('★ 区域の外では区域の知識を出さない（対象エリアの外も同じ扱い）', async () => {
+    const source = createKnowledgeQuizSource({
+      connection: { ...connection, apiKey: '' },
+      model: MODEL,
+      base: baseOf([categoryEntry, hazardEntry]),
+      timeoutMs: 100,
+    })
+
+    // 千代田区・港区の外（町丁目が引けない）
+    const quiz = await source.pick({
+      spotId: asSpotId('shelter-0002'),
+      category: 'shelter',
+      lat: 43.06,
+      lng: 141.35,
+      alreadyCleared: false,
+    })
+
+    expect(quiz?.quizId).toBe('kb-cat-shelter-1')
+  })
+})
+
+describe('いちばん近い層の中から選ぶ', () => {
+  /*
+   * ★ 近い順に並べておきながら全候補から選ぶと、並びが無意味になる。
+   * 浸水想定区域の中に立っているのにカテゴリの一般論が出るのは、
+   * この機能の値打ちを消す。
+   */
+  it('★ 層の中では散らす（歩いても同じ問題を繰り返さない）', async () => {
+    const a = entryOf({ entryId: 'cat-a', category: 'shelter' })
+    const b = entryOf({ entryId: 'cat-b', category: 'shelter', claim: '別の正しいこと' })
+    const source = createKnowledgeQuizSource({
+      connection: { ...connection, apiKey: '' },
+      model: MODEL,
+      base: baseOf([a, b]),
+      timeoutMs: 100,
+    })
+
+    const ids = new Set<string>()
+    for (const id of ['s1', 's2', 's3', 's4', 's5', 's6']) {
+      const quiz = await source.pick({
+        spotId: asSpotId(`shelter-${id}`),
+        category: 'shelter',
+        lat: 43.06,
+        lng: 141.35,
+        alreadyCleared: false,
+      })
+      ids.add(quiz!.quizId)
+    }
+
+    expect(ids.size).toBeGreaterThan(1)
   })
 })

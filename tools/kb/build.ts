@@ -35,6 +35,7 @@ import {
 } from '@imanouchi/shared'
 
 import { allQuizEntries } from '../../apps/function/src/data/quiz-bank.js'
+import { HAZARD_PROFILES } from '../../apps/function/src/data/chome-hazard.js'
 import { OPENDATA_SOURCES } from '../../apps/function/src/data/opendata-spots.js'
 import { chat, isConfigured, parseJson, type OrcaRouterConnection } from '../../apps/function/src/services/ai/orcarouter.js'
 import { KNOWLEDGE_BASE } from '../../apps/function/src/data/knowledge-base.js'
@@ -331,6 +332,85 @@ ${already.length > 0 ? already.map((claim) => `- ${claim}`).join('\n') : '（な
   }))
 }
 
+/**
+ * ハザードの型ごとに広げる（#72・FR-04-4）。
+ *
+ * ★ **町丁目ごとには作らない。** 249 区画それぞれに作ると防災士が読み切れず、
+ * 読まれないナレッジは配れない（未承認のまま）。避難行動が変わる境目で束ねた
+ * 8 通りに対して作る。**レビューできる量に収めることが、配れる条件である。**
+ *
+ * ★ 渡すのは**取り込んだ実データの事実だけ**である（層・最大の深さ・区画数）。
+ * 地名や施設名は渡さない。モデルが地域固有の事実を作る余地を残さない。
+ */
+async function expandHazardProfile(
+  connection: OrcaRouterConnection,
+  model: string,
+  profile: (typeof HAZARD_PROFILES)[number],
+  existing: readonly KnowledgeEntry[],
+): Promise<KnowledgeEntry[]> {
+  const already = existing.filter((entry) => entry.scope === 'hazard').map((entry) => entry.claim)
+
+  const user = `場所の条件: ${profile.label}
+対象エリア（千代田区・港区）の町丁目 ${profile.chomeCount} 区画がこの条件にあたります。
+
+この条件の場所にある避難所で、市民に伝えたい要点を2件作ってください。
+1件は「まず何をするか」（kind: action）、1件は知識（kind: knowledge）にしてください。
+
+深さの読み方（この対応から外れることを書かないでください）:
+- 0.5m未満: 足首程度。屋内に留まれる
+- 0.5〜3m未満: 1階が水没しうる。上の階へ
+- 3m以上: 2階でも危ない。区域の外へ立ち退く
+
+守ること:
+- **地名・施設名を書かない**（同じ条件の複数の場所で使います）。
+- 浸水想定は「想定」であり、いま水が来ていることではありません。断定しないでください。
+- ${profile.layers.includes('hightide') ? '高潮は台風などで海から来ます。' : ''}${profile.layers.includes('flood') ? '洪水は川から来ます。' : ''}
+
+すでにある要点（重複させないでください）:
+${already.length > 0 ? already.map((claim) => `- ${claim}`).join('\n') : '（なし）'}
+
+出力する JSON の形:
+{"entries":[{"kind":"action","claim":"...","distractors":["...","..."],"why":"..."}]}`
+
+  const content = await chat(connection, {
+    model,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: user },
+    ],
+    json: true,
+    maxTokens: 2000,
+  })
+
+  const payload = parseJson<{ entries?: (ExpandedEntry & { kind?: string })[] }>(content)
+
+  return (payload.entries ?? []).map((raw, index) => ({
+    entryId: `haz-${profile.id}-${index + 1}`,
+    scope: 'hazard' as const,
+    key: profile.id,
+    // ★ 避難行動の話なので避難所に紐づける。給水やトイレの出題には出さない
+    category: 'shelter' as const,
+    context: '',
+    kind: raw.kind === 'knowledge' ? ('knowledge' as const) : ('action' as const),
+    claim: String(raw.claim ?? '').trim(),
+    distractors: (raw.distractors ?? []).map((d) => String(d).trim()).filter((d) => d !== ''),
+    why: String(raw.why ?? '').trim(),
+    sources: [
+      {
+        title: `生成（OrcaRouter 経由 ${model}）。条件: ${profile.label}。**未レビュー**`,
+        url: '',
+        fetchedAt: TODAY,
+      },
+      {
+        title: '国土交通省 ハザードマップポータルサイト（洪水浸水想定区域・高潮浸水想定区域）',
+        url: 'https://disaportal.gsi.go.jp/',
+        fetchedAt: TODAY,
+      },
+    ],
+    reviewed: false,
+  }))
+}
+
 /* ------------------------------------------------------------------ *
  * 出力
  * ------------------------------------------------------------------ */
@@ -515,10 +595,17 @@ async function main(): Promise<void> {
       process.exit(1)
     }
 
-    console.log(`拡張: ${model} を ${SPOT_CATEGORIES.length} 回呼びます`)
+    console.log(`拡張: ${model} を ${SPOT_CATEGORIES.length + HAZARD_PROFILES.length} 回呼びます`)
     for (const category of SPOT_CATEGORIES) {
       const generated = await expandCategory(connection, model, category, entries)
       console.log(`  ${SPOT_CATEGORY_LABELS[category]}: ${generated.length} 件`)
+      entries = [...entries, ...generated]
+    }
+
+    console.log(`ハザードの型 ${HAZARD_PROFILES.length} 通りを広げます`)
+    for (const profile of HAZARD_PROFILES) {
+      const generated = await expandHazardProfile(connection, model, profile, entries)
+      console.log(`  ${profile.label}（${profile.chomeCount} 区画）: ${generated.length} 件`)
       entries = [...entries, ...generated]
     }
   } else {
