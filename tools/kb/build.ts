@@ -36,7 +36,7 @@ import {
 
 import { allQuizEntries } from '../../apps/function/src/data/quiz-bank.js'
 import { OPENDATA_SOURCES } from '../../apps/function/src/data/opendata-spots.js'
-import { chat, isConfigured, parseJson, type OrcaRouterConfig } from '../../apps/function/src/services/ai/orcarouter.js'
+import { chat, isConfigured, parseJson, type OrcaRouterConnection } from '../../apps/function/src/services/ai/orcarouter.js'
 import { KNOWLEDGE_BASE } from '../../apps/function/src/data/knowledge-base.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -206,7 +206,8 @@ interface ExpandedEntry {
  * FR-05・FR-06 で市民の回答が入ってから広げる。
  */
 async function expandCategory(
-  config: OrcaRouterConfig,
+  connection: OrcaRouterConnection,
+  model: string,
   category: SpotCategory,
   existing: readonly KnowledgeEntry[],
 ): Promise<KnowledgeEntry[]> {
@@ -227,8 +228,9 @@ ${already.length > 0 ? already.map((claim) => `- ${claim}`).join('\n') : '（な
 出力する JSON の形:
 {"entries":[{"kind":"action","claim":"...","distractors":["...","..."],"why":"..."}]}`
 
-  const content = await chat(config, {
-    model: config.ingestModel,
+  const content = await chat(connection, {
+    // ★ 高性能モデルを指定するのは**このリポジトリでここだけ**である
+    model,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: user },
@@ -251,7 +253,7 @@ ${already.length > 0 ? already.map((claim) => `- ${claim}`).join('\n') : '（な
     why: String(raw.why ?? '').trim(),
     sources: [
       {
-        title: `生成（OrcaRouter 経由 ${config.ingestModel}）。**未レビュー。一次資料の確認が必要**`,
+        title: `生成（OrcaRouter 経由 ${model}）。**未レビュー。一次資料の確認が必要**`,
         url: '',
         fetchedAt: TODAY,
       },
@@ -311,21 +313,29 @@ function sortLedger(ledger: Ledger): Ledger {
   return sorted
 }
 
-function configFromEnv(): OrcaRouterConfig {
+function connectionFromEnv(): OrcaRouterConnection {
   return {
     baseUrl: process.env['ORCAROUTER_BASE_URL'] ?? 'https://api.orcarouter.ai/v1',
     apiKey: process.env['ORCAROUTER_API_KEY'] ?? '',
-    /*
-     * ★ **プロバイダの接頭辞が要る**（`anthropic/...`・`google/...`）。
-     * 無いと OrcaRouter は 404 model_not_found を返す。文面は
-     * 「No available capacity」と出るので、**混んでいるだけに見えて
-     * モデルID の間違いだと気づきにくい。**
-     */
-    ingestModel: process.env['AI_INGEST_MODEL'] ?? 'anthropic/claude-opus-5',
-    runtimeModel: process.env['AI_RUNTIME_MODEL'] ?? 'google/gemini-2.5-flash-lite',
     timeoutMs: Number(process.env['AI_TIMEOUT_MS'] ?? 60000),
     maxRetries: 2,
   }
+}
+
+/**
+ * 取り込み用の高性能モデル。
+ *
+ * ★ **この名前が出てくるのはこのファイルだけである。** 実行時の設定
+ * （apps/function/src/config.ts）には置いていないので、配信される関数から
+ * 高性能モデルを呼ぶことはできない。3-2 の「取り込み時だけ高性能モデル」は
+ * 運用の約束ではなく、**コードの構造として**そうなっている。
+ *
+ * ★ **プロバイダの接頭辞が要る**（`anthropic/...`）。無いと OrcaRouter は
+ * 404 model_not_found を返すが、文面は「No available capacity」と出るので、
+ * **混んでいるだけに見えてモデルID の間違いだと気づきにくい。**
+ */
+function ingestModelFromEnv(): string {
+  return process.env['AI_INGEST_MODEL'] ?? 'anthropic/claude-opus-5'
 }
 
 async function main(): Promise<void> {
@@ -335,15 +345,16 @@ async function main(): Promise<void> {
   console.log(`種 ${entries.length} 件（quiz-bank.ts から。モデルは呼んでいない）`)
 
   if (expand) {
-    const config = configFromEnv()
-    if (!isConfigured(config)) {
+    const connection = connectionFromEnv()
+    const model = ingestModelFromEnv()
+    if (!isConfigured(connection)) {
       console.error('ORCAROUTER_API_KEY が未設定です。--expand は鍵が要ります')
       process.exit(1)
     }
 
-    console.log(`拡張: ${config.ingestModel} を ${SPOT_CATEGORIES.length} 回呼びます`)
+    console.log(`拡張: ${model} を ${SPOT_CATEGORIES.length} 回呼びます`)
     for (const category of SPOT_CATEGORIES) {
-      const generated = await expandCategory(config, category, entries)
+      const generated = await expandCategory(connection, model, category, entries)
       console.log(`  ${SPOT_CATEGORY_LABELS[category]}: ${generated.length} 件`)
       entries = [...entries, ...generated]
     }

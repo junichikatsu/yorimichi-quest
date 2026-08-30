@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AiError, chat, isConfigured, parseJson, type OrcaRouterConfig } from './orcarouter.js'
+import { AiError, chat, isConfigured, parseJson, type OrcaRouterConnection } from './orcarouter.js'
 
 /**
  * OrcaRouter の呼び出し（#75）。
@@ -9,11 +9,9 @@ import { AiError, chat, isConfigured, parseJson, type OrcaRouterConfig } from '.
  * 利用者の画面はクイズが出ないまま止まる。
  */
 
-const config: OrcaRouterConfig = {
+const config: OrcaRouterConnection = {
   baseUrl: 'https://api.example.test/v1',
   apiKey: 'test-key',
-  ingestModel: 'high-tier',
-  runtimeModel: 'light-tier',
   timeoutMs: 50,
   maxRetries: 2,
 }

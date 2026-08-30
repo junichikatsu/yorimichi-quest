@@ -16,14 +16,22 @@
  * リクエストヘッダは決して出さない。
  */
 
-export interface OrcaRouterConfig {
+/**
+ * 接続の設定。**モデル名を持たない。**
+ *
+ * ★ 以前は `ingestModel`（高性能）と `runtimeModel`（軽量）の両方を持たせていた。
+ * すると**実行時の設定オブジェクトに高性能モデルの名前が入っている**状態になり、
+ * `model: config.ingestModel` と1行書き間違えるだけで、**コストが利用者数に
+ * 比例する**（提出物 3-2 の費用構造の説明が崩れる）。
+ *
+ * ★ モデルは呼ぶ側が `ChatRequest.model` で毎回渡す。**どの段を使うかは
+ * 呼び出し箇所を読めば分かる**し、取り込み用のモデル名は実行時のコードから
+ * 参照できない（`tools/kb/build.ts` の中にしか無い）。
+ */
+export interface OrcaRouterConnection {
   /** OpenAI 互換のエンドポイント（末尾に /chat/completions を足す） */
   baseUrl: string
   apiKey: string
-  /** 取り込み時に使う高性能モデル。**呼ぶのは取り込みのときだけ** */
-  ingestModel: string
-  /** 利用時に使う軽量モデル */
-  runtimeModel: string
   timeoutMs: number
   maxRetries: number
 }
@@ -71,7 +79,7 @@ interface ChatCompletionResponse {
  * AI が使えなくてもアプリは動くべきで、クイズは固定データへ落ちればよい。
  * 「AI が設定されていないこと」と「AI が壊れていること」を混ぜない。
  */
-export function isConfigured(config: OrcaRouterConfig): boolean {
+export function isConfigured(config: OrcaRouterConnection): boolean {
   return config.apiKey !== '' && config.baseUrl !== ''
 }
 
@@ -81,7 +89,7 @@ export function isConfigured(config: OrcaRouterConfig): boolean {
  * ★ 429 と 5xx だけ再試行する。400 系は何度投げても同じで、**再試行はコストと
  * 待ち時間を増やすだけ**である。
  */
-export async function chat(config: OrcaRouterConfig, request: ChatRequest): Promise<string> {
+export async function chat(config: OrcaRouterConnection, request: ChatRequest): Promise<string> {
   if (!isConfigured(config)) {
     throw new AiError('OrcaRouter が設定されていません', undefined, false)
   }
@@ -108,7 +116,7 @@ export async function chat(config: OrcaRouterConfig, request: ChatRequest): Prom
   throw lastError ?? new AiError('OrcaRouter の呼び出しに失敗しました', undefined, false)
 }
 
-async function once(config: OrcaRouterConfig, request: ChatRequest): Promise<string> {
+async function once(config: OrcaRouterConnection, request: ChatRequest): Promise<string> {
   /*
    * ★ 必ず時間で打ち切る。相手が返さないとき、Lambda は**返さないまま課金され続け**、
    * 利用者の画面はクイズが出ないまま止まる。

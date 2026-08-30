@@ -163,9 +163,13 @@ export interface AppConfig {
   /** OrcaRouter。空なら生成は動かず、固定データのまま出る */
   orcaRouterBaseUrl: string
   orcaRouterApiKey: string
-  /** 取り込み用の高性能モデル。**実行時には使わない**（pnpm build:kb だけ） */
-  aiIngestModel: string
-  /** 利用時の軽量モデル */
+  /**
+   * 利用時の軽量モデル。
+   *
+   * ★ **取り込み用の高性能モデルはここに置かない。** 実行時の設定に両方が
+   * あると、`model: config.aiIngestModel` と 1 行書き間違えるだけでコストが
+   * 利用者数に比例する。取り込み用のモデル名は `tools/kb/build.ts` の中にしか無い。
+   */
   aiRuntimeModel: string
   /**
    * 出題を作るのに待てる時間。
@@ -278,7 +282,6 @@ export function loadConfig(): AppConfig {
     aiQuizEnabled: readBoolean('ENABLE_AI_QUIZ', false),
     orcaRouterBaseUrl: readString('ORCAROUTER_BASE_URL') || 'https://api.orcarouter.ai/v1',
     orcaRouterApiKey: readString('ORCAROUTER_API_KEY'),
-    aiIngestModel: readString('AI_INGEST_MODEL') || 'anthropic/claude-opus-5',
     aiRuntimeModel: readString('AI_RUNTIME_MODEL') || 'google/gemini-2.5-flash-lite',
     aiQuizTimeoutMs: readNumber('AI_QUIZ_TIMEOUT_MS', 5000),
     rateLimitPerMinute: readNumber('RATE_LIMIT_PER_MINUTE', 60),

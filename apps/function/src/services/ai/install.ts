@@ -56,11 +56,13 @@ export function installQuizSource(config: AppConfig): void {
 
   setQuizSource(
     createKnowledgeQuizSource({
-      config: {
+      /*
+       * ★ 接続の設定にモデル名は入れない。**実行時のコードから取り込み用の
+       * 高性能モデルへ手が届かない**ようにしてある（型で塞いである）。
+       */
+      connection: {
         baseUrl: config.orcaRouterBaseUrl,
         apiKey: config.orcaRouterApiKey,
-        ingestModel: config.aiIngestModel,
-        runtimeModel: config.aiRuntimeModel,
         timeoutMs: config.aiQuizTimeoutMs,
         /*
          * ★ 実行時は再試行しない。利用者を待たせるだけで、素の言い回しへ落ちる
@@ -68,6 +70,7 @@ export function installQuizSource(config: AppConfig): void {
          */
         maxRetries: 0,
       },
+      model: config.aiRuntimeModel,
       base: KNOWLEDGE_BASE,
       timeoutMs: config.aiQuizTimeoutMs,
     }),

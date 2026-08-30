@@ -6,7 +6,7 @@ import {
   type QuizKind,
 } from '@imanouchi/shared'
 import { fixtureQuizSource, type PickQuizInput, type QuizEntry, type QuizSource } from '../../data/quiz-bank.js'
-import { chat, isConfigured, parseJson, type OrcaRouterConfig } from './orcarouter.js'
+import { chat, isConfigured, parseJson, type OrcaRouterConnection } from './orcarouter.js'
 
 /**
  * ナレッジからのクイズ生成（FR-04-2・#75）。
@@ -119,7 +119,14 @@ interface GeneratedText {
 }
 
 export interface QuizGeneratorOptions {
-  config: OrcaRouterConfig
+  connection: OrcaRouterConnection
+  /**
+   * 使うモデル。**軽量モデルを渡すこと。**
+   *
+   * ★ 接続の設定から分けてある。設定オブジェクトが両方の段のモデル名を持っていると、
+   * ここで取り込み用（高性能）を渡してしまっても型が通る。**渡せるものを1つにする。**
+   */
+  model: string
   base: KnowledgeBase
   /**
    * 生成に許す時間。
@@ -151,9 +158,9 @@ ${material.context !== '' ? `もとの問い: ${material.context}\n` : ''}理由
 {"question":"...","explanation":"...","scene":"..."}`
 
   const content = await chat(
-    { ...options.config, timeoutMs: options.timeoutMs },
+    { ...options.connection, timeoutMs: options.timeoutMs },
     {
-      model: options.config.runtimeModel,
+      model: options.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: user },
@@ -260,7 +267,7 @@ export function createKnowledgeQuizSource(options: QuizGeneratorOptions): QuizSo
 
       const fallback = entryFromKnowledge(entry)
 
-      if (!isConfigured(options.config)) {
+      if (!isConfigured(options.connection)) {
         // 鍵が無い。ナレッジは使うが、言い回しは素のまま
         cache.set(fallback.quizId, fallback)
         return fallback

@@ -1,7 +1,7 @@
 import type { KnowledgeBase, KnowledgeEntry } from '@imanouchi/shared'
 import { asSpotId } from '@imanouchi/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { OrcaRouterConfig } from './orcarouter.js'
+import type { OrcaRouterConnection } from './orcarouter.js'
 import { createKnowledgeQuizSource, entryFromKnowledge, quizIdFor } from './quiz-generator.js'
 
 /**
@@ -34,14 +34,14 @@ function baseOf(entries: KnowledgeEntry[]): KnowledgeBase {
   return { generatedAt: '2026-08-30', entries }
 }
 
-const config: OrcaRouterConfig = {
+const connection: OrcaRouterConnection = {
   baseUrl: 'https://api.example.test/v1',
   apiKey: 'test-key',
-  ingestModel: 'ingest',
-  runtimeModel: 'light',
   timeoutMs: 100,
   maxRetries: 0,
 }
+
+const MODEL = 'google/gemini-2.5-flash-lite'
 
 function reply(payload: unknown): Response {
   return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(payload) } }] }), {
@@ -101,7 +101,7 @@ describe('採点は生成に依存しない', () => {
    * ここで undefined を返すと「クイズが見つかりません」が利用者に出る。
    */
   it('★ 生成していない（キャッシュが空の）状態でも quizId を引ける', async () => {
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const found = await source.find(quizIdFor(entryOf()))
 
     expect(found?.options[found.answerIndex]).toBe(CLAIM)
@@ -112,7 +112,7 @@ describe('採点は生成に依存しない', () => {
       reply({ question: '倒れた人を見つけました。まずどうしますか。', explanation: '待つ時間が命を削ります。', scene: '人が倒れている' }),
     )
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const picked = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
     const rebuilt = entryFromKnowledge(entryOf())
 
@@ -127,7 +127,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
       reply({ question: '倒れた人を見つけました。まずどうしますか。', explanation: '待つ時間が命を削ります。', scene: '人が倒れている' }),
     )
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
     expect(quiz?.question).toBe('倒れた人を見つけました。まずどうしますか。')
@@ -147,7 +147,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
       }),
     )
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
     expect(quiz?.question).toBe(entryFromKnowledge(entryOf()).question)
@@ -158,7 +158,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
       reply({ question: 'まずどうしますか。', explanation: 'ok', scene: 'AEDのふたを開けて電源を入れ' }),
     )
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
     expect(quiz?.card.scene).not.toContain('ふたを開けて電源を入れ')
@@ -167,7 +167,7 @@ describe('生成が重ねるのは言い回しだけ', () => {
   it('空の応答は素の言い回しに戻す', async () => {
     vi.stubGlobal('fetch', async () => reply({ question: '', explanation: '', scene: '' }))
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
     expect(quiz?.question).toBe(entryFromKnowledge(entryOf()).question)
@@ -179,7 +179,7 @@ describe('落ちても画面を止めない（G-7）', () => {
   it('★ 生成が失敗しても出題は返る', async () => {
     vi.stubGlobal('fetch', async () => new Response('boom', { status: 500 }))
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     const quiz = await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
     expect(quiz?.options[quiz.answerIndex]).toBe(CLAIM)
@@ -191,7 +191,8 @@ describe('落ちても画面を止めない（G-7）', () => {
     vi.stubGlobal('fetch', spy)
 
     const source = createKnowledgeQuizSource({
-      config: { ...config, apiKey: '' },
+      connection: { ...connection, apiKey: '' },
+      model: MODEL,
       base: baseOf([entryOf()]),
       timeoutMs: 100,
     })
@@ -203,7 +204,8 @@ describe('落ちても画面を止めない（G-7）', () => {
 
   it('★ 配れるナレッジが無ければ固定データへ落ちる', async () => {
     const source = createKnowledgeQuizSource({
-      config,
+      connection,
+      model: MODEL,
       base: baseOf([entryOf({ reviewed: false })]),
       timeoutMs: 100,
     })
@@ -224,7 +226,7 @@ describe('モデルを呼ぶ回数を抑える', () => {
       return reply({ question: 'まずどうしますか。', explanation: 'ok', scene: '場面' })
     })
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
     await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
 
@@ -238,7 +240,7 @@ describe('モデルを呼ぶ回数を抑える', () => {
       return reply({ question: 'まずどうしますか。', explanation: 'ok', scene: '場面' })
     })
 
-    const source = createKnowledgeQuizSource({ config, base: baseOf([entryOf()]), timeoutMs: 100 })
+    const source = createKnowledgeQuizSource({ connection, model: MODEL, base: baseOf([entryOf()]), timeoutMs: 100 })
     await source.pick({ spotId: SPOT, category: 'aed', alreadyCleared: false })
     await source.pick({ spotId: asSpotId('aed-9999'), category: 'aed', alreadyCleared: false })
 
@@ -251,7 +253,8 @@ describe('行動を先に出す（FR-04-7・G-8）', () => {
     const action = entryOf({ entryId: 'gen-aed-a', kind: 'action' })
     const knowledge = entryOf({ entryId: 'gen-aed-k', kind: 'knowledge', claim: '屋外設置なら夜間でも取りに行ける' })
     const source = createKnowledgeQuizSource({
-      config: { ...config, apiKey: '' },
+      connection: { ...connection, apiKey: '' },
+      model: MODEL,
       base: baseOf([action, knowledge]),
       timeoutMs: 100,
     })
