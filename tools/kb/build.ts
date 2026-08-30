@@ -41,6 +41,8 @@ import { KNOWLEDGE_BASE } from '../../apps/function/src/data/knowledge-base.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT = join(ROOT, 'apps/function/src/data/knowledge-base.ts')
+/** レビュー用の読み物。**生成物と一緒に作る**ので、中身がずれない */
+const REVIEW = join(ROOT, 'doc/knowledge-review.md')
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -55,6 +57,72 @@ try {
   process.loadEnvFile(join(ROOT, '.env'))
 } catch {
   // 無くてよい。--expand しないなら鍵は要らない
+}
+
+/* ------------------------------------------------------------------ *
+ * 人手による修正
+ * ------------------------------------------------------------------ */
+
+/**
+ * レビューで見つけた誤りを直すためのファイル（`tools/kb/overrides.json`）。
+ *
+ * ★ **承認の可否だけでは足りない。** レビューの実際は「この選択肢だけ差し替えて」
+ * であって、丸ごと捨てるか通すかではない。受け皿が無いと、**惜しい1件を捨てるか、
+ * 誤りを含んだまま通すか**の二択になる。
+ *
+ * ★ 生成物を手で直さない。直しても次の再生成で消えるし、生成物には
+ * 「手で編集しないこと」と書いてある。**人が触るファイルはここだけ**にする。
+ *
+ * ★ 直したら指紋が変わるので、**承認は自動的に外れる。** 直した人とは別の人が
+ * 読んでから配られる（自分の直しを自分で承認して素通しできない）。
+ */
+const OVERRIDES = join(ROOT, 'tools/kb/overrides.json')
+
+interface Override {
+  /** なぜ直したか。**判定には使わないが、消さないこと**（次に読む人の手がかり） */
+  reason: string
+  claim?: string
+  context?: string
+  distractors?: string[]
+  why?: string
+  kind?: KnowledgeEntry['kind']
+  sources?: KnowledgeEntry['sources']
+}
+
+async function readOverrides(): Promise<Record<string, Override>> {
+  try {
+    return JSON.parse(await readFile(OVERRIDES, 'utf-8')) as Record<string, Override>
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 修正を当てる。**当たらなかった修正は知らせる。**
+ *
+ * ★ entryId を打ち間違えた修正が黙って無視されると、**直したつもりのまま
+ * 誤りが配られる。** 当たらなかったものは必ず出す。
+ */
+function applyOverrides(
+  entries: KnowledgeEntry[],
+  overrides: Record<string, Override>,
+): { entries: KnowledgeEntry[]; unused: string[] } {
+  const used = new Set<string>()
+
+  const applied = entries.map((entry) => {
+    const override = overrides[entry.entryId]
+    if (!override) return entry
+    used.add(entry.entryId)
+
+    // ★ reason は中身へ入れない（記録のためだけのもの）
+    const { reason: _reason, ...patch } = override
+    return { ...entry, ...patch }
+  })
+
+  return {
+    entries: applied,
+    unused: Object.keys(overrides).filter((id) => !used.has(id)),
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -303,6 +371,101 @@ export const KNOWLEDGE_BASE: KnowledgeBase = `
 }
 
 /* ------------------------------------------------------------------ *
+ * レビュー用の読み物
+ * ------------------------------------------------------------------ */
+
+/**
+ * 防災士が読んで赤入れするための一覧。
+ *
+ * ★ **PR の diff を読ませない。** JSON を読める前提を置くと、いちばん確かめて
+ * ほしい人がレビューできない。紙に刷って赤を入れられる形にする。
+ *
+ * ★ 生成物と同時に作るので、**中身がずれない。** 別に書き起こすと、直したのに
+ * 資料が古いままという事故が起きる。
+ */
+function emitReview(base: KnowledgeBase, overrides: Record<string, Override>): string {
+  const stats = statsOf(base)
+  const lines: string[] = []
+
+  lines.push('# ナレッジのレビュー（防災士・消防団員のみなさまへ）')
+  lines.push('')
+  lines.push('> **自動生成ファイル。手で編集しないこと。** 生成元: `tools/kb/build.ts` ／ 再生成: `pnpm build:kb`')
+  lines.push('')
+  lines.push(`| 項目 | 内容 |`)
+  lines.push(`| :--- | :--- |`)
+  lines.push(`| 生成時点 | ${base.generatedAt} |`)
+  lines.push(`| 全 | ${stats.total} 件 |`)
+  lines.push(`| **確認済み（配信中）** | **${stats.reviewed} 件** |`)
+  lines.push(`| **未確認（配信していない）** | **${stats.unreviewed} 件** |`)
+  lines.push('')
+  lines.push('## お願いしたいこと')
+  lines.push('')
+  lines.push('市民が現地で答えるクイズの**材料**です。クイズの文章そのものではありません。')
+  lines.push('問題文と解説の言い回しは別のAIが作りますが、**どれが正解かはこの材料が決めます。**')
+  lines.push('')
+  lines.push('各項目について、次の3点を見てください。')
+  lines.push('')
+  lines.push('1. **正しいこと**が正しいか')
+  lines.push('2. **よくある誤解**が、本当に誤解か（＝事実に近いものが混ざっていないか）')
+  lines.push('3. **なぜ大切か**が、命に関わる理由として妥当か')
+  lines.push('')
+  lines.push('> **2 がいちばん間違えやすいところです。** 事実に近い内容を「誤解」として出すと、')
+  lines.push('> 逆のことを教えてしまいます。実際に1件見つかっています（下の gen-aed-3）。')
+  lines.push('')
+  lines.push('直したいところがあれば、**この文書ではなく** `tools/kb/overrides.json` に書きます。')
+  lines.push('よければ `tools/kb/approved.json` の `approved` を `true` にしてください。')
+  lines.push('')
+
+  for (const reviewed of [false, true]) {
+    const group = base.entries.filter((entry) => entry.reviewed === reviewed)
+    if (group.length === 0) continue
+
+    lines.push('---')
+    lines.push('')
+    lines.push(
+      reviewed
+        ? `## 確認済み（${group.length} 件）— すでに配信しています`
+        : `## 未確認（${group.length} 件）— **ここを見てください**`,
+    )
+    lines.push('')
+
+    for (const entry of group) {
+      const override = overrides[entry.entryId]
+      lines.push(`### ${entry.entryId}`)
+      lines.push('')
+      lines.push(`- **対象**：${SPOT_CATEGORY_LABELS[entry.category]}`)
+      lines.push(`- **種類**：${entry.kind === 'action' ? 'まず何をするか（行動）' : '設備や知識'}`)
+      if (entry.context !== '') lines.push(`- **もとの問い**：${entry.context}`)
+      lines.push('')
+      lines.push(`**正しいこと**`)
+      lines.push('')
+      lines.push(`> ${entry.claim}`)
+      lines.push('')
+      lines.push(`**よくある誤解（不正解の選択肢になります）**`)
+      lines.push('')
+      for (const distractor of entry.distractors) lines.push(`- ${distractor}`)
+      lines.push('')
+      lines.push(`**なぜ大切か**`)
+      lines.push('')
+      lines.push(`> ${entry.why}`)
+      lines.push('')
+      lines.push(`**出典**`)
+      lines.push('')
+      for (const source of entry.sources) {
+        lines.push(`- ${source.title}${source.url !== '' ? ` — ${source.url}` : ''}（${source.fetchedAt}）`)
+      }
+      if (override) {
+        lines.push('')
+        lines.push(`> **人手で修正済み**：${override.reason}`)
+      }
+      lines.push('')
+    }
+  }
+
+  return `${lines.join('\n')}\n`
+}
+
+/* ------------------------------------------------------------------ *
  * 実行
  * ------------------------------------------------------------------ */
 
@@ -369,6 +532,16 @@ async function main(): Promise<void> {
     console.log(`前回の生成ぶん ${kept.length} 件を引き継ぎ`)
   }
 
+  const overrides = await readOverrides()
+  const patched = applyOverrides(entries, overrides)
+  entries = patched.entries
+  if (Object.keys(overrides).length > 0) {
+    console.log(`人手による修正 ${Object.keys(overrides).length - patched.unused.length} 件を適用`)
+  }
+  for (const id of patched.unused) {
+    console.warn(`  ! ${id}: 修正の宛先が見つかりません（entryId を確かめてください）`)
+  }
+
   const ledger = await readLedger()
   const applied = applyLedger(entries, ledger)
   const withReview = applied.entries
@@ -392,6 +565,7 @@ async function main(): Promise<void> {
   }
 
   await writeFile(OUT, emit(base), 'utf-8')
+  await writeFile(REVIEW, emitReview(base, overrides), 'utf-8')
   await writeFile(LEDGER, `${JSON.stringify(sortLedger(applied.ledger), null, 2)}
 `, 'utf-8')
 
