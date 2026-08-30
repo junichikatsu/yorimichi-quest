@@ -1915,3 +1915,120 @@ describe('PUT /v1/me/equipment', () => {
     expect(response.status).toBe(400)
   })
 })
+
+describe('行政還元ダッシュボード（FR-09）', () => {
+  it('★ 認証なしで集計を返す（FR-09-5 の閲覧専用デモ）', async () => {
+    const response = await app.request('/v1/dashboard/summary')
+    expect(response.status).toBe(200)
+
+    const body = await json<Record<string, unknown>>(response)
+    expect(body['areaName']).toBe('千代田区・港区')
+    expect(body['consensusThreshold']).toBe(2)
+  })
+
+  it('★ トリガーのパス前置が付いても通る（本番だけ 401 になるのを防ぐ）', async () => {
+    const response = await app.request(`${TRIGGER_PATH}/v1/dashboard/summary`)
+    expect(response.status).toBe(200)
+  })
+
+  it('★ 書き込む経路を生やしていない（公開しても壊せるものが無い）', async () => {
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const response = await app.request('/v1/dashboard/summary', { method })
+      expect(response.status, method).not.toBe(200)
+    }
+  })
+
+  it('誰も答えていなければ、集まり具合は 0 を返す（想定値を作らない）', async () => {
+    const body = await json<{ collection: Record<string, number> }>(
+      await app.request('/v1/dashboard/summary'),
+    )
+
+    expect(body.collection.answerCount).toBe(0)
+    expect(body.collection.verifiedFieldCount).toBe(0)
+    expect(body.collection.spotsWithAnswers).toBe(0)
+  })
+
+  it('属性の空白をカテゴリごとに返す（スライド3の実測）', async () => {
+    const body = await json<{
+      coverage: { spotCount: number; slotTotal: number; categories: { category: string }[] }
+    }>(await app.request('/v1/dashboard/summary'))
+
+    expect(body.coverage.spotCount).toBeGreaterThan(0)
+    expect(body.coverage.slotTotal).toBeGreaterThan(0)
+    expect(body.coverage.categories.length).toBe(4)
+  })
+
+  /*
+   * ★ 集計の上限は地図の上限（MAX_SPOTS_PER_REQUEST=200）と別である。
+   * 使い回すと実データ 370 件が 200 で切られ、「属性が空なのは何件か」が
+   * 小さく出る。**主張が弱くなる方向に静かに壊れる**ので固定する。
+   */
+  it('★ 地図の上限を下げても、集計の件数は減らない', async () => {
+    process.env['MAX_SPOTS_PER_REQUEST'] = '1'
+    const body = await json<{ coverage: { spotCount: number }; truncated: boolean }>(
+      await app.request('/v1/dashboard/summary'),
+    )
+    delete process.env['MAX_SPOTS_PER_REQUEST']
+
+    expect(body.coverage.spotCount).toBeGreaterThan(1)
+    expect(body.truncated).toBe(false)
+  })
+
+  it('★ 集計の上限で切られたら、切られたことを返す（黙って間違った数を出さない）', async () => {
+    process.env['DASHBOARD_MAX_SPOTS'] = '2'
+    const body = await json<{ truncated: boolean }>(await app.request('/v1/dashboard/summary'))
+    delete process.env['DASHBOARD_MAX_SPOTS']
+
+    expect(body.truncated).toBe(true)
+  })
+})
+
+describe('CSV での書き出し（FR-09-4）', () => {
+  it('★ 認証なしでダウンロードできる', async () => {
+    const response = await app.request('/v1/dashboard/export/gaps.csv')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/csv')
+    expect(response.headers.get('content-disposition')).toContain('attachment')
+  })
+
+  /*
+   * ★ バイト列で確かめる。`Response.text()` は仕様どおり先頭の BOM を取り除くので、
+   * 文字列で見ると**送っていても「無い」と出る**。ここで見たいのは Excel が
+   * 受け取るバイトそのものである。
+   */
+  it('★ BOM 付きで返す（無いと Excel で施設名が文字化けする）', async () => {
+    const buffer = await (await app.request('/v1/dashboard/export/gaps.csv')).arrayBuffer()
+    const head = [...new Uint8Array(buffer).slice(0, 3)]
+
+    expect(head).toEqual([0xef, 0xbb, 0xbf])
+  })
+
+  it('未取得項目の一覧は、いま実際に行が出る（現時点の主要な成果物）', async () => {
+    const text = await (await app.request('/v1/dashboard/export/gaps.csv')).text()
+    const lines = text.replace('\ufeff', '').split('\r\n').filter((line) => line !== '')
+
+    expect(lines.length).toBeGreaterThan(1)
+    expect(lines[0]).toContain('所在地_連結表記')
+  })
+
+  it('★ 検証済みは、誰も答えていなければ見出しだけを返す（0件を隠さない）', async () => {
+    const text = await (await app.request('/v1/dashboard/export/verified.csv')).text()
+    const lines = text.replace('\ufeff', '').split('\r\n').filter((line) => line !== '')
+
+    expect(lines.length).toBe(1)
+  })
+
+  it('町丁目の CSV に危険度を示す列を作らない（FR-09-8）', async () => {
+    const text = await (await app.request('/v1/dashboard/export/chome.csv')).text()
+    const header = text.replace('\ufeff', '').split('\r\n')[0] ?? ''
+
+    expect(header).toContain('人口')
+    expect(header).not.toContain('危険')
+    expect(header).not.toContain('率')
+  })
+
+  it('ファイル名に日付が入る（いつ時点かを手元に残す）', async () => {
+    const response = await app.request('/v1/dashboard/export/chome.csv')
+    expect(response.headers.get('content-disposition')).toMatch(/imanouchi_chome_\d{4}-\d{2}-\d{2}\.csv/)
+  })
+})
