@@ -103,6 +103,7 @@ LINE ログインが完走しないため、**ログインが要る機能（チ�
 | `pnpm verify` | typecheck → lint → test → ZIP ビルド |
 | `pnpm ingest` | スポットを取り込む（FR-10） |
 | `pnpm ingest:boundaries` | 町丁目境界256区画を取り込む（FR-02-7 で使う） |
+| `pnpm ingest:hazard` | 町丁目ごとの浸水想定を取り込む（#72 の判定をサーバー側へ） |
 | `pnpm build:zip` | デプロイ用 ZIP を生成 |
 | `pnpm seed` | デプロイ先へスポットを投入（終わるまで繰り返す。`--reset` で消してから） |
 
